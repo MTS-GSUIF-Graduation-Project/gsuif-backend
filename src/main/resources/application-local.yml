@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: ${GSUIF_DB_URL:jdbc:postgresql://localhost:5432/gsuif_db}
+    username: ${GSUIF_DB_USERNAME:gsuif_user}
+    password: ${GSUIF_DB_PASSWORD:gsuif_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
