@@ -19,6 +19,7 @@ This document records confirmed project and architecture decisions.
 | DEC-011 | Redis is deferred and is not a Phase 1 or Phase 2 dependency. | V3.2 | CONFIRMED | Team |
 | DEC-012 | Multi-tenancy is not implemented in Phase 1 or Phase 2 unless later confirmed. | V3.2 | CONFIRMED | Team |
 | DEC-013 | H2 in PostgreSQL compatibility mode is used for testing and CI. | V3.2 | CONFIRMED | Team |
+| DEC-014 | Jmix is REJECTED as a generation foundation / output tool for GSUIF. Spike (T-08) showed generated code depends on `io.jmix.*`, uses EclipseLink + Vaadin/FlowUI, and does not match the Standards Checklist (`ApiResponse`, package layout, Hibernate/JPA stack). Jmix may remain an optional learning/reference tool only. Phase 1 generation stays TemplateOnlyProvider (FreeMarker). | T-08 / SCRUM-37 spike | CONFIRMED | M2 (Alaa) — pending M4 review |
 
 ## Database Rules
 
