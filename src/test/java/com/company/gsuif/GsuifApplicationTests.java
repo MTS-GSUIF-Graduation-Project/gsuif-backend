@@ -3,9 +3,10 @@ package com.company.gsuif;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -19,9 +20,9 @@ class GsuifApplicationTests {
     @Autowired
     private MockMvc mockMvc;
 
-	@Test
-	void contextLoads() {
-	}
+    @Test
+    void contextLoads() {
+    }
 
     @Test
     void helloEndpointReturnsOk() throws Exception {
@@ -29,5 +30,4 @@ class GsuifApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(content().string("Hello from GSUIF!"));
     }
-
 }
