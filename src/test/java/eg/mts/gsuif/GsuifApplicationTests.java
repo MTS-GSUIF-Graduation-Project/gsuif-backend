@@ -27,8 +27,9 @@ class GsuifApplicationTests {
     void helloEndpointReturnsOk() throws Exception {
         mockMvc.perform(get("/api/hello"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Success"))
-                .andExpect(jsonPath("$.data").value("Hello from GSUIF!"));
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.clientMessage").value("Success"))
+                .andExpect(jsonPath("$.statusCode").value(200))
+                .andExpect(jsonPath("$.body").value("Hello from GSUIF!"));
     }
 }

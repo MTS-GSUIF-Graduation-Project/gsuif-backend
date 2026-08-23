@@ -12,6 +12,6 @@ public class HelloController {
 
     @GetMapping("/hello")
     public ResponseEntity<ApiResponse<String>> hello() {
-        return ResponseEntity.ok(ApiResponse.success("Hello from GSUIF!", "Success"));
+        return ResponseEntity.ok(ApiResponse.success("Hello from GSUIF!", "Success", 200));
     }
 }

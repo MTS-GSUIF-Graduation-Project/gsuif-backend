@@ -1,18 +1,19 @@
 package eg.mts.gsuif.dto;
 
-import java.time.LocalDateTime;
+import java.util.List;
 
 public record ApiResponse<T>(
-    boolean success,
-    String message,
-    T data,
-    LocalDateTime timestamp
+    String status,
+    String clientMessage,
+    int statusCode,
+    T body,
+    List<String> errors
 ) {
-    public static <T> ApiResponse<T> success(T data, String message) {
-        return new ApiResponse<>(true, message, data, LocalDateTime.now());
+    public static <T> ApiResponse<T> success(T body, String clientMessage, int statusCode) {
+        return new ApiResponse<>("SUCCESS", clientMessage, statusCode, body, null);
     }
 
-    public static <T> ApiResponse<T> error(String message) {
-        return new ApiResponse<>(false, message, null, LocalDateTime.now());
+    public static <T> ApiResponse<T> error(String clientMessage, int statusCode, List<String> errors) {
+        return new ApiResponse<>("ERROR", clientMessage, statusCode, null, errors);
     }
 }
