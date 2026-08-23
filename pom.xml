@@ -12,7 +12,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.company</groupId>
+    <groupId>eg.mts</groupId>
     <artifactId>gsuif</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 

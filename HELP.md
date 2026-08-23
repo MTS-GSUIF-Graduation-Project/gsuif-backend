@@ -1,30 +1,49 @@
-# Getting Started
+# GSUIF Backend Runbook
 
-### Reference Documentation
-For further reference, please consider the following sections:
+This is the backend service for the GSUIF project, built with Spring Boot 4.x, Java 21, and Maven.
 
-* [Official Apache Maven documentation](https://maven.apache.org/guides/index.html)
-* [Spring Boot Maven Plugin Reference Guide](https://docs.spring.io/spring-boot/4.0.7/maven-plugin)
-* [Create an OCI image](https://docs.spring.io/spring-boot/4.0.7/maven-plugin/build-image.html)
-* [Spring Web Services](https://docs.spring.io/spring-boot/4.0.7/reference/io/webservices.html)
-* [Spring Data JPA](https://docs.spring.io/spring-boot/4.0.7/reference/data/sql.html#data.sql.jpa-and-spring-data)
-* [Spring Security](https://docs.spring.io/spring-boot/4.0.7/reference/web/spring-security.html)
-* [Validation](https://docs.spring.io/spring-boot/4.0.7/reference/io/validation.html)
+## Getting Started
 
-### Guides
-The following guides illustrate how to use some features concretely:
+### Prerequisites
+- Java 21 SDK
+- Maven 3.9+ (or use the provided Maven Wrapper)
+- Docker & Docker Compose (for local database)
 
-* [Producing a SOAP web service](https://spring.io/guides/gs/producing-web-service/)
-* [Accessing Data with JPA](https://spring.io/guides/gs/accessing-data-jpa/)
-* [Securing a Web Application](https://spring.io/guides/gs/securing-web/)
-* [Spring Boot and OAuth2](https://spring.io/guides/tutorials/spring-boot-oauth2/)
-* [Authenticating a User with LDAP](https://spring.io/guides/gs/authenticating-ldap/)
-* [Validation](https://spring.io/guides/gs/validating-form-input/)
+### Running Locally with PostgreSQL
+1. Start the local database using Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+2. Run the application with the `local` profile:
+   - **Using global Maven:**
+     ```bash
+     mvn spring-boot:run -Dspring-boot.run.profiles=local
+     ```
+   - **Using Maven Wrapper (Windows):**
+     ```bash
+     .\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
+     ```
+   - **Using Maven Wrapper (Linux/macOS):**
+     ```bash
+     ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+     ```
+3. The API will be available at `http://localhost:8080`.
+4. The Swagger UI can be accessed at `http://localhost:8080/swagger-ui.html`.
 
-### Maven Parent overrides
+### Running Tests with H2 (In-Memory)
+To run automated tests (uses the `test` profile with an in-memory H2 database, requiring no external dependencies):
+- **Using global Maven:**
+  ```bash
+  mvn clean test
+  ```
+- **Using Maven Wrapper (Windows):**
+  ```bash
+  .\mvnw.cmd clean test
+  ```
+- **Using Maven Wrapper (Linux/macOS):**
+  ```bash
+  ./mvnw clean test
+  ```
 
-Due to Maven's design, elements are inherited from the parent POM to the project POM.
-While most of the inheritance is fine, it also inherits unwanted elements like `<license>` and `<developers>` from the parent.
-To prevent this, the project POM contains empty overrides for these elements.
-If you manually switch to a different parent and actually want the inheritance, you need to remove those overrides.
-
+### Main API Endpoints
+- **Hello World Endpoint:** `GET /api/hello`
