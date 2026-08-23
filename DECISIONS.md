@@ -19,6 +19,13 @@ This document records confirmed project and architecture decisions.
 | DEC-011 | Redis is deferred and is not a Phase 1 or Phase 2 dependency. | V3.2 | CONFIRMED | Team |
 | DEC-012 | Multi-tenancy is not implemented in Phase 1 or Phase 2 unless later confirmed. | V3.2 | CONFIRMED | Team |
 | DEC-013 | H2 in PostgreSQL compatibility mode is used for testing and CI. | V3.2 | CONFIRMED | Team |
+| DEC-014 | Core Phase 1 backend scope is: Backend Platform Architecture, Metadata Engine, Unified Request Framework, Unified Response Framework, Automatic CRUD Generator, JWT Authentication, Basic RBAC, Audit Framework, Exception Handling, Logging, Validation, Swagger/OpenAPI, Database abstraction, Testing & Build Validation, Metadata Versioning. | Scope Decision v1 | CONFIRMED | Team |
+| DEC-015 | GraphQL Generator is deferred; not a mandatory deliverable. | Scope Decision v1 | CONFIRMED | Team |
+| DEC-016 | API Gateway is deferred; not a Phase 1 blocker. Resolves OQ-09. | Scope Decision v1 | CONFIRMED | Team |
+| DEC-017 | Advanced/dynamic authorization (entity-level, field-level, policy engine) is deferred. Basic RBAC via `@PreAuthorize` remains mandatory. | Scope Decision v1 | CONFIRMED | Team |
+| DEC-018 | Full password-reset workflow with email/SMS/external providers (e.g. Twilio/SMTP) is deferred. Core authentication (login, JWT) remains mandatory. Resolves OQ-10. | Scope Decision v1 | CONFIRMED | Team |
+| DEC-019 | Frontend/UI deliverables (Angular component library, dynamic form engine, theme engine, configuration framework, API model generator, UI starter kit) are deferred behind the backend/metadata core. | Scope Decision v1 | CONFIRMED | Team |
+| DEC-020 | Oracle-specific implementation and WebLogic/JSESSIONID/WOMS legacy infrastructure are explicitly not part of current scope. | Scope Decision v1 | CONFIRMED | Team |
 
 ## Database Rules
 
@@ -37,6 +44,14 @@ This document records confirmed project and architecture decisions.
 - External AI services and AI credentials are not required for Phase 1.
 - Generated code must pass build validation.
 - Generated code must remain editable.
+
+## Phase 1 Scope Summary
+
+**In scope (core, mandatory):** Backend Platform Architecture, Metadata Engine, Unified Request/Response Frameworks, Automatic CRUD Generator, JWT Authentication, Basic RBAC, Audit Framework, Exception Handling, Logging, Validation, Swagger/OpenAPI, Database abstraction, Testing & Build Validation, Metadata Versioning.
+
+**Deferred (do only if time allows):** GraphQL Generator, API Gateway, Advanced Authorization, Password Reset + Email/SMS integrations, Redis/Distributed Cache, AI Generation Provider, full Frontend/UI deliverables.
+
+**Not part of current scope:** Multi-tenancy, Oracle-specific implementation, WebLogic/JSESSIONID/WOMS legacy infrastructure.
 
 ## Adding a New Decision
 
