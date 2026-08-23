@@ -97,10 +97,11 @@ The Technical Document predates the team's confirmed architecture decisions. The
 - **🔍 Check:** Fail if a class lives outside its designated layer (e.g. business logic sitting in `controller`).
 
 ### STD-07 — Frontend structure
-🟪 BOTH · 🟢 MANDATORY
+🟪 BOTH · 🟡 DEFERRED
 
 - **🛠️ Implement:** `core/guards`, `core/interceptors`, `core/services`, `core/models`, `shared`, `features/<feature>`.
-- **🔍 Check:** Fail if a reusable service/guard/interceptor is duplicated inside a feature module instead of living in `core`.
+- **🔍 Check:** N/A — not evaluated for Phase 1 sign-off.
+- **⚠️ Exceptions:** Apply this structure when the deferred frontend scope begins.
 
 ### STD-08 — Package naming convention
 🟪 BOTH · 🟢 MANDATORY
@@ -259,28 +260,32 @@ The Technical Document predates the team's confirmed architecture decisions. The
 ## 9️⃣ Frontend Cross-Cutting Concerns
 
 ### STD-29 — Auth interceptor
-🟪 BOTH · 🟢 MANDATORY
+🟪 BOTH · 🟡 DEFERRED
 
 - **🛠️ Implement:** `AuthInterceptor` attaches JWT to `Authorization` header on every outgoing request.
-- **🔍 Check:** Fail if any authenticated call is missing the header.
+- **🔍 Check:** N/A — not evaluated for Phase 1 sign-off.
+- **⚠️ Exceptions:** Apply this standard when the deferred frontend scope begins.
 
 ### STD-30 — Error interceptor
-🟪 BOTH · 🟢 MANDATORY
+🟪 BOTH · 🟡 DEFERRED
 
 - **🛠️ Implement:** `ErrorInterceptor` catches HTTP errors, triggers `NotificationService`, forces logout + redirect on 401.
-- **🔍 Check:** Fail if a 401 doesn't force logout/redirect.
+- **🔍 Check:** N/A — not evaluated for Phase 1 sign-off.
+- **⚠️ Exceptions:** Apply this standard when the deferred frontend scope begins.
 
 ### STD-31 — Loading interceptor
-🟪 BOTH · 🟢 MANDATORY
+🟪 BOTH · 🟡 DEFERRED
 
 - **🛠️ Implement:** `LoadingInterceptor` toggles a global spinner based on pending request count.
-- **🔍 Check:** Fail if the spinner disappears before all concurrent requests complete.
+- **🔍 Check:** N/A — not evaluated for Phase 1 sign-off.
+- **⚠️ Exceptions:** Apply this standard when the deferred frontend scope begins.
 
 ### STD-32 — Response unwrapping
-🟪 BOTH · 🟢 MANDATORY
+🟪 BOTH · 🟡 DEFERRED
 
 - **🛠️ Implement:** Services unwrap `ApiResponse<T>`, throw on `errors`, never expose the raw envelope to components.
-- **🔍 Check:** Fail if any component consumes the raw envelope directly.
+- **🔍 Check:** N/A — not evaluated for Phase 1 sign-off.
+- **⚠️ Exceptions:** Apply this standard when the deferred frontend scope begins.
 
 ---
 
@@ -289,8 +294,8 @@ The Technical Document predates the team's confirmed architecture decisions. The
 ### STD-33 — Database-agnostic persistence
 🟪 BOTH · 🟢 MANDATORY
 
-- **🛠️ Implement:** Spring Data JPA/Hibernate only; **no native queries** in framework core.
-- **🔍 Check:** Fail if any core repository uses `nativeQuery = true` or vendor-specific SQL.
+- **🛠️ Implement:** Use Spring Data JPA/Hibernate only. Do not use native queries or vendor-specific database types, sequences, functions, or SQL in framework core or generated persistence code.
+- **🔍 Check:** Fail if a repository uses `nativeQuery = true`, or if persistence code declares a vendor-specific type, sequence, function, or SQL statement.
 - **📎 Context:** Corrects the original doc's Oracle-only framing — see Corrections table above.
 
 ### STD-34 — Reference DB / CI DB
