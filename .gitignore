@@ -1,12 +1,36 @@
 # Java / Maven
 target/
 *.class
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
 
 # IntelliJ IDEA
 .idea/
-*.iml
 *.iws
+*.iml
 *.ipr
+
+# Eclipse / STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Build
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
 
 # VS Code
 .vscode/
@@ -27,3 +51,6 @@ pnpm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Documentation
+doc/

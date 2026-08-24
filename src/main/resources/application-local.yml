@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${GSUIF_DB_URL:jdbc:postgresql://localhost:5432/gsuif_db}
+    username: ${GSUIF_DB_USERNAME:gsuif_user}
+    password: ${GSUIF_DB_PASSWORD:gsuif_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      # TODO: Change ddl-auto to 'validate' once database migrations (Flyway/Liquibase) are integrated.
+      # Hibernate schema mutation (update) is only for initial local development (STD-33/persistence direction).
+      ddl-auto: update
