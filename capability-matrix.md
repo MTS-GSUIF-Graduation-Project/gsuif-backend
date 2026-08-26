@@ -1,6 +1,6 @@
 ﻿# 📊 Capability Matrix — Code Generation & Scaffolding Tools
 
-**Owner:** SCRUM-38 (T-09) — Sondos Hashem
+**Owner:** SCRUM-38 (T-09) — Esraa Abdelrazek
 **Reviewer:** M2 — Alaa Elmasry
 **Source of truth for standards:** `standards-checklist.md` (T-06 / SCRUM-35)
 **Related decisions:** `DECISIONS.md` — ADR-003, ADR-008, ADR-009, DEC-021
