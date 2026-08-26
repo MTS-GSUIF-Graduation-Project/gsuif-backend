@@ -121,6 +121,7 @@
                         <configuration>
                             <inputSpec>${project.basedir}/src/main/resources/openapi/work-order-api.yaml</inputSpec>
                             <generatorName>spring</generatorName>
+                            <templateDirectory>${project.basedir}/src/main/resources/templates/openapi/spring</templateDirectory>
                             <apiPackage>eg.mts.gsuif.api</apiPackage>
                             <modelPackage>eg.mts.gsuif.dto.generated</modelPackage>
                             <configOptions>
