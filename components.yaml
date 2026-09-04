@@ -180,14 +180,8 @@ components:
       NOT generalized into a generic "Entity" model. These are the five
       first-class Phase 1 concepts, designed to remain extensible in Phase 2,
       so SCRUM-21 (persistence) and SCRUM-22 (REST APIs) remain
-      contract-compatible with SCRUM-20/T-13. Component carries
-      type, label, position, size, visibility and disabled-state properties;
-      APIBinding carries httpMethod, endpointUrl, headers, requestMapping and
-      responseMapping; every version is wrapped in an envelope of id,
-      version, createdAt, createdBy, projectId, pageId and schemaVersion.
-      Metadata is environment-agnostic — no hardcoded URLs.
-      NOTE: the field-level shape below is provisional until SCRUM-20 (T-13)
-      lands — see traceability_gaps TG-02.
+      contract-compatible with SCRUM-20/T-13. The detailed properties and
+      JSON contracts for these entities are owned by SCRUM-20 (T-13).
     requirement_status: MANDATORY
     target_phase: PHASE_1
     sources:
@@ -570,15 +564,10 @@ components:
     category: Metadata
     scope: SYS
     description: >
-      Two layers of validation. Structural: the networknt/json-schema-validator
-      library checks incoming metadata against the BE-02 schemas and returns
-      every structural error at once (field paths included), thrown as
-      MetadataValidationException mapped to 400. Business-rule: a pluggable
-      MetadataBusinessRule interface (page route uniqueness within a
-      project, component ID uniqueness within a page, API binding HTTP
-      method whitelist, a 5MB metadata size cap, version-name uniqueness per
-      page) that new rules can extend without touching the validator core.
-      Wired into MetadataService.save() so nothing bypasses it.
+      Provides structural validation of metadata against registered schemas
+      and business-rule validation of structurally valid metadata. Validation
+      returns complete, field-level errors and supports adding new business
+      rules without redesigning the validator.
     requirement_status: MANDATORY
     target_phase: PHASE_1
     sources:
@@ -829,19 +818,6 @@ deferred_components:
 # =============================================================================
 
 traceability_gaps:
-
-  - id: TG-02
-    summary: "BE-02's schema shape is sourced from a downstream ticket."
-    detail: >
-      BE-02's only Jira source is SCRUM-20 (T-13: Metadata JSON Schema Design),
-      but SCRUM-39 explicitly blocks T-13. The entity list itself traces to
-      DOC-01 §Metadata Generation, but the field-level detail does not yet
-      trace to an upstream document.
-    action: >
-      Re-anchor BE-02's field-level detail to DOC-01 or DOC-09 with a verified
-      locator, or accept it as provisional until SCRUM-20 lands.
-    affects_acceptance_criteria: false
-    owner: "M1 — Sondos Hashem"
 
   - id: TG-03
     summary: "Seven of ten source documents are not version-controlled."
