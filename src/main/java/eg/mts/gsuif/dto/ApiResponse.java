@@ -9,11 +9,16 @@ public record ApiResponse<T>(
     T body,
     Map<String, String> errors
 ) {
+    public static <T> ApiResponse<T> success(T body, String clientMessage) {
+        return new ApiResponse<>("OK", clientMessage, 200, body, null);
+    }
+
     public static <T> ApiResponse<T> success(T body, String clientMessage, int statusCode) {
         return new ApiResponse<>("OK", clientMessage, statusCode, body, null);
     }
 
-    public static <T> ApiResponse<T> error(String status, String clientMessage, int statusCode, Map<String, String> errors) {
-        return new ApiResponse<>(status, clientMessage, statusCode, null, errors);
+    public static <T> ApiResponse<T> error(int code, String clientMessage, Map<String, String> errors) {
+        String status = org.springframework.http.HttpStatus.valueOf(code).name();
+        return new ApiResponse<>(status, clientMessage, code, null, errors);
     }
 }
