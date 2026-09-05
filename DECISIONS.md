@@ -26,7 +26,9 @@ This document records confirmed project and architecture decisions.
 | DEC-018 | Full password-reset workflow with email/SMS/external providers (e.g. Twilio/SMTP) is deferred. Core authentication (login, JWT) remains mandatory. Resolves OQ-10. | Scope Decision v1 | CONFIRMED | Team |
 | DEC-019 | Frontend/UI deliverables (Angular component library, dynamic form engine, theme engine, configuration framework, API model generator, UI starter kit) are deferred behind the backend/metadata core. | Scope Decision v1 | CONFIRMED | Team |
 | DEC-020 | Oracle-specific implementation and WebLogic/JSESSIONID/WOMS legacy infrastructure are explicitly not part of current scope. | Scope Decision v1 | CONFIRMED | Team |
-| DEC-021 | OpenAPI Generator (`openapi-generator-maven-plugin:7.16.0`) is ACCEPTED WITH LIMITATIONS: used for contract-first REST interface scaffolding and Phase 2 client SDK generation. It is not the Phase 1 generation engine. FreeMarker / TemplateOnlyProvider (ADR-003) remains the Phase 1 engine. STD-05 conformance requires a project-local `responseType.mustache` override (1 file, 62 bytes). STD-01 envelope construction remains the responsibility of the implementing `@RestController`. | Spike T-09 / SCRUM-38 | CONFIRMED | Team |
+| DEC-021 | Jmix is REJECTED as a generation foundation / output tool for GSUIF. Spike (T-08) showed generated code depends on `io.jmix.*`, uses EclipseLink + Vaadin/FlowUI, and does not match the Standards Checklist (ApiResponse, package layout, Hibernate/JPA stack). Phase 1 generation stays TemplateOnlyProvider (FreeMarker). | T-08 / SCRUM-37 spike | CONFIRMED | M2 (Alaa) |
+| DEC-022 | OpenAPI Generator (`openapi-generator-maven-plugin:7.16.0`) is ACCEPTED WITH LIMITATIONS: used for contract-first REST interface scaffolding and Phase 2 client SDK generation. It is not the Phase 1 generation engine. FreeMarker / TemplateOnlyProvider (ADR-003) remains the Phase 1 engine. STD-05 conformance requires a project-local `responseType.mustache` override (1 file, 62 bytes). STD-01 envelope construction remains the responsibility of the implementing `@RestController`. | Spike T-09 / SCRUM-38 | CONFIRMED | M3 (Esraa) |
+
 
 ## Database Rules
 
@@ -64,7 +66,7 @@ New confirmed decisions should be added using the following format:
 
 ---
 
-## DEC-021 — OpenAPI Generator Evaluation Rationale (T-09 / SCRUM-38)
+## DEC-022 — OpenAPI Generator Evaluation Rationale (T-09 / SCRUM-38)
 
 **Spike:** T-09 · **Branch:** `feature/SCRUM-38-openapi-generator`
 **Artifact:** `capability-matrix.md`
