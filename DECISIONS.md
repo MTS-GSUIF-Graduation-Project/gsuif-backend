@@ -26,6 +26,7 @@ This document records confirmed project and architecture decisions.
 | DEC-018 | Full password-reset workflow with email/SMS/external providers (e.g. Twilio/SMTP) is deferred. Core authentication (login, JWT) remains mandatory. Resolves OQ-10. | Scope Decision v1 | CONFIRMED | Team |
 | DEC-019 | Frontend/UI deliverables (Angular component library, dynamic form engine, theme engine, configuration framework, API model generator, UI starter kit) are deferred behind the backend/metadata core. | Scope Decision v1 | CONFIRMED | Team |
 | DEC-020 | Oracle-specific implementation and WebLogic/JSESSIONID/WOMS legacy infrastructure are explicitly not part of current scope. | Scope Decision v1 | CONFIRMED | Team |
+| DEC-021 | Jmix is REJECTED as a generation foundation / output tool for GSUIF. Spike (T-08) showed generated code depends on `io.jmix.*`, uses EclipseLink + Vaadin/FlowUI, and does not match the Standards Checklist (ApiResponse, package layout, Hibernate/JPA stack). Phase 1 generation stays TemplateOnlyProvider (FreeMarker). | T-08 / SCRUM-37 spike | CONFIRMED | M2 (Alaa) |
 
 ## Database Rules
 
