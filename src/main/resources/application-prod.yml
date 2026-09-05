@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: ${GSUIF_DB_URL}
+    username: ${GSUIF_DB_USERNAME}
+    password: ${GSUIF_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  h2:
+    console:
+      enabled: false
