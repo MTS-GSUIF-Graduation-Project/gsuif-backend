@@ -1,0 +1,183 @@
+openapi: 3.0.3
+info:
+  title: Work Order API
+  description: Evaluation contract for GSUIF generation spike (T-09)
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+paths:
+  /work-orders:
+    get:
+      tags:
+        - WorkOrder
+      summary: Retrieve list of work orders
+      operationId: getWorkOrders
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/WorkOrderStatus'
+      responses:
+        '200':
+          description: Successfully retrieved list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkOrderDto'
+    post:
+      tags:
+        - WorkOrder
+      summary: Create a new work order
+      operationId: createWorkOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkOrderRequest'
+      responses:
+        '201':
+          description: Work order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrderDto'
+
+  /work-orders/{id}:
+    get:
+      tags:
+        - WorkOrder
+      summary: Get work order by ID
+      operationId: getWorkOrderById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Work order found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrderDto'
+        '404':
+          description: Work order not found
+
+    put:
+      tags:
+        - WorkOrder
+      summary: Update an existing work order
+      operationId: updateWorkOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkOrderRequest'
+      responses:
+        '200':
+          description: Work order updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrderDto'
+        '404':
+          description: Work order not found
+
+    delete:
+      tags:
+        - WorkOrder
+      summary: Delete a work order
+      operationId: deleteWorkOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Work order deleted successfully
+        '404':
+          description: Work order not found
+
+components:
+  schemas:
+    WorkOrderStatus:
+      type: string
+      enum:
+        - OPEN
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+
+    WorkOrderDto:
+      type: object
+      required:
+        - id
+        - title
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkOrderStatus'
+        assignee:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+
+    CreateWorkOrderRequest:
+      type: object
+      required:
+        - title
+        - status
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkOrderStatus'
+        assignee:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+
+    UpdateWorkOrderRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkOrderStatus'
+        assignee:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
