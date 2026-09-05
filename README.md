@@ -1,5 +1,7 @@
 # gsuif-backend
 
+[![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+
 ## Git Workflow
 
 All development work must follow the branching workflow below:
