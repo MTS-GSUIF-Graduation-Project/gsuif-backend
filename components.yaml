@@ -1,0 +1,849 @@
+# =============================================================================
+# GSUIF Component Catalog — components.yaml
+# Ticket: SCRUM-39 (T-07: Component Catalog Skeleton)
+# Blocked by: SCRUM-35 (T-06, Done)
+# Blocks: SCRUM-20 (T-13: Metadata JSON Schema Design)
+#         SCRUM-45 (T-17: Component Catalog v1)
+# Owner: M1 — Sondos Hashem | Reviewer: M2 — Alaa Elmassry
+#
+# Legend
+#   scope: GEN  = applies to AI/template-generated code only
+#          SYS  = applies to our own framework/system code only
+#          BOTH = applies to both
+#   requirement_status: MANDATORY | DEFERRED | EXCLUDED
+#   target_phase: PHASE_1 | PHASE_2_OR_LATER
+#   standards:           checklist items that apply to the whole component
+#   sys_only_standards:  checklist items tagged SYS in standards-checklist.md
+#                        that apply only to the framework half of a BOTH
+#                        component. Never applied to generated artifacts.
+#   mandatory_subitems: required within the active component
+#   deferred_subitems: explicitly postponed beyond Phase 1
+#   open_subitems: unresolved requirement; not silently treated as deferred
+#   excluded_subitems: explicitly outside the approved framework scope
+#
+# Every active or deferred entry below traces to at least one entry in
+# source_documents, a Jira issue, a DECISIONS.md item, or a direct statement
+# in mts-meeting-2.txt. Nothing in this file is invented. Known traceability
+# gaps are recorded explicitly under `traceability_gaps` rather than left
+# implicit.
+# =============================================================================
+
+catalog_version: "0.6"
+generated_for: "SCRUM-39 (T-07)"
+
+# `dependencies` records implementation prerequisites aligned with Jira's
+# blocked-by chain. It does not imply runtime coupling or standards inheritance.
+dependency_semantics: IMPLEMENTATION_PREREQUISITES
+
+# A standard listed under `standards` applies to every artifact the component
+# covers. A standard listed under `sys_only_standards` applies to the framework
+# implementation only and must NOT be enforced against generated artifacts by
+# T-17 or the SCRUM-50 golden tests.
+standards_semantics: DIRECTLY_APPLICABLE_TO_COMPONENT
+
+# `tool` and `template` are intentionally null on every entry. They are filled
+# in by the spike consolidation and catalog v1 tickets, not by T-07.
+tool_template_resolution:
+  filled_by:
+    - "SCRUM-40 (T-11: Capability Matrix v1 — consolidate both spikes)"
+    - "SCRUM-45 (T-17: Component Catalog v1 — tool/template decisions)"
+  inputs:
+    - "SCRUM-37 (T-08: Jmix Capability Spike, Done)"
+    - "SCRUM-38 (T-09: OpenAPI Generator Capability Spike, Done)"
+  downstream_consumers:
+    - "SCRUM-44 (T-40: Phase 1 Template Foundation & Catalog Support)"
+
+category_values:
+  - Architecture
+  - Metadata
+  - Cross-Cutting
+  - Security
+  - Audit
+  - Generation
+  - Frontend
+  - Testing
+  - Traceability
+
+phase_scope:
+  phase: PHASE_1
+  focus: BACKEND_METADATA_AND_GENERATION
+  rationale: >
+    mts-meeting-2.txt records the supervisor directing the team to start with
+    the backend and confirming that Phase 1 is the metadata layer.
+    DECISIONS.md DEC-014 lists the Phase 1 backend scope explicitly;
+    DEC-019 defers frontend/UI deliverables behind it.
+    Jira confirms the same split structurally: SCRUM-12 (E9 — Metadata
+    Extension) and SCRUM-15 (E12 — Frontend Angular) are both titled
+    "(Phase 2)" in the backlog, and SCRUM-15's own notes state the frontend
+    "deliberately follows the backend metadata foundation, per the confirmed
+    phase strategy."
+  phase_1_includes:
+    - Metadata schema, persistence, CRUD APIs, structural + business-rule validation, immutable versioning
+    - Backend cross-cutting framework (ApiResponse envelope, global exception handling, AOP logging, Swagger/OpenAPI)
+    - "Security: stateless JWT authentication, basic RBAC (@PreAuthorize)"
+    - "Audit: JPA Auditing + Hibernate Envers"
+    - Deterministic, provider-agnostic code generation via TemplateOnlyProvider (Apache FreeMarker)
+    - Minimal Angular component and Spring REST controller template outputs required by SCRUM-28/T-28; this does not include the Phase 2 Angular application
+    - Build validation and generated-artifact traceability (Generation Run / Generated Artifact registry)
+  phase_2_or_post_mvp_deferred:
+    - Full UI Component Metadata Catalog (SCRUM-12 / E9, Phase 2)
+    - Angular Frontend Application (SCRUM-15 / E12, Phase 2)
+    - External AI Generation Provider (SCRUM-13 / E10, Phase 2; ADR-002/ADR-003)
+    - Full/Dynamic RBAC — policy engine, entity- and field-level permissions (SCRUM-14 / E11, Phase 2; DEC-017)
+    - GraphQL Generator (Excel Backend Deliverable 6; DEC-015)
+    - Metadata Cache Framework / Redis (Excel Backend Deliverable 7; DEC-011)
+    - Password Management Module — reset/email/SMS (Excel Backend Deliverable 10; DEC-018)
+    - API Gateway (Technical Document §API Gateway; DEC-016)
+
+source_documents:
+  DOC-01:
+    name: "Generic Standard UI FRS initial document V0.3"
+    type: docx
+    in_repo: false
+  DOC-02:
+    name: "Technical Document Basic Architecture v0.1"
+    type: docx
+    in_repo: false
+  DOC-03:
+    name: "mts-meeting-2.txt"
+    type: transcript
+    in_repo: false
+  DOC-04:
+    name: "Development framework Project Deliverables.xlsx"
+    type: xlsx
+    in_repo: false
+  DOC-05:
+    name: "DECISIONS.md"
+    type: md
+    in_repo: true
+  DOC-06:
+    name: "QUESTIONS.md"
+    type: md
+    in_repo: true
+  DOC-07:
+    name: "standards-checklist.md"
+    type: md
+    in_repo: true
+  DOC-08:
+    name: "Jira project SCRUM (queensu-team-kk3a58jk.atlassian.net)"
+    type: jira
+    in_repo: false
+  DOC-09:
+    name: "GSUIF_Vision_Architecture_v3.2.docx"
+    type: docx
+    in_repo: false
+  DOC-10:
+    name: "GSUIF_Master_Execution_Plan_v3.2.docx"
+    type: docx
+    in_repo: false
+
+# =============================================================================
+# ACTIVE PHASE 1 COMPONENTS
+# =============================================================================
+
+components:
+
+  - id: BE-01
+    name: Backend Platform Architecture
+    category: Architecture
+    scope: SYS
+    description: >
+      The layered backend package structure (config, controller, dto, entity,
+      repository, service, exception, aspect, security, audit, util) and the
+      module boundaries between the metadata layer, the cross-cutting
+      framework, security, and the generation engine. This is the structural
+      skeleton every other Phase 1 component is built inside. Java 21 is the
+      project language version and there is no WebLogic dependency.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 1"}
+      - {doc: DOC-02, locator: "§Project Structure (Standard Package Layout)"}
+      - {doc: DOC-09, locator: "Target Architecture — Backend Application and Metadata Layer"}
+      - {doc: DOC-07, locator: "STD-06, STD-08"}
+      - {doc: DOC-05, locator: "ADR-001 (Java 21 is the project Java version)"}
+      - {doc: DOC-08, locator: "SCRUM-18 (T-04: Spring Boot Project Skeleton (Java 21))"}
+    standards: [STD-06, STD-08, STD-33, STD-35]
+    sys_only_standards: [STD-34]
+    decisions: [ADR-001]
+    dependencies: []
+    tool: null
+    template: null
+
+  - id: BE-02
+    name: Metadata Model (Project, Page, Component, APIBinding, MetadataVersion)
+    category: Metadata
+    scope: BOTH
+    description: >
+      The five named schema entities that make up GSUIF metadata: Project,
+      Page, Component, APIBinding, and MetadataVersion. This is deliberately
+      NOT generalized into a generic "Entity" model. These are the five
+      first-class Phase 1 concepts, designed to remain extensible in Phase 2,
+      so SCRUM-21 (persistence) and SCRUM-22 (REST APIs) remain
+      contract-compatible with SCRUM-20/T-13. The detailed properties and
+      JSON contracts for these entities are owned by SCRUM-20 (T-13).
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 2"}
+      - {doc: DOC-01, locator: "§Metadata Generation"}
+      - {doc: DOC-08, locator: "SCRUM-20 (T-13: Metadata JSON Schema Design) — Scope: 'Schemas for: Project, Page, Component, APIBinding, MetadataVersion'"}
+    standards: [STD-33, STD-35]
+    decisions: [ADR-005, ADR-006]
+    dependencies: [BE-01]
+    tool: null
+    template: null
+
+  - id: BE-03
+    name: Unified Request Framework
+    category: Cross-Cutting
+    scope: BOTH
+    description: >
+      Standard shape for inbound requests: standard request model, metadata
+      headers, correlation ID, user context, and validation. Locale support
+      and multi-tenant request fields are explicitly not part of this Phase 1
+      shape. Locale remains open and tenant information is excluded, as
+      recorded below. The correlation-ID request filter itself is framework
+      infrastructure (STD-17) and is not enforced against generated code.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 3"}
+      - {doc: DOC-08, locator: "SCRUM-24 (T-19: AOP Logging (@Loggable) & Correlation ID Filter)"}
+    standards: [STD-10]
+    sys_only_standards: [STD-17]
+    open_subitems:
+      - {item: Locale, reason: "No i18n requirement is confirmed in DECISIONS.md or QUESTIONS.md; this remains an open requirement."}
+    excluded_subitems:
+      - {item: "Tenant information", reason: "No multi-tenancy in the framework.", decision: DEC-012}
+    dependencies: [BE-01]
+    tool: null
+    template: null
+
+  - id: BE-04
+    name: Unified Response Framework
+    category: Cross-Cutting
+    scope: BOTH
+    description: >
+      The 5-field ApiResponse<T> envelope (status, clientMessage, statusCode,
+      body, errors) with static success()/error() factories, and the
+      paginated variant nesting data/totalPages/totalElements/size/number
+      inside body. Message localization is not a confirmed Phase 1
+      requirement.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-02, locator: "§3 API Standards: Unified JSON Response Format"}
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 4"}
+      - {doc: DOC-08, locator: "SCRUM-23 (T-18: ApiResponse<T> Wrapper & GlobalExceptionHandler)"}
+    standards: [STD-01, STD-02, STD-03, STD-04, STD-05]
+    open_subitems:
+      - {item: Localization, reason: "No i18n requirement is confirmed on record; this remains an open requirement."}
+    dependencies: [BE-01]
+    tool: null
+    template: null
+
+  - id: BE-05
+    name: Automatic CRUD Generator (generated application code)
+    category: Generation
+    scope: GEN
+    description: >
+      The Create/Update/Delete/Get/Search endpoint pattern that the
+      generation engine (BE-13) produces for a target business entity in a
+      consumer application — the standards-conformant shape proven by the
+      Reference Implementation (SCRUM-36 / T-10, WorkOrder CRUD). This is
+      generated output code, distinct from BE-15, which is GSUIF's own
+      internal Project/Page/MetadataVersion management APIs. WorkOrder/WOMS
+      is used here as a reference and demo candidate only, not as a mandatory
+      framework requirement (ADR-010). Bulk Operations are not a confirmed
+      Phase 1 requirement.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 5"}
+      - {doc: DOC-05, locator: "ADR-010 (WOMS is a reference/demo candidate, not a mandatory framework requirement)"}
+      - {doc: DOC-08, locator: "SCRUM-36 (T-10: Reference Implementation — WorkOrder CRUD (standards-conformant))"}
+    standards: [STD-01, STD-02, STD-03, STD-04, STD-05, STD-28, STD-33]
+    decisions: [ADR-010]
+    deferred_subitems:
+      - item: "Bulk Operations"
+        reason: >
+          Listed by Excel Backend Deliverable 5 but absent from the confirmed
+          Phase 1 core backend scope, which DECISIONS.md enumerates
+          exhaustively as the fifteen items under the Phase 1 scope decision
+          (currently DEC-014 on develop). Cited by content, not by ID alone,
+          because a competing DEC-014 definition is pending in an open PR —
+          see traceability_gaps TG-04.
+        target_phase: PHASE_2_OR_LATER
+        decision: DEC-014
+    dependencies: [BE-04, BE-09]
+    tool: null
+    template: null
+
+  - id: BE-06
+    name: Authentication Framework (JWT)
+    category: Security
+    scope: BOTH
+    description: >
+      Stateless JWT authentication: SecurityConfig, JwtUtil, a
+      JwtAuthenticationFilter populating SecurityContext, and a
+      dev/test/prod security.mode toggle (open in dev, fully enforced in
+      test/prod). The login endpoint returns a token wrapped in the standard
+      ApiResponse. JWT itself is mandatory; refresh tokens and multi-device
+      login are undecided and deferred; session-based auth and multi-tenant
+      login are permanently excluded.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-02, locator: "§Security and Permissions (US06)"}
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 8"}
+      - {doc: DOC-05, locator: "DEC-020 (WebLogic/JSESSIONID/WOMS legacy infrastructure explicitly out of scope)"}
+      - {doc: DOC-08, locator: "SCRUM-25 (T-21: JWT Authentication & Spring Security)"}
+    standards: [STD-18, STD-19, STD-21]
+    decisions: [DEC-020]
+    open_subitems:
+      - {item: "Refresh Tokens", reason: "No source currently resolves this requirement."}
+      - {item: "Multi-device login", reason: "No source currently resolves this requirement."}
+    excluded_subitems:
+      - {item: "JSESSIONID / WebLogic-specific session security", reason: "Framework is stateless JWT, not the legacy WOMS/WebLogic session model.", standard: STD-22, decision: DEC-020}
+      - {item: "Multi-tenant login", reason: "No multi-tenancy in the framework.", decision: DEC-012}
+    dependencies: [BE-18]
+    tool: null
+    template: null
+
+  - id: BE-07
+    name: Authorization Framework (Basic RBAC)
+    category: Security
+    scope: BOTH
+    description: >
+      Role-based access control using @PreAuthorize and role-based
+      SimpleGrantedAuthority mapping, loaded from GSUIF_USER / GSUIF_ROLE.
+      Basic roles and permissions are Phase 1. Policy engines, entity-level
+      permissions, field-level permissions, and runtime dynamic evaluation
+      are all deferred to Phase 2 as "Full RBAC & Authorization" (SCRUM-14 /
+      E11) under DEC-017 — none of them are Phase 1 scope.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 9"}
+      - {doc: DOC-08, locator: "SCRUM-25 (T-21, role loading); SCRUM-14 (E11 — Full RBAC & Authorization (Phase 2))"}
+    standards: [STD-20]
+    decisions: [DEC-017]
+    deferred_subitems:
+      - {item: Policies, reason: "Advanced/dynamic authorization is deferred.", decision: DEC-017, target_phase: PHASE_2_OR_LATER}
+      - {item: "Entity permissions", reason: "Advanced/dynamic authorization is deferred.", decision: DEC-017, target_phase: PHASE_2_OR_LATER}
+      - {item: "Field permissions", reason: "Advanced/dynamic authorization is deferred.", decision: DEC-017, target_phase: PHASE_2_OR_LATER}
+      - {item: "Runtime dynamic evaluation", reason: "Advanced/dynamic authorization is deferred.", decision: DEC-017, target_phase: PHASE_2_OR_LATER}
+    dependencies: [BE-06]
+    tool: null
+    template: null
+
+  - id: BE-08
+    name: Audit Framework
+    category: Audit
+    scope: BOTH
+    description: >
+      JPA Auditing (@EnableJpaAuditing, AuditorAwareImpl resolving the
+      current username from SecurityContextHolder, falling back to "system")
+      plus Hibernate Envers (@Audited on MetadataVersion, GsuifProject,
+      GsuifPage) for full revision history. No workflow-operation auditing —
+      the framework has no workflow engine, which the FRS explicitly places
+      out of scope.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-02, locator: "§Audit (US07)"}
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 11"}
+      - {doc: DOC-01, locator: "§Out of Scope (no-code backend workflow engines)"}
+      - {doc: DOC-08, locator: "SCRUM-26 (T-22 / T-23: JPA Auditing & Hibernate Envers)"}
+    standards: [STD-23, STD-24, STD-25]
+    dependencies: [BE-18, BE-06]
+    tool: null
+    template: null
+
+  - id: BE-09
+    name: Global Exception Handling
+    category: Cross-Cutting
+    scope: BOTH
+    description: >
+      @RestControllerAdvice-based GlobalExceptionHandler mapping
+      MethodArgumentNotValidException to 400 with a field-level error map,
+      ResourceNotFoundException to 404, AccessDeniedException to 403,
+      AuthenticationException to 401, and every other exception to a generic
+      500 with no stack trace ever leaked to the client. Every exception is
+      still logged server-side with its stack trace.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-02, locator: "§Global Exception Handling (US03)"}
+      - {doc: DOC-01, locator: "predefined component 'Exception Handler'"}
+      - {doc: DOC-08, locator: "SCRUM-23 (T-18: ApiResponse<T> Wrapper & GlobalExceptionHandler)"}
+    standards: [STD-09, STD-10, STD-11, STD-12, STD-13]
+    dependencies: [BE-01]
+    tool: null
+    template: null
+
+  - id: BE-10
+    name: Logging (AOP + Correlation ID + Masking)
+    category: Cross-Cutting
+    scope: BOTH
+    description: >
+      @Loggable annotation with a LoggingAspect (@Around) logging method
+      name, arguments and execution time; an OncePerRequestFilter that reads
+      or generates X-Correlation-Id, stores it in MDC and returns it in the
+      response header; environment-specific Logback configuration; and regex
+      masking of sensitive values (password, token, Authorization) before
+      any log write. Also underpins generation-request logging — see BE-14.
+      The Logback configuration (STD-14) and the request-logging filter
+      (STD-17) are framework infrastructure and are not enforced against
+      generated artifacts; @Loggable and masking (STD-15, STD-16) are.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-02, locator: "§Logger Component (US01)"}
+      - {doc: DOC-01, locator: "predefined component 'Logger component'"}
+      - {doc: DOC-08, locator: "SCRUM-24 (T-19: AOP Logging (@Loggable) & Correlation ID Filter)"}
+    standards: [STD-15, STD-16]
+    sys_only_standards: [STD-14, STD-17]
+    dependencies: [BE-04]
+    tool: null
+    template: null
+
+  - id: BE-11
+    name: API Documentation (Swagger/OpenAPI)
+    category: Cross-Cutting
+    scope: BOTH
+    description: >
+      springdoc-openapi 2.x configuration exposing Swagger UI at
+      /swagger-ui.html with API info (title, version, description, contact),
+      a bearerAuth JWT security scheme with a working Authorize button,
+      @Operation/@ApiResponse annotations covering 200/201/400/401/403/404/500
+      on every controller, @Schema on all DTOs, and endpoints grouped as
+      metadata-api, auth-api and generation-api. Enabled on dev/test,
+      disabled on prod. Confirmed both in the Technical Document and in
+      mts-meeting-2.txt, where the team discusses using an OpenAPI tool to
+      generate the standard request/response format alongside G-Max — see
+      SCRUM-38 (T-09: OpenAPI Generator Capability Spike) and SCRUM-29
+      (T-20: Swagger/OpenAPI Documentation) for the concrete implementation.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-02, locator: "§Swagger UI"}
+      - {doc: DOC-03, locator: "meeting discussion of an 'OpenAPI' tool generating standard request/response format"}
+      - {doc: DOC-08, locator: "SCRUM-29 (T-20: Swagger / OpenAPI Documentation); SCRUM-38 (T-09: OpenAPI Generator Capability Spike)"}
+    standards: [STD-27]
+    dependencies: [BE-04, BE-06]
+    tool: null
+    template: null
+
+  - id: BE-12
+    name: Testing & Build Validation
+    category: Testing
+    scope: BOTH
+    description: >
+      Enforces that "files were generated" is not success: after generation,
+      `mvn compile` then `mvn test` are run against the generated project,
+      build output and exit code are captured, and the outcome is recorded
+      as SUCCESS or BUILD_FAILED with compiler errors retrievable on
+      failure. This also covers the Golden Tests (SCRUM-50 / T-36) that use
+      JavaParser to structurally check generated code — package
+      declaration, class name, annotations, fields, methods — against the
+      Standards Checklist, and the Editable Code Test proving a hand-edited
+      generated file still compiles with framework dependencies removed
+      (ADR-008). It further covers the framework's own test suite and
+      coverage gate (SCRUM-30) and the end-to-end vertical slice
+      (SCRUM-31), both executed by the CI pipeline (SCRUM-19) on H2 in
+      PostgreSQL-compatibility mode. Generated artifacts are validated
+      against whichever standards apply to their own target component type
+      (e.g. a generated controller is checked against BE-04/BE-09's
+      standards, not BE-12's own list), excluding any standard listed
+      under `sys_only_standards`.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-08, locator: "SCRUM-47 (T-29: Build Validation — generated code must compile)"}
+      - {doc: DOC-08, locator: "SCRUM-50 (T-36 / T-37: Golden Tests (structural) & Editable Code Test)"}
+      - {doc: DOC-08, locator: "SCRUM-30 (T-33 / T-34 / T-35: Test Suite & JaCoCo Coverage Gate)"}
+      - {doc: DOC-08, locator: "SCRUM-31 (T-32 / T-38: End-to-End Vertical Slice (minimal WOMS example))"}
+      - {doc: DOC-08, locator: "SCRUM-19 (T-05: GitHub Actions CI Pipeline)"}
+      - {doc: DOC-05, locator: "ADR-007 (build validation mandatory), ADR-008 (generated code must remain editable), DEC-013 (H2 in PostgreSQL compatibility mode for testing and CI)"}
+    standards: [STD-06]
+    sys_only_standards: [STD-34]
+    decisions: [ADR-007, ADR-008, DEC-013]
+    dependencies: [BE-13]
+    tool: null
+    template: null
+
+  - id: BE-13
+    name: Code Generation Engine (Template-based)
+    category: Generation
+    scope: GEN
+    description: >
+      A provider-agnostic AICodeGenerationProvider interface
+      (generate(GenerationContext) -> GenerationResult, getProviderName(),
+      isAvailable()) plus GenerationContext wrapping the metadata version,
+      project config, company standards and target framework. Phase 1's
+      concrete implementation is TemplateOnlyProvider, using Apache
+      FreeMarker templates derived from the Reference Implementation, which
+      read their tool/template decisions from this catalog rather than
+      hardcoding them. Planned Phase 1 generated outputs are Angular
+      component files (.ts + .html) and Spring REST controller skeletons —
+      the FRS's original Angular-generation intent (UC-06) is not
+      superseded, it is implemented through this interface alongside the
+      Spring output. External AI providers (OpenAI, Claude, etc.) are
+      explicitly deferred to Phase 2 as additional implementations of this
+      same interface; Phase 1 must not configure any external AI
+      credentials. Jmix remains an evaluated tool option only (ADR-009,
+      SCRUM-37) and is not the generation foundation. Generated artifacts
+      inherit the standards of whatever component type they represent
+      (e.g. a generated controller must pass BE-04/BE-09's standards).
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-01, locator: "UC-06 Generate Angular Source Code"}
+      - {doc: DOC-09, locator: "Generation Engine; Role of AI"}
+      - {doc: DOC-10, locator: "T-27 AICodeGenerationProvider; T-28 TemplateOnlyProvider"}
+      - {doc: DOC-05, locator: "ADR-002 (provider-agnostic interface), ADR-003 (TemplateOnlyProvider/FreeMarker, no external AI in Phase 1), ADR-009 (Jmix optional, capability spike only)"}
+      - {doc: DOC-08, locator: "SCRUM-28 (T-27 / T-28: Generation Provider Interface & TemplateOnlyProvider)"}
+      - {doc: DOC-08, locator: "SCRUM-37 (T-08: Jmix Capability Spike (tool evaluation, not foundation))"}
+    standards: [STD-06, STD-33]
+    decisions: [ADR-002, ADR-003, ADR-007, ADR-008, ADR-009]
+    dependencies: [BE-17]
+    tool: null
+    template: null
+
+  - id: BE-14
+    name: Generation Export & Request Logging
+    category: Generation
+    scope: SYS
+    description: >
+      Exposes generation over REST (POST /api/v1/generation/generate, GET
+      /api/v1/generation/providers, GET /api/v1/generation/runs/{id}, all
+      wrapped in ApiResponse<T> and documented in Swagger) and packages
+      generated code to a configurable export destination, per the FRS's
+      requirement that "export destination shall be configurable per
+      project" and that the backend "log all generation requests and
+      outputs." Every request and run is logged (BE-10), every run is build
+      validated (BE-12), the code itself comes from BE-13, and every
+      produced file is recorded in the artifact registry (BE-19).
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-01, locator: "§Backend Requirements (export destination configurable; log all generation requests and outputs); UC-07"}
+      - {doc: DOC-08, locator: "SCRUM-48 (T-30: Generation REST API)"}
+    standards: [STD-14, STD-17]
+    dependencies: [BE-10, BE-12, BE-13, BE-19]
+    tool: null
+    template: null
+
+  - id: BE-15
+    name: "Metadata CRUD REST APIs (GSUIF's own Project/Page/Version management)"
+    category: Metadata
+    scope: SYS
+    description: >
+      GSUIF's own REST surface for managing its metadata: full CRUD on
+      /api/v1/projects, full CRUD on /api/v1/projects/{projectId}/pages, and
+      /api/v1/pages/{pageId}/metadata for saving a new immutable version,
+      retrieving the latest version, retrieving a specific version, and
+      listing all versions. Every response uses ApiResponse<T>, list
+      endpoints use the paginated shape, and every service method is
+      @Loggable. This is distinct from BE-05: BE-05 is CRUD code the
+      generation engine produces for a consumer's business entity, this is
+      the framework's own management API.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-08, locator: "SCRUM-22 (T-16: Metadata CRUD REST APIs (Project, Page, Version))"}
+    standards: [STD-01, STD-02, STD-03, STD-04, STD-05, STD-28]
+    dependencies: [BE-18, BE-04]
+    tool: null
+    template: null
+
+  - id: BE-16
+    name: Metadata Validation Framework
+    category: Metadata
+    scope: SYS
+    description: >
+      Provides structural validation of metadata against registered schemas
+      and business-rule validation of structurally valid metadata. Validation
+      returns complete, field-level errors and supports adding new business
+      rules without redesigning the validator.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-08, locator: "SCRUM-27 (T-24: Metadata JSON Schema Validator (structural))"}
+      - {doc: DOC-08, locator: "SCRUM-51 (T-25: Business Rule Validator (pluggable rules))"}
+    standards: [STD-10]
+    dependencies: [BE-15, BE-02]
+    tool: null
+    template: null
+
+  - id: BE-17
+    name: Metadata Versioning Service
+    category: Metadata
+    scope: SYS
+    description: >
+      Every metadata save creates a new immutable MetadataVersion record
+      rather than updating one in place; retrieve-latest, retrieve-by-id and
+      list-all-versions-for-a-page are all supported, with an atomically
+      maintained is_current flag. No update or delete of an existing version
+      record. The delete policy itself is an open question pending
+      supervisor confirmation (see QUESTIONS.md) — immutable-by-default is
+      implemented now and a delete policy can be layered on later without a
+      redesign.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-01, locator: "'Metadata versioning shall be supported'"}
+      - {doc: DOC-05, locator: "ADR-006 (metadata versions immutable)"}
+      - {doc: DOC-08, locator: "SCRUM-46 (T-26: Metadata Versioning Service (immutable versions))"}
+    standards: [STD-33]
+    decisions: [ADR-006]
+    dependencies: [BE-16]
+    tool: null
+    template: null
+
+  - id: BE-18
+    name: Database-Agnostic Persistence
+    category: Architecture
+    scope: SYS
+    description: >
+      Portable DDL and JPA entities for GSUIF_PROJECT, GSUIF_PAGE,
+      GSUIF_METADATA_VERSION, GSUIF_USER, GSUIF_ROLE, GSUIF_USER_ROLE,
+      GSUIF_GENERATION_RUN and GSUIF_GENERATED_ARTIFACT, each carrying
+      @CreatedDate/@LastModifiedDate/@CreatedBy/@LastModifiedBy. Must boot on
+      both PostgreSQL (dev/reference) and H2 in PostgreSQL-compatibility
+      mode (test/CI), with no native queries and no vendor-specific types,
+      sequences or functions. Oracle-specific implementation is explicitly
+      out of scope (DEC-020). UUID is the identifier strategy only — this is
+      explicitly not a multi-tenancy implementation (no TENANT_ID columns,
+      no tenant tables, no tenant context).
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-05, locator: "ADR-004 (database-agnostic, PostgreSQL reference), ADR-005 (UUID), DEC-012 (no multi-tenancy), DEC-013 (H2 for CI), DEC-020 (Oracle-specific implementation out of scope)"}
+      - {doc: DOC-07, locator: "STD-33, STD-34, STD-35"}
+      - {doc: DOC-08, locator: "SCRUM-21 (T-14 / T-15: Database-Agnostic Persistence & JPA Entity Model)"}
+    standards: [STD-33, STD-35]
+    sys_only_standards: [STD-34]
+    decisions: [ADR-004, ADR-005, DEC-012, DEC-013, DEC-020]
+    dependencies: [BE-02]
+    tool: null
+    template: null
+
+  - id: BE-19
+    name: Generated Artifact Registry
+    category: Traceability
+    scope: SYS
+    description: >
+      A GenerationRun record per generation run (metadata version reference,
+      template version, generator version, tool name + version, status of
+      SUCCESS or BUILD_FAILED, timestamp, triggering user) and a
+      GeneratedArtifact record per output file (run reference, artifact
+      name, artifact type, component ID). Source files themselves live on
+      the filesystem, not the database. Lets any query answer "which
+      metadata version and template version produced this file?" — this is
+      what makes generation traceable rather than a black box.
+    requirement_status: MANDATORY
+    target_phase: PHASE_1
+    sources:
+      - {doc: DOC-08, locator: "SCRUM-49 (T-31: Generated Artifact Registry (traceability))"}
+    standards: [STD-17, STD-33]
+    dependencies: [BE-18, BE-12]
+    tool: null
+    template: null
+
+# =============================================================================
+# DEFERRED COMPONENTS
+# Confirmed out of Phase 1. Recorded here directly (not in a separate file)
+# so nothing postponed silently disappears from the catalog.
+#
+# `standards` on a deferred entry records the checklist items that will apply
+# when the item is scheduled. DEF-04 and DEF-06 carry the checklist's own
+# DEFERRED standards (STD-26 and STD-07/29/30/31/32 respectively), which is why
+# those standards are not claimed by any Phase 1 component.
+# =============================================================================
+
+deferred_components:
+
+  - id: DEF-01
+    name: GraphQL Generator
+    category: Generation
+    scope: GEN
+    requirement_status: DEFERRED
+    target_phase: PHASE_2_OR_LATER
+    description: Schema/queries/mutations/subscriptions generated from metadata.
+    sources:
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 6"}
+      - {doc: DOC-05, locator: "DEC-015"}
+      - {doc: DOC-06, locator: "OQ-03 (resolved: optional, not mandatory)"}
+    standards: [STD-06, STD-33]
+    decisions: [DEC-015]
+    dependencies: [BE-02, BE-13]
+    tool: null
+    template: null
+    notes: >
+      The REST response envelope (STD-01–STD-05) does not apply to a GraphQL
+      surface; only the package-layout and database-agnostic standards carry
+      over. Confirm the applicable set when this item is scheduled.
+
+  - id: DEF-02
+    name: Metadata Cache Framework (Redis)
+    category: Cross-Cutting
+    scope: SYS
+    requirement_status: DEFERRED
+    target_phase: PHASE_2_OR_LATER
+    description: Redis-backed / in-memory metadata caching with TTL and invalidation.
+    sources:
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 7"}
+      - {doc: DOC-05, locator: "DEC-011"}
+    standards: [STD-06]
+    decisions: [DEC-011]
+    dependencies: [BE-15]
+    tool: null
+    template: null
+    notes: >
+      Caching must not alter the ApiResponse contract of the endpoints it
+      fronts. No cache-specific standard exists in the checklist yet; one may
+      need to be added when this item is scheduled.
+
+  - id: DEF-03
+    name: Password Management Module
+    category: Security
+    scope: BOTH
+    requirement_status: DEFERRED
+    target_phase: PHASE_2_OR_LATER
+    description: >
+      Full password-reset workflow with email/SMS integration. Core login +
+      JWT issuance remains mandatory Phase 1 scope — see BE-06.
+    sources:
+      - {doc: DOC-04, locator: "Excel: Backend Deliverable 10"}
+      - {doc: DOC-05, locator: "DEC-018"}
+      - {doc: DOC-06, locator: "OQ-10"}
+    standards: [STD-01, STD-03, STD-16, STD-21]
+    decisions: [DEC-018]
+    dependencies: [BE-06]
+    tool: null
+    template: null
+    notes: >
+      STD-16 (sensitive data masking) is the highest-priority standard here —
+      reset tokens must never reach a log line.
+
+  - id: DEF-04
+    name: API Gateway
+    category: Architecture
+    scope: SYS
+    requirement_status: DEFERRED
+    target_phase: PHASE_2_OR_LATER
+    description: >
+      Separate Spring Cloud Gateway app for routing, JWT validation, CORS
+      and request logging, with no business logic of its own.
+    sources:
+      - {doc: DOC-02, locator: "§API Gateway (US09)"}
+      - {doc: DOC-05, locator: "DEC-016"}
+      - {doc: DOC-06, locator: "OQ-09"}
+      - {doc: DOC-07, locator: "STD-26 (Gateway responsibilities, DEFERRED)"}
+    standards: [STD-17, STD-18, STD-26]
+    decisions: [DEC-016]
+    dependencies: [BE-06]
+    tool: null
+    template: null
+
+  - id: DEF-05
+    name: Full UI Component Metadata Catalog
+    category: Metadata
+    scope: BOTH
+    requirement_status: DEFERRED
+    target_phase: PHASE_2_OR_LATER
+    description: >
+      Full component-type metadata (form, table, navigation, modal,
+      pagination), parent-child API binding relationships, and
+      conditional-visibility/permission rules expressed in metadata,
+      extending the Phase 1 schema without replacing it.
+    sources:
+      - {doc: DOC-08, locator: "SCRUM-12 (E9 — Metadata Extension (Phase 2))"}
+      - {doc: DOC-05, locator: "DEC-019"}
+    standards: [STD-33, STD-35]
+    decisions: [DEC-019]
+    dependencies: [BE-02]
+    tool: null
+    template: null
+
+  - id: DEF-06
+    name: Angular Frontend Application
+    category: Frontend
+    scope: BOTH
+    requirement_status: DEFERRED
+    target_phase: PHASE_2_OR_LATER
+    description: >
+      Angular 17+ skeleton (core/shared/feature modules), AuthService,
+      AuthInterceptor, AuthGuard, login page, home dashboard, and a metadata
+      browser UI consuming the Phase 1 ApiResponse<T> shape without special
+      cases.
+    sources:
+      - {doc: DOC-01, locator: "§Drag-and-Drop Angular UI Library (full scope)"}
+      - {doc: DOC-04, locator: "Excel: UI Deliverables 1–8"}
+      - {doc: DOC-08, locator: "SCRUM-15 (E12 — Frontend Angular (Phase 2))"}
+      - {doc: DOC-05, locator: "DEC-019"}
+      - {doc: DOC-07, locator: "STD-07, STD-29, STD-30, STD-31, STD-32 (all DEFERRED frontend standards)"}
+    standards: [STD-07, STD-29, STD-30, STD-31, STD-32]
+    decisions: [DEC-019]
+    dependencies: [BE-04]
+    tool: null
+    template: null
+
+  - id: DEF-07
+    name: External AI Generation Provider
+    category: Generation
+    scope: GEN
+    requirement_status: DEFERRED
+    target_phase: PHASE_2_OR_LATER
+    description: >
+      Additional implementations of the BE-13 AICodeGenerationProvider
+      interface backed by an external AI service (e.g. OpenAI, Claude). No
+      external AI credentials are configured in Phase 1; TemplateOnlyProvider
+      is the only Phase 1 implementation.
+    sources:
+      - {doc: DOC-05, locator: "ADR-002, ADR-003"}
+      - {doc: DOC-08, locator: "SCRUM-13 (E10 — Generation V2 & Pluggable AI Provider (Phase 2))"}
+    standards: [STD-06, STD-33]
+    decisions: [ADR-002, ADR-003]
+    dependencies: [BE-13]
+    tool: null
+    template: null
+
+# =============================================================================
+# KNOWN TRACEABILITY GAPS
+# Recorded openly rather than left implicit, so review can act on them.
+# =============================================================================
+
+traceability_gaps:
+
+  - id: TG-03
+    summary: "Seven of ten source documents are not version-controlled."
+    detail: >
+      DOC-01, DOC-02, DOC-03, DOC-04, DOC-08, DOC-09 and DOC-10 live outside
+      the repository (see `in_repo: false`). Only DECISIONS.md, QUESTIONS.md
+      and standards-checklist.md are in git, so a reviewer without the shared
+      drive cannot verify the majority of locators, and those locators can rot
+      silently as the documents are revised.
+    action: >
+      Add a docs/sources/ folder, or a manifest recording each document's
+      version and checksum, so locators can be verified and drift detected.
+    affects_acceptance_criteria: false
+    owner: "Team"
+
+  - id: TG-04
+    summary: "DEC-014 has a competing definition pending in an open pull request."
+    detail: >
+      On develop, DEC-014 is the Phase 1 core backend scope decision, which is
+      the meaning used by phase_scope.rationale and by BE-05's Bulk Operations
+      deferral. Pull request #4 (SCRUM-37, Jmix capability spike) introduces a
+      second DEC-014 meaning "Jmix rejected as GSUIF generation foundation".
+      If that merges, every DEC-014 citation in this file silently changes
+      meaning.
+    action: >
+      Renumber the Jmix decision to DEC-021 in PR #4 before either pull
+      request merges, then confirm this file's DEC-014 citations still resolve.
+    affects_acceptance_criteria: false
+    owner: "M2 — Alaa Elmassry (PR #4 author)"
