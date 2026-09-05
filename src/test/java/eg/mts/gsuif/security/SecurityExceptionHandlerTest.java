@@ -38,6 +38,8 @@ class SecurityExceptionHandlerTest {
         assertThat(json).contains("\"statusCode\":401");
         assertThat(json).contains("\"status\":\"UNAUTHORIZED\"");
         assertThat(json).contains("\"clientMessage\":\"Authentication required\"");
+        assertThat(json).contains("\"body\":null");
+        assertThat(json).contains("\"errors\":null");
     }
 
     @Test
@@ -55,5 +57,7 @@ class SecurityExceptionHandlerTest {
         assertThat(json).contains("\"statusCode\":403");
         assertThat(json).contains("\"status\":\"FORBIDDEN\"");
         assertThat(json).contains("\"clientMessage\":\"Access denied\"");
+        assertThat(json).contains("\"body\":null");
+        assertThat(json).contains("\"errors\":null");
     }
 }
