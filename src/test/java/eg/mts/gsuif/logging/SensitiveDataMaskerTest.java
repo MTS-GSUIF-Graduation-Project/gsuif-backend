@@ -104,4 +104,43 @@ class SensitiveDataMaskerTest {
         assertThat(result).doesNotContain("tok456");
         assertThat(result).contains("ok");
     }
+
+    @Test
+    void apiKey_masked() {
+        String result = SensitiveDataMasker.mask("api_key=my-secret-key");
+        assertThat(result).isEqualTo("api_key=***MASKED***");
+        assertThat(result).doesNotContain("my-secret-key");
+    }
+
+    @Test
+    void apikeyWithoutUnderscore_masked() {
+        String result = SensitiveDataMasker.mask("apikey: my-secret-key");
+        assertThat(result).isEqualTo("apikey: ***MASKED***");
+        assertThat(result).doesNotContain("my-secret-key");
+    }
+
+    @Test
+    void apiKeyMixedCase_masked() {
+        String result = SensitiveDataMasker.mask("API-KEY=my-secret-key");
+        assertThat(result).isEqualTo("API-KEY=***MASKED***");
+        assertThat(result).doesNotContain("my-secret-key");
+    }
+
+    @Test
+    void multilineSecret_masked() {
+        String input = "{\"secret\": \"-----BEGIN PRIVATE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\\n-----END PRIVATE KEY-----\"}";
+        String result = SensitiveDataMasker.mask(input);
+        assertThat(result).isEqualTo("{\"secret\": \"***MASKED***\"}");
+        assertThat(result).doesNotContain("MIIEvQIBADANBgkqhkiG9w0BAQEFAASC");
+        assertThat(result).doesNotContain("-----BEGIN PRIVATE KEY-----");
+    }
+
+    @Test
+    void escapedQuotesInSecret_masked() {
+        String input = "{\"token\": \"my \\\"super\\\" secret\"}";
+        String result = SensitiveDataMasker.mask(input);
+        assertThat(result).isEqualTo("{\"token\": \"***MASKED***\"}");
+        assertThat(result).doesNotContain("my \\\"super\\\" secret");
+        assertThat(result).doesNotContain("super");
+    }
 }
