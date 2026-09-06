@@ -97,6 +97,13 @@
             <artifactId>jackson-databind-nullable</artifactId>
             <version>0.2.6</version>
         </dependency>
+        <!-- AOP — enables @Aspect, @Around, etc. via AopAutoConfiguration -->
+        <!-- NOTE: Spring Boot 4.x renamed spring-boot-starter-aop to spring-boot-starter-aspectj -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
+        </dependency>
+        
     </dependencies>
 
     <build>
