@@ -5,9 +5,12 @@
 > **Standards benchmark:** `standards-checklist.md` (SCRUM-35, owner M1 — Sondos Hashem)
 > **Status:** COMPLETE — both spikes evaluated, one decision per component
 
-A component uses a tool only if **all four** criteria pass:
-Available ✓ AND Generated ✓ AND Editable (without the tool) ✓ AND Standard-compliant ✓.
-Otherwise the decision is **FreeMarker template** (TemplateOnlyProvider — already the Phase 1 plan per ADR-003).
+**Full adoption rule:** A tool is selected for a component only when all four criteria fully pass:
+Available ✓ AND Generates ✓ AND Editable (without the tool) ✓ AND Standard-compliant ✓.
+
+**Partial adoption rule:** A tool may be selected for part of a component's scope when it covers a well-defined sub-concern (e.g. DTOs, interface declarations, documentation annotations) and FreeMarker or hand-written code explicitly closes every remaining gap. In this case the Decision column shows both tool and supplement (e.g. "OpenAPI Generator + FreeMarker"). The component is marked ⚠️ partial in the affected criteria columns.
+
+Otherwise the decision is **FreeMarker** (TemplateOnlyProvider — Phase 1 engine, ADR-003) or **Hand-written** for GSUIF framework infrastructure that is not a generated artifact.
 
 ---
 
@@ -66,7 +69,7 @@ Deferred components (DEF-01–DEF-07) are listed at the bottom — no tool decis
 | **BE-12** Testing & Build Validation | Jmix 3.0.1 / OpenAPI 7.16.0 | — / — | — / — | — | — | **Hand-written** | Testing infrastructure, JaCoCo gate, and golden tests are framework code — not generated artifacts. Neither tool applies. |
 | **BE-13** Code Generation Engine (TemplateOnlyProvider) | Jmix 3.0.1 / OpenAPI 7.16.0 | — / — | — / — | — | — | **Hand-written (IS the engine)** | This component IS the generation engine itself. Phase 1 engine = TemplateOnlyProvider + Apache FreeMarker (ADR-003). |
 | **BE-14** Generation Export & Request Logging | Jmix 3.0.1 / OpenAPI 7.16.0 | — / — | — / — | — | — | **Hand-written** | REST export endpoint and generation-run logging are framework system code. Neither tool generates framework infrastructure. |
-| **BE-15** Metadata CRUD REST APIs | OpenAPI 7.16.0 | ✅ | ✅ | ✅ (reproducible) | ⚠️ | `jackson-databind-nullable:0.2.6` | **OpenAPI Generator + FreeMarker** | Same pattern as BE-05: OpenAPI generates the interface (STD-05 + STD-27 + STD-28), FreeMarker template generates the `@RestController` implementation that populates `ApiResponse<T>`. |
+| **BE-15** Metadata CRUD REST APIs | Jmix 3.0.1 / OpenAPI 7.16.0 | ❌ / ❌ | ❌ / ❌ | — | — | — | **Hand-written** | `components.yaml` defines BE-15 as `scope: SYS` — GSUIF's own internal metadata management API, not a consumer-generated artifact. No tool generates GSUIF system infrastructure. The T-09 spike evaluated OpenAPI for consumer CRUD (BE-05) only. BE-15 controllers are hand-written by the team. |
 | **BE-16** Metadata Validation Framework | Jmix 3.0.1 / OpenAPI 7.16.0 | — / — | — / — | — | — | **Hand-written** | Neither tool generates schema validators or pluggable business-rule validators. Hand-written per STD-10. |
 | **BE-17** Metadata Versioning Service | Jmix 3.0.1 / OpenAPI 7.16.0 | — / — | — / — | — | — | **Hand-written** | Immutable versioning logic (ADR-006) is domain-specific. Neither tool generates it. |
 | **BE-18** Database-Agnostic Persistence (JPA Entities) | Jmix 3.0.1 | ✅ | ✅ | ⚠️ (with Jmix) | ❌ | `io.jmix.core`, EclipseLink | **Hand-written** | Jmix generates entities with EclipseLink (violates ADR-004) and `@JmixEntity` (violates ADR-008). GSUIF entities are hand-written with plain JPA + Hibernate. |
@@ -91,7 +94,7 @@ Deferred components (DEF-01–DEF-07) are listed at the bottom — no tool decis
 | Tool | Overall Verdict | Components accepted | Notes |
 |---|---|---|---|
 | **Jmix 3.0.1** | **REJECT** (DEC-021) | None | Runtime lock-in to `io.jmix.*`, EclipseLink not Hibernate, Vaadin not Angular, no `ApiResponse`. Keep as optional study tool only (ADR-009). |
-| **OpenAPI Generator 7.16.0** | **ACCEPT WITH LIMITATIONS** (DEC-022) | BE-03 (partial), BE-05, BE-11 (partial), BE-15 | Interface + DTO scaffolding only. STD-05 requires 1-line `responseType.mustache` override. STD-01 envelope populated by FreeMarker `@RestController` template. TypeScript client SDK generation is a Phase 2 use case — **not verified in this spike**. |
+| **OpenAPI Generator 7.16.0** | **ACCEPT WITH LIMITATIONS** (DEC-022) | BE-03 (partial), BE-05, BE-11 (partial) | Interface + DTO scaffolding only for consumer CRUD APIs. STD-05 requires 1-line `responseType.mustache` override. STD-01 envelope populated by FreeMarker `@RestController` template. BE-15 removed — it is GSUIF SYS-scope infrastructure, not a consumer-generated artifact. TypeScript client SDK: Phase 2 candidate — **not verified in this spike**. |
 | **FreeMarker / TemplateOnlyProvider** | **CONFIRMED — Phase 1 engine** (ADR-003) | All components not covered by OpenAPI Generator | Default for every component. Hand-written framework code uses the same standards but is not template-generated. |
 
 ---
