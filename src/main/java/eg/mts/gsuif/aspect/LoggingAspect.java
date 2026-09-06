@@ -24,6 +24,17 @@ public class LoggingAspect {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingAspect.class);
 
+    private String safeToString(Object obj) {
+        if (obj == null) {
+            return "null";
+        }
+        try {
+            return String.valueOf(obj);
+        } catch (Throwable t) {
+            return "<unprintable:" + obj.getClass().getSimpleName() + ">";
+        }
+    }
+
     @Around("@annotation(eg.mts.gsuif.aspect.Loggable)")
     public Object logExecution(ProceedingJoinPoint joinPoint) throws Throwable {
         String className = joinPoint.getSignature().getDeclaringType().getSimpleName();
@@ -33,7 +44,7 @@ public class LoggingAspect {
         String maskedArgs = (args == null || args.length == 0)
                 ? ""
                 : Arrays.stream(args)
-                        .map(arg -> SensitiveDataMasker.mask(String.valueOf(arg)))
+                        .map(arg -> SensitiveDataMasker.mask(safeToString(arg)))
                         .collect(Collectors.joining(", "));
 
         log.info("→ {}.{}({})", className, methodName, maskedArgs);

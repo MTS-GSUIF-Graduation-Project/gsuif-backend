@@ -33,6 +33,18 @@ class LoggingAspectTest {
         @Loggable
         public void noArgs() {
         }
+
+        @Loggable
+        public String processObject(Object obj) {
+            return "processed";
+        }
+    }
+
+    static class BrokenToStringObject {
+        @Override
+        public String toString() {
+            throw new RuntimeException("Broken toString");
+        }
     }
 
     @BeforeEach
@@ -115,5 +127,19 @@ class LoggingAspectTest {
         assertThat(listAppender.list).hasSize(2);
         assertThat(listAppender.list.get(0).getFormattedMessage())
                 .isEqualTo("→ SampleService.noArgs()");
+    }
+
+    @Test
+    void processObject_whenToStringThrows_doesNotBreakInvocation() {
+        BrokenToStringObject brokenObj = new BrokenToStringObject();
+        String result = proxy.processObject(brokenObj);
+
+        assertThat(result).isEqualTo("processed");
+        assertThat(listAppender.list).hasSize(2);
+
+        ILoggingEvent entryEvent = listAppender.list.get(0);
+        assertThat(entryEvent.getLevel()).isEqualTo(Level.INFO);
+        assertThat(entryEvent.getFormattedMessage())
+                .contains("→ SampleService.processObject(<unprintable:BrokenToStringObject>)");
     }
 }

@@ -33,7 +33,7 @@ public final class SensitiveDataMasker {
      * </ul>
      */
     private static final Pattern KV_PATTERN = Pattern.compile(
-            "(?i)([\"']?)(password|passwd|token|secret|authorization)\\1(\\s*[=:]\\s*)(?:(\"|')(.*?)\\4|((?:bearer\\s+)?[^\\s,;}\\]\\)]+))",
+            "(?s)(?i)([\"']?)(password|passwd|token|secret|authorization|api[-_]?key)\\1(\\s*[=:]\\s*)(?:(\"|')(.*?)(?<!\\\\)\\4|((?:bearer\\s+)?[^\\s,;}\\]\\)]+))",
             Pattern.CASE_INSENSITIVE
     );
 
