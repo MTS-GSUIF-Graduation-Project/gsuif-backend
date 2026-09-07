@@ -95,7 +95,7 @@ Deferred components (DEF-01–DEF-07) are listed at the bottom — no tool decis
 |---|---|---|---|
 | **Jmix 3.0.1** | **REJECT** (DEC-021) | None | Runtime lock-in to `io.jmix.*`, EclipseLink not Hibernate, Vaadin not Angular, no `ApiResponse`. Keep as optional study tool only (ADR-009). |
 | **OpenAPI Generator 7.16.0** | **ACCEPT WITH LIMITATIONS** (DEC-022) | BE-03 (partial), BE-05, BE-11 (partial) | Interface + DTO scaffolding only for consumer CRUD APIs. STD-05 requires 1-line `responseType.mustache` override. STD-01 envelope populated by FreeMarker `@RestController` template. BE-15 removed — it is GSUIF SYS-scope infrastructure, not a consumer-generated artifact. TypeScript client SDK: Phase 2 candidate — **not verified in this spike**. |
-| **FreeMarker / TemplateOnlyProvider** | **CONFIRMED — Phase 1 engine** (ADR-003) | All **generated artifacts** not covered by OpenAPI Generator | Default for **generated output only** (consumer CRUD controllers, service stubs, entity templates). GSUIF framework infrastructure components (BE-01, BE-04, BE-06–BE-14, BE-16–BE-19) are hand-written by the team and are not FreeMarker-generated artifacts. |
+| **FreeMarker / TemplateOnlyProvider** | **CONFIRMED — Phase 1 engine** (ADR-003) | All **generated artifacts** not covered by OpenAPI Generator | Default for **generated output only** (consumer CRUD controllers, service stubs, entity templates). GSUIF framework infrastructure components (BE-01, BE-04, BE-06–BE-19) are hand-written by the team and are not FreeMarker-generated artifacts. |
 
 ---
 
