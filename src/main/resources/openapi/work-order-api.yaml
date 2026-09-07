@@ -112,8 +112,12 @@ paths:
             type: string
             format: uuid
       responses:
-        '204':
+        '200':
           description: Work order deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrderDto'
         '404':
           description: Work order not found
 
