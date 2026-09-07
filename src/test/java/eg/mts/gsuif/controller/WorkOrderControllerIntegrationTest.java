@@ -23,6 +23,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.emptyOrNullString;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -62,6 +63,9 @@ class WorkOrderControllerIntegrationTest {
     @Autowired
     private WorkOrderRepository workOrderRepository;
 
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
     @BeforeEach
     void setUp() {
         workOrderRepository.deleteAll();
@@ -82,10 +86,11 @@ class WorkOrderControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("OK"))
                 .andExpect(jsonPath("$.statusCode").value(201))
                 .andExpect(jsonPath("$.clientMessage").value("Work order created successfully"))
-                .andExpect(jsonPath("$.errors").doesNotExist())
+                .andExpect(jsonPath("$.errors").value(nullValue()))
                 .andExpect(jsonPath("$.body.id").isNotEmpty())
                 .andExpect(jsonPath("$.body.orderNumber").value("WO-2026-001"))
                 .andExpect(jsonPath("$.body.status").value("OPEN"))
@@ -111,10 +116,11 @@ class WorkOrderControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
                 .andExpect(jsonPath("$.statusCode").value(400))
                 .andExpect(jsonPath("$.clientMessage").value("Validation failed"))
-                .andExpect(jsonPath("$.body").doesNotExist())
+                .andExpect(jsonPath("$.body").value(nullValue()))
                 .andExpect(jsonPath("$.errors.orderNumber").value("Order number is required"));
     }
 
@@ -134,11 +140,49 @@ class WorkOrderControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
                 .andExpect(jsonPath("$.statusCode").value(400))
                 .andExpect(jsonPath("$.clientMessage").value("Work order with order number 'WO-DUP-01' already exists"))
-                .andExpect(jsonPath("$.body").doesNotExist())
-                .andExpect(jsonPath("$.errors").doesNotExist());
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
+    }
+
+    @Test
+    void create_withMalformedJson_returns400WithStandardEnvelope() throws Exception {
+        mockMvc.perform(post("/api/v1/work-orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ invalid json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.clientMessage").value("Malformed JSON or invalid request payload"))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
+    }
+
+    @Test
+    void create_withInvalidStatusEnum_returns400WithStandardEnvelope() throws Exception {
+        String payload = """
+                {
+                    "orderNumber": "WO-INV-001",
+                    "status": "NON_EXISTENT_STATUS",
+                    "dueDate": "2026-10-01",
+                    "assignedTo": "user"
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/work-orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.clientMessage").value("Malformed JSON or invalid request payload"))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
     }
 
     // ── 2. Get By ID (GET) ────────────────────────────────────────────────────
@@ -151,8 +195,10 @@ class WorkOrderControllerIntegrationTest {
 
         mockMvc.perform(get("/api/v1/work-orders/{id}", saved.getId()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("OK"))
                 .andExpect(jsonPath("$.statusCode").value(200))
+                .andExpect(jsonPath("$.errors").value(nullValue()))
                 .andExpect(jsonPath("$.body.orderNumber").value("WO-2026-002"))
                 .andExpect(jsonPath("$.body.status").value("IN_PROGRESS"))
                 .andExpect(jsonPath("$.body.assignedTo").value("user"));
@@ -164,10 +210,24 @@ class WorkOrderControllerIntegrationTest {
 
         mockMvc.perform(get("/api/v1/work-orders/{id}", nonExistentId))
                 .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("NOT_FOUND"))
                 .andExpect(jsonPath("$.statusCode").value(404))
                 .andExpect(jsonPath("$.clientMessage").value("Work order not found with id: " + nonExistentId))
-                .andExpect(jsonPath("$.body").doesNotExist());
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
+    }
+
+    @Test
+    void getById_withInvalidUuid_returns400WithStandardEnvelope() throws Exception {
+        mockMvc.perform(get("/api/v1/work-orders/{id}", "not-a-valid-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.clientMessage").value("Invalid value 'not-a-valid-uuid' for parameter 'id'"))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
     }
 
     // ── 3. List / Pagination (GET) ────────────────────────────────────────────
@@ -179,8 +239,10 @@ class WorkOrderControllerIntegrationTest {
 
         mockMvc.perform(get("/api/v1/work-orders?page=0&size=5"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("OK"))
                 .andExpect(jsonPath("$.statusCode").value(200))
+                .andExpect(jsonPath("$.errors").value(nullValue()))
                 .andExpect(jsonPath("$.body.data").isArray())
                 .andExpect(jsonPath("$.body.data.length()").value(2))
                 .andExpect(jsonPath("$.body.totalPages").value(1))
@@ -196,6 +258,8 @@ class WorkOrderControllerIntegrationTest {
 
         mockMvc.perform(get("/api/v1/work-orders?status=OPEN"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.errors").value(nullValue()))
                 .andExpect(jsonPath("$.body.data.length()").value(1))
                 .andExpect(jsonPath("$.body.data[0].orderNumber").value("WO-FILTER-1"));
     }
@@ -218,7 +282,10 @@ class WorkOrderControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("OK"))
+                .andExpect(jsonPath("$.statusCode").value(200))
+                .andExpect(jsonPath("$.errors").value(nullValue()))
                 .andExpect(jsonPath("$.body.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.body.dueDate").value("2026-09-25"))
                 .andExpect(jsonPath("$.body.assignedTo").value("new.user"));
@@ -241,8 +308,11 @@ class WorkOrderControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("NOT_FOUND"))
-                .andExpect(jsonPath("$.statusCode").value(404));
+                .andExpect(jsonPath("$.statusCode").value(404))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
     }
 
     // ── 5. Delete (DELETE) ────────────────────────────────────────────────────
@@ -255,8 +325,11 @@ class WorkOrderControllerIntegrationTest {
 
         mockMvc.perform(delete("/api/v1/work-orders/{id}", saved.getId()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("OK"))
-                .andExpect(jsonPath("$.clientMessage").value("Work order deleted successfully"));
+                .andExpect(jsonPath("$.statusCode").value(200))
+                .andExpect(jsonPath("$.clientMessage").value("Work order deleted successfully"))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
 
         assertThat(workOrderRepository.existsById(saved.getId())).isFalse();
 
@@ -271,7 +344,68 @@ class WorkOrderControllerIntegrationTest {
 
         mockMvc.perform(delete("/api/v1/work-orders/{id}", nonExistentId))
                 .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("NOT_FOUND"))
-                .andExpect(jsonPath("$.statusCode").value(404));
+                .andExpect(jsonPath("$.statusCode").value(404))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
+    }
+
+    // ── 6. Entity Proxy Safety ────────────────────────────────────────────────
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void entityEqualityAndHashCode_isFullyProxySafeWithHibernateProxy() {
+        WorkOrder saved = new WorkOrder("WO-PROXY-01", WorkOrderStatus.OPEN, LocalDate.now(), "user");
+        entityManager.persist(saved);
+        entityManager.flush();
+        entityManager.clear();
+
+        // Obtain an uninitialized Hibernate proxy
+        WorkOrder proxy = entityManager.getReference(WorkOrder.class, saved.getId());
+
+        // Verify it is an actual Hibernate runtime dynamic proxy
+        assertThat(proxy).isInstanceOf(org.hibernate.proxy.HibernateProxy.class);
+
+        // Verify equals() is symmetric across proxy and entity
+        assertThat(proxy.equals(saved)).isTrue();
+        assertThat(saved.equals(proxy)).isTrue();
+
+        // Verify hashCode() is identical for proxy and entity
+        assertThat(proxy.hashCode()).isEqualTo(saved.hashCode());
+
+        // Verify collection semantics (HashSet contains both interchangeably)
+        java.util.Set<WorkOrder> set = new java.util.HashSet<>();
+        set.add(proxy);
+        assertThat(set.contains(saved)).isTrue();
+    }
+
+    // ── 7. Global Handling Verification ───────────────────────────────────────
+
+    @Test
+    void methodNotSupported_returns405WithStandardEnvelope() throws Exception {
+        mockMvc.perform(post("/api/v1/work-orders/" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.status").value("METHOD_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.statusCode").value(405))
+                .andExpect(jsonPath("$.clientMessage").value("Method Not Allowed"))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
+    }
+
+    @Test
+    void mediaTypeNotSupported_returns415WithStandardEnvelope() throws Exception {
+        mockMvc.perform(post("/api/v1/work-orders")
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("<xml></xml>"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.status").value("UNSUPPORTED_MEDIA_TYPE"))
+                .andExpect(jsonPath("$.statusCode").value(415))
+                .andExpect(jsonPath("$.clientMessage").value("Unsupported Media Type"))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
     }
 }

@@ -103,10 +103,11 @@ public class WorkOrder extends AuditableEntity {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof WorkOrder that)) return false;
-        return id != null && id.equals(that.id);
+        return id != null && id.equals(that.getId());
     }
+
     @Override
     public int hashCode() {
-        return getClass().hashCode();
+        return WorkOrder.class.hashCode();
     }
 }
