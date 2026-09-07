@@ -95,7 +95,7 @@ Deferred components (DEF-01–DEF-07) are listed at the bottom — no tool decis
 |---|---|---|---|
 | **Jmix 3.0.1** | **REJECT** (DEC-021) | None | Runtime lock-in to `io.jmix.*`, EclipseLink not Hibernate, Vaadin not Angular, no `ApiResponse`. Keep as optional study tool only (ADR-009). |
 | **OpenAPI Generator 7.16.0** | **ACCEPT WITH LIMITATIONS** (DEC-022) | BE-03 (partial), BE-05, BE-11 (partial) | Interface + DTO scaffolding only for consumer CRUD APIs. STD-05 requires 1-line `responseType.mustache` override. STD-01 envelope populated by FreeMarker `@RestController` template. BE-15 removed — it is GSUIF SYS-scope infrastructure, not a consumer-generated artifact. TypeScript client SDK: Phase 2 candidate — **not verified in this spike**. |
-| **FreeMarker / TemplateOnlyProvider** | **CONFIRMED — Phase 1 engine** (ADR-003) | All components not covered by OpenAPI Generator | Default for every component. Hand-written framework code uses the same standards but is not template-generated. |
+| **FreeMarker / TemplateOnlyProvider** | **CONFIRMED — Phase 1 engine** (ADR-003) | All **generated artifacts** not covered by OpenAPI Generator | Default for **generated output only** (consumer CRUD controllers, service stubs, entity templates). GSUIF framework infrastructure components (BE-01, BE-04, BE-06–BE-14, BE-16–BE-19) are hand-written by the team and are not FreeMarker-generated artifacts. |
 
 ---
 
@@ -228,7 +228,7 @@ No proprietary runtime framework. Consistent with **ADR-008** (no lock-in).
 |---|---|---|---|
 | STD-05 | `ResponseEntity<ApiResponse<T>>` return type | ✅ (with override) | `responseType.mustache` override (1 line) achieves full conformance — verified on 2 consecutive `mvn clean compile` runs |
 | STD-01–04 | Five-field `ApiResponse<T>` envelope | ⚠️ Gap | Interface only — developer fills envelope in `@RestController` impl |
-| STD-10 | Validation errors → 400 | ✅ | Jakarta `@Valid` annotations generated |
+| STD-10 | Validation errors → 400 with field-level errors | ⚠️ partial | Jakarta `@Valid` annotations are generated and trigger Bean Validation on input. However, mapping the resulting `MethodArgumentNotValidException` to HTTP 400 with field-level error detail (STD-10 full requirement) depends on the hand-written `GlobalExceptionHandler` (`@RestControllerAdvice`). OpenAPI alone does not close this gap. |
 | STD-27 | Swagger/OpenAPI coverage | ⚠️ partial | `@Operation`, `@ApiResponse`, `@Parameter` generated on interface; SpringDoc bean config is hand-written |
 | STD-28 | HTTP status codes (200 GET/PUT/DELETE, 201 POST) | ✅ | Declared in `work-order-api.yaml` `responses:` blocks — DELETE uses **200** (not 204) per STD-28 + ApiResponse body requirement |
 | ADR-001 | Java 21 + Jakarta EE | ✅ | `useJakartaEe=true`, confirmed `javac release 21` |
