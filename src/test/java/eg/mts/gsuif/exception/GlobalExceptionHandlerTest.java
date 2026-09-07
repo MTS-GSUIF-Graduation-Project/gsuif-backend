@@ -76,6 +76,22 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().errors()).isNull();
     }
 
+    @Test
+    void handleDuplicateResource_returns400() {
+        DuplicateResourceException ex = new DuplicateResourceException("Work order already exists");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleDuplicateResource(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().statusCode()).isEqualTo(400);
+        assertThat(response.getBody().status()).isEqualTo("BAD_REQUEST");
+        assertThat(response.getBody().clientMessage()).isEqualTo("Work order already exists");
+        assertThat(response.getBody().body()).isNull();
+        assertThat(response.getBody().errors()).isNull();
+    }
+
+
     @SuppressWarnings("unused")
     private void dummyMethod(String param) {}
 

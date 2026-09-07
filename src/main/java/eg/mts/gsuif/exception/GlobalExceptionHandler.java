@@ -38,6 +38,15 @@ public class GlobalExceptionHandler {
                 .status(404)
                 .body(ApiResponse.error(404, ex.getMessage(), null));
     }
+        // Branch 3: duplicate resource → 400 (per STD-28 allowed status codes)
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateResource(DuplicateResourceException ex) {
+        log.error("Duplicate resource: {}", ex.getMessage(), ex);
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(400, ex.getMessage(), null));
+    }
+
 
     // Branch 5: catch-all → 500
     @ExceptionHandler(Exception.class)
