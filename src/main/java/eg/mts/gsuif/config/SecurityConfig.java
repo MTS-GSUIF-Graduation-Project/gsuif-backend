@@ -1,5 +1,7 @@
 package eg.mts.gsuif.config;
 
+import eg.mts.gsuif.security.JwtAccessDeniedHandler;
+import eg.mts.gsuif.security.JwtAuthenticationEntryPoint;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -12,9 +14,15 @@ import java.util.Arrays;
 public class SecurityConfig {
 
     private final Environment environment;
+    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
-    public SecurityConfig(Environment environment) {
+    public SecurityConfig(Environment environment,
+                          JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
+                          JwtAccessDeniedHandler jwtAccessDeniedHandler) {
         this.environment = environment;
+        this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
+        this.jwtAccessDeniedHandler = jwtAccessDeniedHandler;
     }
 
     @Bean
@@ -22,18 +30,16 @@ public class SecurityConfig {
         boolean isProd = Arrays.asList(environment.getActiveProfiles()).contains("prod");
 
         return http
-                // CSRF is disabled globally and intentionally for the stateless JWT-based authentication
-                // (DEC/STD security model), as we do not use cookie sessions.
-                // Note: Dev vs prod security toggle (STD-19) is deferred to a follow-up ticket and is
-                // not in scope for the initial SCRUM-18 skeleton.
                 .csrf(csrf -> csrf.disable())
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                        .accessDeniedHandler(jwtAccessDeniedHandler)
+                )
                 .authorizeHttpRequests(authorize -> {
                     if (isProd) {
-                        // In production, Swagger/OpenAPI endpoints must be secured and require authentication
                         authorize.requestMatchers("/api/hello").permitAll()
                                  .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").authenticated();
                     } else {
-                        // In development/local/test profiles, Swagger/OpenAPI endpoints are publicly accessible
                         authorize.requestMatchers("/api/hello", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll();
                     }
                     authorize.anyRequest().authenticated();
