@@ -140,10 +140,11 @@ class WorkOrderServiceTest {
     }
 
     @Test
-    void update_whenFound_updatesAllMutableFieldsAndReturnsDto() {
+    void update_whenSameOrderNumber_updatesOtherFieldsAndReturnsDto() {
         UUID id = UUID.randomUUID();
         WorkOrder entity = new WorkOrder("WO-104", WorkOrderStatus.OPEN, LocalDate.of(2026, 9, 1), "old.user");
         UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "WO-104", // Same order number
                 WorkOrderStatus.COMPLETED,
                 LocalDate.of(2026, 9, 20),
                 "new.user"
@@ -154,10 +155,42 @@ class WorkOrderServiceTest {
 
         WorkOrderDto result = service.update(id, request);
 
+        assertThat(result.orderNumber()).isEqualTo("WO-104");
         assertThat(result.status()).isEqualTo(WorkOrderStatus.COMPLETED);
         assertThat(result.dueDate()).isEqualTo(LocalDate.of(2026, 9, 20));
         assertThat(result.assignedTo()).isEqualTo("new.user");
 
+        assertThat(entity.getOrderNumber()).isEqualTo("WO-104");
+        assertThat(entity.getStatus()).isEqualTo(WorkOrderStatus.COMPLETED);
+        assertThat(entity.getDueDate()).isEqualTo(LocalDate.of(2026, 9, 20));
+        assertThat(entity.getAssignedTo()).isEqualTo("new.user");
+        verify(repository, never()).existsByOrderNumber(any());
+        verify(repository).save(entity);
+    }
+
+    @Test
+    void update_whenNewUnusedOrderNumber_updatesAllFieldsAndReturnsDto() {
+        UUID id = UUID.randomUUID();
+        WorkOrder entity = new WorkOrder("WO-104", WorkOrderStatus.OPEN, LocalDate.of(2026, 9, 1), "old.user");
+        UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "WO-105", // New order number
+                WorkOrderStatus.COMPLETED,
+                LocalDate.of(2026, 9, 20),
+                "new.user"
+        );
+
+        when(repository.findById(id)).thenReturn(Optional.of(entity));
+        when(repository.existsByOrderNumber("WO-105")).thenReturn(false);
+        when(repository.save(any(WorkOrder.class))).thenReturn(entity);
+
+        WorkOrderDto result = service.update(id, request);
+
+        assertThat(result.orderNumber()).isEqualTo("WO-105");
+        assertThat(result.status()).isEqualTo(WorkOrderStatus.COMPLETED);
+        assertThat(result.dueDate()).isEqualTo(LocalDate.of(2026, 9, 20));
+        assertThat(result.assignedTo()).isEqualTo("new.user");
+
+        assertThat(entity.getOrderNumber()).isEqualTo("WO-105");
         assertThat(entity.getStatus()).isEqualTo(WorkOrderStatus.COMPLETED);
         assertThat(entity.getDueDate()).isEqualTo(LocalDate.of(2026, 9, 20));
         assertThat(entity.getAssignedTo()).isEqualTo("new.user");
@@ -165,9 +198,31 @@ class WorkOrderServiceTest {
     }
 
     @Test
+    void update_whenNewDuplicateOrderNumber_throwsDuplicateResourceException() {
+        UUID id = UUID.randomUUID();
+        WorkOrder entity = new WorkOrder("WO-104", WorkOrderStatus.OPEN, LocalDate.of(2026, 9, 1), "old.user");
+        UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "WO-105", // Duplicate order number
+                WorkOrderStatus.COMPLETED,
+                LocalDate.of(2026, 9, 20),
+                "new.user"
+        );
+
+        when(repository.findById(id)).thenReturn(Optional.of(entity));
+        when(repository.existsByOrderNumber("WO-105")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.update(id, request))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessage("Work order with order number 'WO-105' already exists");
+
+        verify(repository, never()).save(any());
+    }
+
+    @Test
     void update_whenNotFound_throwsResourceNotFoundException() {
         UUID id = UUID.randomUUID();
         UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "WO-105",
                 WorkOrderStatus.COMPLETED,
                 LocalDate.now(),
                 "user"

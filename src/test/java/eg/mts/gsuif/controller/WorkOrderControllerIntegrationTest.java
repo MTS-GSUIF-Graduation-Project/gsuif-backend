@@ -273,6 +273,7 @@ class WorkOrderControllerIntegrationTest {
         );
 
         UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "WO-UPDATE-1",
                 WorkOrderStatus.COMPLETED,
                 LocalDate.of(2026, 9, 25),
                 "new.user"
@@ -296,9 +297,60 @@ class WorkOrderControllerIntegrationTest {
     }
 
     @Test
+    void update_withNewOrderNumber_returns200AndUpdatesRecord() throws Exception {
+        WorkOrder saved = workOrderRepository.save(
+                new WorkOrder("WO-UPDATE-OLD", WorkOrderStatus.OPEN, LocalDate.of(2026, 9, 1), "user")
+        );
+
+        UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "WO-UPDATE-NEW",
+                WorkOrderStatus.COMPLETED,
+                LocalDate.now(),
+                "user"
+        );
+
+        mockMvc.perform(put("/api/v1/work-orders/{id}", saved.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statusCode").value(200))
+                .andExpect(jsonPath("$.body.orderNumber").value("WO-UPDATE-NEW"));
+
+        WorkOrder refreshed = workOrderRepository.findById(saved.getId()).orElseThrow();
+        assertThat(refreshed.getOrderNumber()).isEqualTo("WO-UPDATE-NEW");
+    }
+
+    @Test
+    void update_withDuplicateOrderNumber_returns400WithDuplicateMessage() throws Exception {
+        workOrderRepository.save(new WorkOrder("WO-DUP-A", WorkOrderStatus.OPEN, LocalDate.now(), "user"));
+        WorkOrder savedB = workOrderRepository.save(
+                new WorkOrder("WO-DUP-B", WorkOrderStatus.OPEN, LocalDate.now(), "user")
+        );
+
+        UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "WO-DUP-A", // Attempting to use A's order number for B
+                WorkOrderStatus.COMPLETED,
+                LocalDate.now(),
+                "user"
+        );
+
+        mockMvc.perform(put("/api/v1/work-orders/{id}", savedB.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.clientMessage").value("Work order with order number 'WO-DUP-A' already exists"));
+
+        WorkOrder refreshedB = workOrderRepository.findById(savedB.getId()).orElseThrow();
+        assertThat(refreshedB.getOrderNumber()).isEqualTo("WO-DUP-B");
+    }
+
+    @Test
     void update_whenNotFound_returns404() throws Exception {
         UUID nonExistentId = UUID.randomUUID();
         UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "WO-UPDATE-2",
                 WorkOrderStatus.COMPLETED,
                 LocalDate.now(),
                 "user"
@@ -313,6 +365,56 @@ class WorkOrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.statusCode").value(404))
                 .andExpect(jsonPath("$.body").value(nullValue()))
                 .andExpect(jsonPath("$.errors").value(nullValue()));
+    }
+
+    @Test
+    void update_withBlankOrderNumber_returns400WithFieldErrors() throws Exception {
+        WorkOrder saved = workOrderRepository.save(
+                new WorkOrder("WO-UPDATE-3", WorkOrderStatus.OPEN, LocalDate.of(2026, 9, 1), "user")
+        );
+
+        UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "",
+                WorkOrderStatus.COMPLETED,
+                LocalDate.now(),
+                "user"
+        );
+
+        mockMvc.perform(put("/api/v1/work-orders/{id}", saved.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.clientMessage").value("Validation failed"))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors.orderNumber").value("Order number is required"));
+    }
+
+    @Test
+    void update_withOversizedOrderNumber_returns400WithFieldErrors() throws Exception {
+        WorkOrder saved = workOrderRepository.save(
+                new WorkOrder("WO-UPDATE-4", WorkOrderStatus.OPEN, LocalDate.of(2026, 9, 1), "user")
+        );
+
+        UpdateWorkOrderRequest request = new UpdateWorkOrderRequest(
+                "A".repeat(65),
+                WorkOrderStatus.COMPLETED,
+                LocalDate.now(),
+                "user"
+        );
+
+        mockMvc.perform(put("/api/v1/work-orders/{id}", saved.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.clientMessage").value("Validation failed"))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors.orderNumber").value("Order number must not exceed 64 characters"));
     }
 
     // ── 5. Delete (DELETE) ────────────────────────────────────────────────────

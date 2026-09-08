@@ -83,6 +83,14 @@ public class WorkOrderServiceImpl implements WorkOrderService {
         WorkOrder entity = workOrderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Work order not found with id: " + id));
 
+        if (!entity.getOrderNumber().equals(request.orderNumber())
+                && workOrderRepository.existsByOrderNumber(request.orderNumber())) {
+            throw new DuplicateResourceException(
+                    "Work order with order number '" + request.orderNumber() + "' already exists"
+            );
+        }
+
+        entity.setOrderNumber(request.orderNumber());
         entity.setStatus(request.status());
         entity.setDueDate(request.dueDate());
         entity.setAssignedTo(request.assignedTo());

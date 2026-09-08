@@ -13,6 +13,10 @@ import java.time.LocalDate;
  * <p>Enforces Bean Validation constraints (STD-10).
  */
 public record UpdateWorkOrderRequest(
+        @NotBlank(message = "Order number is required")
+        @Size(max = 64, message = "Order number must not exceed 64 characters")
+        String orderNumber,
+
         @NotNull(message = "Status is required")
         WorkOrderStatus status,
 
