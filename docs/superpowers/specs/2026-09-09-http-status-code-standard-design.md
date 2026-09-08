@@ -25,16 +25,17 @@ Other standard HTTP codes remain permitted when they are documented and semantic
 `components.yaml` will be aligned as follows:
 
 - BE-09 will include the 400, 405, and 415 request-failure mappings and reference STD-28.
-- BE-11 will include 405 and 415 in the OpenAPI response coverage.
+- BE-11 will include 405 and 415 in the OpenAPI response coverage and reference STD-28.
 - BE-05 and BE-17 require no direct edits because they already reference STD-28.
 
-`DECISIONS.md` and `QUESTIONS.md` will not change because this update clarifies protocol behavior without adding an architectural decision or unresolved question.
+`DECISIONS.md` will record this project clarification as DEC-023 because the Technical Document contains the old limited list. `QUESTIONS.md` requires no change because the clarification is confirmed rather than unresolved.
 
 ## Verification
 
 - Parse `components.yaml` as YAML.
 - Verify BE-09 references STD-28 and describes 400, 405, and 415.
-- Verify BE-11 documents 405 and 415.
+- Verify BE-11 documents 405 and 415 and references STD-28.
+- Verify DEC-023 records the approved semantic-baseline decision.
 - Search governance files for obsolete status-code whitelists.
 - Confirm the Markdown and YAML describe the same response mappings.
 
