@@ -127,28 +127,28 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleDataIntegrityViolation_whenUniqueConstraintSqlState23505_returns400() {
-        java.sql.SQLException sqlEx = new java.sql.SQLException("duplicate key", "23505", 23505);
-        org.springframework.dao.DataIntegrityViolationException ex =
-                new org.springframework.dao.DataIntegrityViolationException("Unique index or primary key violation", sqlEx);
+    void handlePropertyReferenceException_returns400() {
+        org.springframework.data.core.PropertyReferenceException ex =
+                new org.springframework.data.core.PropertyReferenceException("notAField",
+                        org.springframework.data.core.TypeInformation.of(Object.class),
+                        java.util.Collections.emptyList());
 
-        ResponseEntity<ApiResponse<Void>> response = handler.handleDataIntegrityViolation(ex);
+        ResponseEntity<ApiResponse<Void>> response = handler.handlePropertyReferenceException(ex);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().statusCode()).isEqualTo(400);
         assertThat(response.getBody().status()).isEqualTo("BAD_REQUEST");
-        assertThat(response.getBody().clientMessage()).isEqualTo("Resource already exists or violates unique constraint");
+        assertThat(response.getBody().clientMessage()).isEqualTo("Invalid property reference in sorting");
         assertThat(response.getBody().body()).isNull();
         assertThat(response.getBody().errors()).isNull();
     }
 
     @Test
-    void handleDataIntegrityViolation_whenUniqueConstraintMessage_returns400() {
+    void handleDataIntegrityViolation_whenUniqueConstraintSqlState23505_returns400() {
+        java.sql.SQLException sqlEx = new java.sql.SQLException("duplicate key", "23505", 23505);
         org.springframework.dao.DataIntegrityViolationException ex =
-                new org.springframework.dao.DataIntegrityViolationException(
-                        "could not execute statement; SQL [n/a]; constraint [unique_order_number]"
-                );
+                new org.springframework.dao.DataIntegrityViolationException("Unique index or primary key violation", sqlEx);
 
         ResponseEntity<ApiResponse<Void>> response = handler.handleDataIntegrityViolation(ex);
 

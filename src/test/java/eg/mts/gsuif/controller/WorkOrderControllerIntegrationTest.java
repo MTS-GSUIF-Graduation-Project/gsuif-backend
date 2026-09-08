@@ -408,4 +408,37 @@ class WorkOrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.body").value(nullValue()))
                 .andExpect(jsonPath("$.errors").value(nullValue()));
     }
+
+    // ── 8. Authentication & Pagination Edge Cases ─────────────────────────────
+
+    @Test
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void getAll_whenUnauthenticated_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/work-orders"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.status").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.statusCode").value(401))
+                .andExpect(jsonPath("$.clientMessage").value("Authentication required"))
+                .andExpect(jsonPath("$.body").value(nullValue()))
+                .andExpect(jsonPath("$.errors").value(nullValue()));
+    }
+
+    @Test
+    void getAll_withInvalidSortProperty_returns400PropertyReferenceException() throws Exception {
+        mockMvc.perform(get("/api/v1/work-orders?sort=notAField,asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.clientMessage").value("Invalid property reference in sorting"));
+    }
+
+    @Test
+    void getAll_withInvalidStatusQueryParam_returns400TypeMismatch() throws Exception {
+        mockMvc.perform(get("/api/v1/work-orders?status=INVALID_STATUS"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.clientMessage", org.hamcrest.Matchers.containsString("Invalid value 'INVALID_STATUS' for parameter 'status'")));
+    }
 }

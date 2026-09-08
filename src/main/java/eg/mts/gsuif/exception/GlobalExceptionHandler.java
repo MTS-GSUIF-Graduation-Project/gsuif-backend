@@ -19,7 +19,7 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    // Branch 1: validation errors → 400
+    /** Bean Validation failures → HTTP 400 with per-field errors. */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         log.error("Validation error: {}", ex.getMessage(), ex);
@@ -32,7 +32,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(400, "Validation failed", errors));
     }
 
-    // Branch 2: resource not found → 404
+    /** Missing resource → HTTP 404. */
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNotFound(ResourceNotFoundException ex) {
         log.error("Resource not found: {}", ex.getMessage(), ex);
@@ -40,7 +40,8 @@ public class GlobalExceptionHandler {
                 .status(404)
                 .body(ApiResponse.error(404, ex.getMessage(), null));
     }
-    // Branch 3: malformed JSON or unreadable payload → 400
+
+    /** Malformed JSON or unreadable request body → HTTP 400. */
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
         log.error("Malformed request payload: {}", ex.getMessage(), ex);
@@ -49,7 +50,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(400, "Malformed JSON or invalid request payload", null));
     }
 
-    // Branch 4: type mismatch in path/query parameters (e.g. invalid UUID) → 400
+    /** Invalid path or query parameter type (e.g. malformed UUID) → HTTP 400. */
     @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
         log.error("Parameter type mismatch: {}", ex.getMessage(), ex);
@@ -59,7 +60,16 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(400, message, null));
     }
 
-    // Branch 5: duplicate resource → 400 (per STD-28 allowed status codes)
+    /** Invalid pagination sort property → HTTP 400. */
+    @ExceptionHandler(org.springframework.data.core.PropertyReferenceException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePropertyReferenceException(org.springframework.data.core.PropertyReferenceException ex) {
+        log.error("Invalid property reference: {}", ex.getMessage(), ex);
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(400, "Invalid property reference in sorting", null));
+    }
+
+    /** Application-level duplicate business key → HTTP 400. */
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiResponse<Void>> handleDuplicateResource(DuplicateResourceException ex) {
         log.error("Duplicate resource: {}", ex.getMessage(), ex);
@@ -68,7 +78,10 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(400, ex.getMessage(), null));
     }
 
-    // Branch 6: database constraint violations (only unique violations map to 400; unexpected integrity errors fall to 500)
+    /**
+     * Race-condition fallback when a unique DB constraint is hit despite the service pre-check.
+     * Only unique violations map to HTTP 400; other integrity failures fall through to HTTP 500.
+     */
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException ex) {
         log.error("Data integrity violation: {}", ex.getMessage(), ex);
@@ -86,7 +99,8 @@ public class GlobalExceptionHandler {
         Throwable cause = ex;
         while (cause != null) {
             if (cause instanceof java.sql.SQLException sqlEx) {
-                // 23505 is the ANSI SQL / PostgreSQL / H2 standard SQLState for unique_violation
+                // SQLState 23505 (unique_violation): used by PostgreSQL and H2 in PostgreSQL mode (STD-34).
+                // Not guaranteed by every JDBC driver or relational database.
                 if ("23505".equals(sqlEx.getSQLState())) {
                     return true;
                 }
@@ -95,27 +109,13 @@ public class GlobalExceptionHandler {
                 if ("23505".equals(cve.getSQLState())) {
                     return true;
                 }
-                String constraint = cve.getConstraintName();
-                if (constraint != null && (constraint.toLowerCase().contains("unique") || constraint.toLowerCase().contains("uk_"))) {
-                    return true;
-                }
-            }
-            String msg = cause.getMessage();
-            if (msg != null) {
-                String lower = msg.toLowerCase();
-                if (lower.contains("duplicate key")
-                        || lower.contains("unique index")
-                        || (lower.contains("unique") && (lower.contains("constraint") || lower.contains("index") || lower.contains("violation")))
-                        || lower.contains("uk_")) {
-                    return true;
-                }
             }
             cause = cause.getCause();
         }
         return false;
     }
 
-    // Branch 7: unsupported HTTP method -> 405
+    /** Unsupported HTTP method → HTTP 405. */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
         log.error("Method not supported: {}", ex.getMessage(), ex);
@@ -124,7 +124,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(405, "Method Not Allowed", null));
     }
 
-    // Branch 8: unsupported media type -> 415
+    /** Unsupported request media type → HTTP 415. */
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ApiResponse<Void>> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
         log.error("Media type not supported: {}", ex.getMessage(), ex);
@@ -133,7 +133,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(415, "Unsupported Media Type", null));
     }
 
-    // Branch 9: catch-all → 500
+    /** Unhandled exceptions → HTTP 500 with a generic client message. */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception ex) {
         log.error("Unexpected error", ex);

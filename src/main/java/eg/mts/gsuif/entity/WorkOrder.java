@@ -8,9 +8,9 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.LocalDate;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -24,7 +24,13 @@ import java.util.UUID;
  * </ul>
  */
 @Entity
-@Table(name = "work_orders")
+@Table(
+        name = "work_orders",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_work_orders_order_number",
+                columnNames = "order_number"
+        )
+)
 public class WorkOrder extends AuditableEntity {
 
     @Id
@@ -32,7 +38,7 @@ public class WorkOrder extends AuditableEntity {
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "order_number", nullable = false, unique = true, length = 64)
+    @Column(name = "order_number", nullable = false, length = 64)
     private String orderNumber;
 
     @Enumerated(EnumType.STRING)
@@ -59,7 +65,7 @@ public class WorkOrder extends AuditableEntity {
         return id;
     }
 
-     /**
+    /**
      * Protected to prevent external mutation of the generated identifier while
      * remaining accessible to testing utilities or frameworks if needed.
      */
