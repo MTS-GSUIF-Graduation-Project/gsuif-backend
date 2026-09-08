@@ -435,7 +435,7 @@ components:
       - {doc: DOC-02, locator: "§Swagger UI"}
       - {doc: DOC-03, locator: "meeting discussion of an 'OpenAPI' tool generating standard request/response format"}
       - {doc: DOC-08, locator: "SCRUM-29 (T-20: Swagger / OpenAPI Documentation); SCRUM-38 (T-09: OpenAPI Generator Capability Spike)"}
-    standards: [STD-27]
+    standards: [STD-27, STD-28]
     dependencies: [BE-04, BE-06]
     tool: null
     template: null
