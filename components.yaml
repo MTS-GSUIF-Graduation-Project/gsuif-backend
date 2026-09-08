@@ -367,18 +367,21 @@ components:
     scope: BOTH
     description: >
       @RestControllerAdvice-based GlobalExceptionHandler mapping
-      MethodArgumentNotValidException to 400 with a field-level error map,
-      ResourceNotFoundException to 404, AccessDeniedException to 403,
-      AuthenticationException to 401, and every other exception to a generic
-      500 with no stack trace ever leaked to the client. Every exception is
-      still logged server-side with its stack trace.
+      MethodArgumentNotValidException and other malformed or invalid request
+      exceptions to 400, with field-level errors where applicable;
+      AuthenticationException to 401; AccessDeniedException to 403;
+      ResourceNotFoundException to 404; HttpRequestMethodNotSupportedException
+      to 405; HttpMediaTypeNotSupportedException to 415; and every other
+      exception to a generic 500. Every error uses the standard ApiResponse
+      envelope, no stack trace is leaked to the client, and every exception
+      is still logged server-side with its stack trace.
     requirement_status: MANDATORY
     target_phase: PHASE_1
     sources:
       - {doc: DOC-02, locator: "§Global Exception Handling (US03)"}
       - {doc: DOC-01, locator: "predefined component 'Exception Handler'"}
       - {doc: DOC-08, locator: "SCRUM-23 (T-18: ApiResponse<T> Wrapper & GlobalExceptionHandler)"}
-    standards: [STD-09, STD-10, STD-11, STD-12, STD-13]
+    standards: [STD-09, STD-10, STD-11, STD-12, STD-13, STD-28]
     dependencies: [BE-01]
     tool: null
     template: null
@@ -417,10 +420,11 @@ components:
       springdoc-openapi 2.x configuration exposing Swagger UI at
       /swagger-ui.html with API info (title, version, description, contact),
       a bearerAuth JWT security scheme with a working Authorize button,
-      @Operation/@ApiResponse annotations covering 200/201/400/401/403/404/500
-      on every controller, @Schema on all DTOs, and endpoints grouped as
-      metadata-api, auth-api and generation-api. Enabled on dev/test,
-      disabled on prod. Confirmed both in the Technical Document and in
+      @Operation/@ApiResponse annotations covering each endpoint's applicable
+      responses from the STD-28 baseline (200/201/400/401/403/404/405/415/500),
+      @Schema on all DTOs, and endpoints grouped as metadata-api, auth-api and
+      generation-api. Enabled on dev/test, disabled on prod. Confirmed both
+      in the Technical Document and in
       mts-meeting-2.txt, where the team discusses using an OpenAPI tool to
       generate the standard request/response format alongside G-Max — see
       SCRUM-38 (T-09: OpenAPI Generator Capability Spike) and SCRUM-29
