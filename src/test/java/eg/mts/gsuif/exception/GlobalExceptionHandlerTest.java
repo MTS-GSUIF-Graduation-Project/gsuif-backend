@@ -1,19 +1,36 @@
 package eg.mts.gsuif.exception;
 
 import eg.mts.gsuif.dto.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.constraints.Min;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.method.MethodValidationResult;
+import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.validation.method.ParameterValidationResult;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class GlobalExceptionHandlerTest {
 
@@ -63,6 +80,207 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void handleMethodArgumentTypeMismatch_returns400WithFieldError() throws NoSuchMethodException {
+        MethodParameter parameter = new MethodParameter(
+                this.getClass().getDeclaredMethod("pathVariableMethod", UUID.class), 0);
+        MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+                "not-a-uuid", UUID.class, "id", parameter, new IllegalArgumentException("Invalid UUID"));
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleMethodArgumentTypeMismatch(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().statusCode()).isEqualTo(400);
+        assertThat(response.getBody().clientMessage()).isEqualTo("Invalid request parameter");
+        assertThat(response.getBody().body()).isNull();
+        assertThat(response.getBody().errors()).containsEntry("id", "Invalid value");
+    }
+
+    @Test
+    void handleMissingServletRequestParameter_returns400WithFieldError() {
+        MissingServletRequestParameterException ex =
+                new MissingServletRequestParameterException("param", "String");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleMissingServletRequestParameter(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().statusCode()).isEqualTo(400);
+        assertThat(response.getBody().clientMessage()).isEqualTo("Required request parameter is missing");
+        assertThat(response.getBody().body()).isNull();
+        assertThat(response.getBody().errors()).containsEntry("param", "Parameter is required");
+    }
+
+    @Test
+    void handleConstraintViolation_returns400WithFieldErrors() {
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+        PageRequest target = new PageRequest();
+        target.page = 0;
+        ConstraintViolationException ex = new ConstraintViolationException(validator.validate(target));
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleConstraintViolation(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().statusCode()).isEqualTo(400);
+        assertThat(response.getBody().clientMessage()).isEqualTo("Request validation failed");
+        assertThat(response.getBody().body()).isNull();
+        assertThat(response.getBody().errors()).containsEntry("page", "must be greater than or equal to 1");
+    }
+
+    @Test
+    void handleHandlerMethodValidationException_returns400WithFieldErrors() {
+        MethodParameter methodParameter = mock(MethodParameter.class);
+        when(methodParameter.getParameterName()).thenReturn("page");
+        ParameterValidationResult validationResult = new ParameterValidationResult(
+                methodParameter,
+                0,
+                List.of(new DefaultMessageSourceResolvable(new String[]{"page"}, "must be greater than or equal to 1")),
+                null,
+                null,
+                null,
+                null);
+        HandlerMethodValidationException ex = mock(HandlerMethodValidationException.class);
+        when(ex.isForReturnValue()).thenReturn(false);
+        when(ex.getCrossParameterValidationResults()).thenReturn(List.of());
+        doAnswer(invocation -> {
+            HandlerMethodValidationException.Visitor visitor = invocation.getArgument(0);
+            visitor.requestParam(null, validationResult);
+            return null;
+        }).when(ex).visitResults(any());
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleHandlerMethodValidationException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().statusCode()).isEqualTo(400);
+        assertThat(response.getBody().clientMessage()).isEqualTo("Request validation failed");
+        assertThat(response.getBody().body()).isNull();
+        assertThat(response.getBody().errors()).containsEntry("page", "must be greater than or equal to 1");
+    }
+
+    @Test
+    void handleHandlerMethodValidationException_whenReturnValueValidation_returnsSanitized500() {
+        HandlerMethodValidationException ex = mock(HandlerMethodValidationException.class);
+        when(ex.isForReturnValue()).thenReturn(true);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleHandlerMethodValidationException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().statusCode()).isEqualTo(500);
+        assertThat(response.getBody().status()).isEqualTo("INTERNAL_SERVER_ERROR");
+        assertThat(response.getBody().clientMessage()).isEqualTo("An unexpected error occurred");
+        assertThat(response.getBody().body()).isNull();
+        assertThat(response.getBody().errors()).isNull();
+    }
+
+    @Test
+    void handleHandlerMethodValidationException_whenCrossParameterValidation_returnsGlobalError() throws NoSuchMethodException {
+        Method method = this.getClass().getDeclaredMethod("crossParameterMethod", String.class, String.class);
+        MethodValidationResult validationResult = MethodValidationResult.create(
+                this,
+                method,
+                List.of(),
+                List.of(new DefaultMessageSourceResolvable(new String[] {}, "At least one parameter must be present")));
+        HandlerMethodValidationException ex = new HandlerMethodValidationException(validationResult);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleHandlerMethodValidationException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().errors()).containsEntry("_global", "At least one parameter must be present");
+    }
+
+    @Test
+    void handleHandlerMethodValidationException_whenNestedDtoFields_returnsPrefixedFieldErrors() throws NoSuchMethodException {
+        Method method = this.getClass().getDeclaredMethod("nestedBodyMethod", GlobalExceptionHandlerIntegrationTest.NestedRequest.class);
+        MethodParameter methodParameter = new MethodParameter(method, 0);
+        BeanPropertyBindingResult bindingResult =
+                new BeanPropertyBindingResult(new GlobalExceptionHandlerIntegrationTest.NestedRequest(), "nested");
+        bindingResult.addError(new FieldError("nested", "orderNumber", "must not be null"));
+        bindingResult.addError(new FieldError("nested", "dueDate", "must not be null"));
+        ParameterErrors parameterErrors = new ParameterErrors(
+                methodParameter,
+                bindingResult.getTarget(),
+                bindingResult,
+                null,
+                null,
+                null);
+        MethodValidationResult validationResult = MethodValidationResult.create(this, method, List.of(parameterErrors));
+        HandlerMethodValidationException ex = new HandlerMethodValidationException(validationResult);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleHandlerMethodValidationException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().errors()).containsEntry("orderNumber", "must not be null");
+        assertThat(response.getBody().errors()).containsEntry("dueDate", "must not be null");
+    }
+
+    @Test
+    void handleHandlerMethodValidationException_whenReturnValueValidation_usesRealSpringException() throws NoSuchMethodException {
+        Method method = this.getClass().getDeclaredMethod("returnNestedMethod");
+        MethodParameter returnParam = new MethodParameter(method, -1);
+        BeanPropertyBindingResult bindingResult =
+                new BeanPropertyBindingResult(new GlobalExceptionHandlerIntegrationTest.NestedRequest(), "nested");
+        bindingResult.addError(new FieldError("nested", "orderNumber", "must not be null"));
+        ParameterErrors parameterErrors = new ParameterErrors(
+                returnParam,
+                bindingResult.getTarget(),
+                bindingResult,
+                null,
+                null,
+                null);
+        MethodValidationResult validationResult = new ReturnValueMethodValidationResult(this, method, List.of(parameterErrors));
+        HandlerMethodValidationException ex = new HandlerMethodValidationException(validationResult);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleHandlerMethodValidationException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().clientMessage()).isEqualTo("An unexpected error occurred");
+        assertThat(response.getBody().errors()).isNull();
+    }
+
+    private static final class ReturnValueMethodValidationResult implements MethodValidationResult {
+        private final Object target;
+        private final Method method;
+        private final List<ParameterValidationResult> parameterResults;
+
+        private ReturnValueMethodValidationResult(Object target, Method method, List<ParameterValidationResult> parameterResults) {
+            this.target = target;
+            this.method = method;
+            this.parameterResults = parameterResults;
+        }
+
+        @Override
+        public Object getTarget() {
+            return target;
+        }
+
+        @Override
+        public Method getMethod() {
+            return method;
+        }
+
+        @Override
+        public boolean isForReturnValue() {
+            return true;
+        }
+
+        @Override
+        public List<ParameterValidationResult> getParameterValidationResults() {
+            return parameterResults;
+        }
+
+        @Override
+        public List<org.springframework.context.MessageSourceResolvable> getCrossParameterValidationResults() {
+            return List.of();
+        }
+    }
+
+    @Test
     void handleGeneral_returns500WithGenericMessage() {
         Exception ex = new RuntimeException("Database connection timeout - secret internal info");
 
@@ -103,17 +321,15 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().statusCode()).isEqualTo(400);
         assertThat(response.getBody().status()).isEqualTo("BAD_REQUEST");
-        assertThat(response.getBody().clientMessage()).isEqualTo("Malformed JSON or invalid request payload");
+        assertThat(response.getBody().clientMessage()).isEqualTo("Malformed request body");
         assertThat(response.getBody().body()).isNull();
         assertThat(response.getBody().errors()).isNull();
     }
 
     @Test
-    void handleMethodArgumentTypeMismatch_returns400() {
-        org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex =
-                new org.springframework.web.method.annotation.MethodArgumentTypeMismatchException(
-                        "invalid-uuid", UUID.class, "id", null, new IllegalArgumentException("Invalid UUID")
-                );
+    void handleMethodArgumentTypeMismatch_returns400WithoutMethodParameter() {
+        MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+                "invalid-uuid", UUID.class, "id", null, new IllegalArgumentException("Invalid UUID"));
 
         ResponseEntity<ApiResponse<Void>> response = handler.handleMethodArgumentTypeMismatch(ex);
 
@@ -121,9 +337,9 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().statusCode()).isEqualTo(400);
         assertThat(response.getBody().status()).isEqualTo("BAD_REQUEST");
-        assertThat(response.getBody().clientMessage()).contains("Invalid value 'invalid-uuid' for parameter 'id'");
+        assertThat(response.getBody().clientMessage()).isEqualTo("Invalid request parameter");
         assertThat(response.getBody().body()).isNull();
-        assertThat(response.getBody().errors()).isNull();
+        assertThat(response.getBody().errors()).containsEntry("id", "Invalid value");
     }
 
     @Test
@@ -220,13 +436,13 @@ class GlobalExceptionHandlerTest {
         org.springframework.web.HttpRequestMethodNotSupportedException ex =
                 new org.springframework.web.HttpRequestMethodNotSupportedException("POST");
 
-        ResponseEntity<ApiResponse<Void>> response = handler.handleMethodNotSupported(ex);
+        ResponseEntity<ApiResponse<Void>> response = handler.handleHttpRequestMethodNotSupported(ex);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().statusCode()).isEqualTo(405);
         assertThat(response.getBody().status()).isEqualTo("METHOD_NOT_ALLOWED");
-        assertThat(response.getBody().clientMessage()).isEqualTo("Method Not Allowed");
+        assertThat(response.getBody().clientMessage()).isEqualTo("HTTP method not supported");
         assertThat(response.getBody().body()).isNull();
         assertThat(response.getBody().errors()).isNull();
     }
@@ -236,13 +452,13 @@ class GlobalExceptionHandlerTest {
         org.springframework.web.HttpMediaTypeNotSupportedException ex =
                 new org.springframework.web.HttpMediaTypeNotSupportedException("application/xml");
 
-        ResponseEntity<ApiResponse<Void>> response = handler.handleMediaTypeNotSupported(ex);
+        ResponseEntity<ApiResponse<Void>> response = handler.handleHttpMediaTypeNotSupported(ex);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().statusCode()).isEqualTo(415);
         assertThat(response.getBody().status()).isEqualTo("UNSUPPORTED_MEDIA_TYPE");
-        assertThat(response.getBody().clientMessage()).isEqualTo("Unsupported Media Type");
+        assertThat(response.getBody().clientMessage()).isEqualTo("Unsupported media type");
         assertThat(response.getBody().body()).isNull();
         assertThat(response.getBody().errors()).isNull();
     }
@@ -250,6 +466,25 @@ class GlobalExceptionHandlerTest {
 
     @SuppressWarnings("unused")
     private void dummyMethod(String param) {}
+
+    @SuppressWarnings("unused")
+    private void pathVariableMethod(UUID id) {}
+
+    @SuppressWarnings("unused")
+    private void nestedBodyMethod(GlobalExceptionHandlerIntegrationTest.NestedRequest nested) {}
+
+    @SuppressWarnings("unused")
+    private GlobalExceptionHandlerIntegrationTest.NestedRequest returnNestedMethod() {
+        return new GlobalExceptionHandlerIntegrationTest.NestedRequest();
+    }
+
+    @SuppressWarnings("unused")
+    private void crossParameterMethod(String first, String second) {}
+
+    static class PageRequest {
+        @Min(1)
+        int page;
+    }
 
     static class TestDto {
         private String email;

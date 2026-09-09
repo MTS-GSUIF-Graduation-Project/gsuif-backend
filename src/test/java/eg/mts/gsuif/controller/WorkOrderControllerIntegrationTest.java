@@ -157,7 +157,7 @@ class WorkOrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
                 .andExpect(jsonPath("$.statusCode").value(400))
-                .andExpect(jsonPath("$.clientMessage").value("Malformed JSON or invalid request payload"))
+                .andExpect(jsonPath("$.clientMessage").value("Malformed request body"))
                 .andExpect(jsonPath("$.body").value(nullValue()))
                 .andExpect(jsonPath("$.errors").value(nullValue()));
     }
@@ -180,7 +180,7 @@ class WorkOrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
                 .andExpect(jsonPath("$.statusCode").value(400))
-                .andExpect(jsonPath("$.clientMessage").value("Malformed JSON or invalid request payload"))
+                .andExpect(jsonPath("$.clientMessage").value("Malformed request body"))
                 .andExpect(jsonPath("$.body").value(nullValue()))
                 .andExpect(jsonPath("$.errors").value(nullValue()));
     }
@@ -225,9 +225,9 @@ class WorkOrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
                 .andExpect(jsonPath("$.statusCode").value(400))
-                .andExpect(jsonPath("$.clientMessage").value("Invalid value 'not-a-valid-uuid' for parameter 'id'"))
+                .andExpect(jsonPath("$.clientMessage").value("Invalid request parameter"))
                 .andExpect(jsonPath("$.body").value(nullValue()))
-                .andExpect(jsonPath("$.errors").value(nullValue()));
+                .andExpect(jsonPath("$.errors.id").value("Invalid value"));
     }
 
     // ── 3. List / Pagination (GET) ────────────────────────────────────────────
@@ -492,7 +492,7 @@ class WorkOrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("METHOD_NOT_ALLOWED"))
                 .andExpect(jsonPath("$.statusCode").value(405))
-                .andExpect(jsonPath("$.clientMessage").value("Method Not Allowed"))
+                .andExpect(jsonPath("$.clientMessage").value("HTTP method not supported"))
                 .andExpect(jsonPath("$.body").value(nullValue()))
                 .andExpect(jsonPath("$.errors").value(nullValue()));
     }
@@ -506,7 +506,7 @@ class WorkOrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.status").value("UNSUPPORTED_MEDIA_TYPE"))
                 .andExpect(jsonPath("$.statusCode").value(415))
-                .andExpect(jsonPath("$.clientMessage").value("Unsupported Media Type"))
+                .andExpect(jsonPath("$.clientMessage").value("Unsupported media type"))
                 .andExpect(jsonPath("$.body").value(nullValue()))
                 .andExpect(jsonPath("$.errors").value(nullValue()));
     }
@@ -541,6 +541,7 @@ class WorkOrderControllerIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
                 .andExpect(jsonPath("$.statusCode").value(400))
-                .andExpect(jsonPath("$.clientMessage", org.hamcrest.Matchers.containsString("Invalid value 'INVALID_STATUS' for parameter 'status'")));
+                .andExpect(jsonPath("$.clientMessage").value("Invalid request parameter"))
+                .andExpect(jsonPath("$.errors.status").value("Invalid value"));
     }
 }
