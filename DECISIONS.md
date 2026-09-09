@@ -27,7 +27,7 @@ This document records confirmed project and architecture decisions.
 | DEC-019 | Frontend/UI deliverables (Angular component library, dynamic form engine, theme engine, configuration framework, API model generator, UI starter kit) are deferred behind the backend/metadata core. | Scope Decision v1 | CONFIRMED | Team |
 | DEC-020 | Oracle-specific implementation and WebLogic/JSESSIONID/WOMS legacy infrastructure are explicitly not part of current scope. | Scope Decision v1 | CONFIRMED | Team |
 | DEC-021 | Jmix is REJECTED as a generation foundation / output tool for GSUIF. Spike (T-08) showed generated code depends on `io.jmix.*`, uses EclipseLink + Vaadin/FlowUI, and does not match the Standards Checklist (ApiResponse, package layout, Hibernate/JPA stack). Phase 1 generation stays TemplateOnlyProvider (FreeMarker). | T-08 / SCRUM-37 spike | CONFIRMED | M2 (Alaa) |
-| DEC-022 | OpenAPI Generator (`openapi-generator-maven-plugin:7.16.0`) is ACCEPTED WITH LIMITATIONS: used for contract-first REST interface scaffolding and Phase 2 client SDK generation. It is not the Phase 1 generation engine. FreeMarker / TemplateOnlyProvider (ADR-003) remains the Phase 1 engine. STD-05 conformance requires a project-local `responseType.mustache` override (1 file, 62 bytes). STD-01 envelope construction remains the responsibility of the implementing `@RestController`. | Spike T-09 / SCRUM-38 | CONFIRMED | M3 (Esraa) |
+| DEC-022 | OpenAPI Generator (`openapi-generator-maven-plugin:7.16.0`) is ACCEPTED WITH LIMITATIONS: used for contract-first REST interface scaffolding. Phase 2 TypeScript client SDK generation is an unverified candidate — not tested in the T-09 spike. It is not the Phase 1 generation engine. FreeMarker / TemplateOnlyProvider (ADR-003) remains the Phase 1 engine. STD-05 conformance requires a project-local `responseType.mustache` override (1 file, 62 bytes). STD-01 envelope construction remains the responsibility of the implementing `@RestController`. STD-27 and STD-28 are partial for generated scaffolding only — see `capability-matrix.md`. | Spike T-09 / SCRUM-38 | CONFIRMED | M3 (Esraa) |
 | DEC-023 | STD-28 defines a required semantic HTTP baseline rather than a closed status-code whitelist. The mappings defined in the Technical Document remain required. Standard protocol responses such as 405 Method Not Allowed and 415 Unsupported Media Type are permitted and must be used when applicable. Other standard HTTP codes may be used only when documented and semantically appropriate. Every error response must use the five-field ApiResponse envelope. | STD-28 clarification | CONFIRMED | Team |
 
 
@@ -111,11 +111,16 @@ and acceptable for `interfaceOnly=true` contract-first scaffolding.
 **STD-35 (UUID identifier strategy):** `format: uuid` in the OpenAPI YAML generates
 the Java `UUID` type — fully conformant.
 
-**STD-27 (Swagger/OpenAPI coverage):** Generator emits `@Operation`, `@ApiResponse`,
-`@Parameter` annotations from Springdoc — fully conformant.
+**STD-27 (Swagger/OpenAPI coverage):** ⚠️ partial. Generator emits `@Operation`,
+`@ApiResponse`, and `@Parameter` annotations from declared YAML `responses:` blocks.
+SpringDoc bean config, SecurityConfig Swagger integration, `@Schema` on framework DTOs,
+and full endpoint coverage remain hand-written (BE-11).
 
-**STD-28 (HTTP status codes):** Status codes are declared in the OpenAPI YAML
-`responses:` blocks and flow through to annotations — conformant.
+**STD-28 (HTTP status codes):** ⚠️ partial. The T-09 spike YAML declares **200**,
+**201**, and **404** only (DELETE uses **200**, not 204). Runtime 405/415 are
+implemented in `GlobalExceptionHandler` (BE-09), but the spike spec does not document
+them. OpenAPI Generator can emit additional codes only if declared in the spec; full
+STD-28 OpenAPI documentation remains a SCRUM-29 (T-20) gap.
 
 **STD-33 (database-agnostic persistence):** Not applicable — OpenAPI Generator is not
 a persistence-layer tool.
@@ -130,8 +135,9 @@ One additional compile-scope dependency is introduced:
 
 **ACCEPTED WITH LIMITATIONS.**
 
-- OpenAPI Generator 7.16.0 is accepted for: contract-first REST API interface scaffolding,
-  and Phase 2 TypeScript client SDK generation from OpenAPI specifications.
+- OpenAPI Generator 7.16.0 is accepted for: contract-first REST API interface scaffolding.
+- Phase 2 TypeScript client SDK generation is a candidate use case only — **not verified**
+  in the T-09 spike (see `capability-matrix.md`).
 - OpenAPI Generator is **not** the Phase 1 generation engine.
   FreeMarker / `TemplateOnlyProvider` remains the Phase 1 engine (ADR-003).
 - The `responseType.mustache` single-file override is the adopted template customization

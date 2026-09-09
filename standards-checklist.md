@@ -340,16 +340,15 @@ These are **confirmed not part of core Phase 1 scope**. They're listed here so n
 
 | ID | Question | Impact if resolved |
 |---|---|---|
-| OQ-04 | Can generated code depend on Jmix libraries? | Directly affects STD-33 |
 | OQ-05 | What defines a passing Phase 1 submission? | May tighten pass/fail thresholds above |
 | OQ-07 | Must WOMS be the formal Phase 2 demonstration app? | Would reopen STD-22 |
 
-> ✅ **Resolved since last version:** OQ-02 (in-scope deliverables), OQ-03 (GraphQL), OQ-09 (API Gateway), OQ-10 (password reset) — see Section 11 above and updated QUESTIONS.md.
+> ✅ **Resolved since last version:** OQ-02 (in-scope deliverables), OQ-03 (GraphQL), OQ-04 (Jmix lock-in — DEC-021), OQ-09 (API Gateway), OQ-10 (password reset) — see Section 11 above and updated QUESTIONS.md.
 
 ---
 
 ## ✅ Adoption Checklist
 
-- [ ] Reviewed by M3 (Esraa Abdelrazek)
-- [ ] Adopted by all four members at Week 1 sync
+- [x] Reviewed by M3 (Esraa Abdelrazek) — 2026-09-09
+- [x] Adopted by all four members at Week 1 sync — 2026-09-09
 - [ ] Merged to `develop` via PR
