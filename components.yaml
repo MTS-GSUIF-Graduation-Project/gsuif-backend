@@ -366,15 +366,14 @@ components:
     category: Cross-Cutting
     scope: BOTH
     description: >
-      @RestControllerAdvice-based GlobalExceptionHandler mapping
-      MethodArgumentNotValidException and other malformed or invalid request
-      exceptions to 400, with field-level errors where applicable;
-      AuthenticationException to 401; AccessDeniedException to 403;
-      ResourceNotFoundException to 404; HttpRequestMethodNotSupportedException
-      to 405; HttpMediaTypeNotSupportedException to 415; and every other
-      exception to a generic 500. Every error uses the standard ApiResponse
-      envelope, no stack trace is leaked to the client, and every exception
-      is still logged server-side with its stack trace.
+      Hand-written error responses using the standard ApiResponse envelope.
+      GlobalExceptionHandler (@RestControllerAdvice) maps application/MVC
+      exceptions to 400 (with field-level errors where applicable), 404,
+      405 (HttpRequestMethodNotSupportedException), 415
+      (HttpMediaTypeNotSupportedException), and 500. JwtAuthenticationEntryPoint
+      (401) and JwtAccessDeniedHandler (403), configured in SecurityConfig
+      (BE-06), handle security failures. No stack trace is leaked to the client;
+      every exception is logged server-side with its stack trace.
     requirement_status: MANDATORY
     target_phase: PHASE_1
     sources:
