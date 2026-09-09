@@ -26,7 +26,7 @@ import jakarta.validation.constraints.Min;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(GlobalExceptionHandlerIntegrationTest.TestController.class)
+@Import({GlobalExceptionHandlerIntegrationTest.TestController.class, GlobalExceptionHandlerIntegrationTest.NativeValidationController.class})
 public class GlobalExceptionHandlerIntegrationTest {
 
     @Autowired
@@ -65,6 +65,15 @@ public class GlobalExceptionHandlerIntegrationTest {
             return "OK";
         }
 
+        @GetMapping("/constraint")
+        public String constraint(@RequestParam @Min(1) int page) {
+            return String.valueOf(page);
+        }
+    }
+
+    @RestController
+    @RequestMapping("/api/test-exception/native")
+    public static class NativeValidationController {
         @GetMapping("/constraint")
         public String constraint(@RequestParam @Min(1) int page) {
             return String.valueOf(page);
@@ -131,7 +140,7 @@ public class GlobalExceptionHandlerIntegrationTest {
                 .andExpect(jsonPath("$.clientMessage").value("Invalid request parameter"))
                 .andExpect(jsonPath("$.statusCode").value(400))
                 .andExpect(jsonPath("$.body").isEmpty())
-                .andExpect(jsonPath("$.errors").isEmpty());
+                .andExpect(jsonPath("$.errors.id").value("Invalid value"));
     }
 
     @Test
@@ -144,7 +153,7 @@ public class GlobalExceptionHandlerIntegrationTest {
                 .andExpect(jsonPath("$.clientMessage").value("Required request parameter is missing"))
                 .andExpect(jsonPath("$.statusCode").value(400))
                 .andExpect(jsonPath("$.body").isEmpty())
-                .andExpect(jsonPath("$.errors").isEmpty());
+                .andExpect(jsonPath("$.errors.param").value("Parameter is required"));
     }
 
     @Test
@@ -204,6 +213,19 @@ public class GlobalExceptionHandlerIntegrationTest {
                 .andExpect(jsonPath("$.clientMessage").value("Request validation failed"))
                 .andExpect(jsonPath("$.statusCode").value(400))
                 .andExpect(jsonPath("$.body").isEmpty())
-                .andExpect(jsonPath("$.errors").isEmpty());
+                .andExpect(jsonPath("$.errors.page").value("must be greater than or equal to 1"));
+    }
+
+    @Test
+    @WithMockUser
+    void testNativeMethodValidation_Returns400() throws Exception {
+        mockMvc.perform(get("/api/test-exception/native/constraint?page=0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$", aMapWithSize(5)))
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.clientMessage").value("Request validation failed"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.body").isEmpty())
+                .andExpect(jsonPath("$.errors.page").value("must be greater than or equal to 1"));
     }
 }
