@@ -194,18 +194,18 @@ Validated against the hand-written reference implementation on `develop` (PR #14
     "name": "Work Order Management",
     "route": "/work-orders",
     "components": [
-      { "id": "c1", "type": "text-field", "label": "Order Number", "fieldKey": "orderNumber", "position": { "row": 0, "col": 0 }, "size": { "width": 6, "height": 1 }, "visibility": true, "disabled": false },
-      { "id": "c2", "type": "select", "label": "Status", "fieldKey": "status", "position": { "row": 0, "col": 6 }, "size": { "width": 6, "height": 1 }, "visibility": true, "disabled": false },
-      { "id": "c3", "type": "date-field", "label": "Due Date", "fieldKey": "dueDate", "position": { "row": 1, "col": 0 }, "size": { "width": 6, "height": 1 }, "visibility": true, "disabled": false },
-      { "id": "c4", "type": "text-field", "label": "Assigned To", "fieldKey": "assignedTo", "position": { "row": 1, "col": 6 }, "size": { "width": 6, "height": 1 }, "visibility": true, "disabled": false },
-      { "id": "c5", "type": "table", "label": "Work Orders", "fieldKey": "workOrders", "position": { "row": 2, "col": 0 }, "size": { "width": 12, "height": 4 }, "visibility": true, "disabled": false }
+      { "id": "10000000-0000-4000-8000-000000000001", "type": "text-field", "label": "Order Number", "fieldKey": "orderNumber", "position": { "row": 0, "col": 0 }, "size": { "width": 6, "height": 1 }, "visibility": true, "disabled": false },
+      { "id": "10000000-0000-4000-8000-000000000002", "type": "select", "label": "Status", "fieldKey": "status", "position": { "row": 0, "col": 6 }, "size": { "width": 6, "height": 1 }, "visibility": true, "disabled": false },
+      { "id": "10000000-0000-4000-8000-000000000003", "type": "date-field", "label": "Due Date", "fieldKey": "dueDate", "position": { "row": 1, "col": 0 }, "size": { "width": 6, "height": 1 }, "visibility": true, "disabled": false },
+      { "id": "10000000-0000-4000-8000-000000000004", "type": "text-field", "label": "Assigned To", "fieldKey": "assignedTo", "position": { "row": 1, "col": 6 }, "size": { "width": 6, "height": 1 }, "visibility": true, "disabled": false },
+      { "id": "10000000-0000-4000-8000-000000000005", "type": "table", "label": "Work Orders", "fieldKey": "workOrders", "position": { "row": 2, "col": 0 }, "size": { "width": 12, "height": 4 }, "visibility": true, "disabled": false }
     ],
     "apiBindings": [
-      { "id": "b1", "name": "listWorkOrders", "httpMethod": "GET", "endpointUrl": "/api/v1/work-orders", "headers": {}, "requestMapping": { "query": { "status": "status" } }, "responseMapping": { "list": "body.data" } },
-      { "id": "b2", "name": "createWorkOrder", "httpMethod": "POST", "endpointUrl": "/api/v1/work-orders", "headers": {}, "requestMapping": { "body": { "orderNumber": "orderNumber", "status": "status", "dueDate": "dueDate", "assignedTo": "assignedTo" } }, "responseMapping": { "item": "body" } },
-      { "id": "b3", "name": "getWorkOrder", "httpMethod": "GET", "endpointUrl": "/api/v1/work-orders/{id}", "headers": {}, "requestMapping": { "path": { "id": "id" } }, "responseMapping": { "item": "body" } },
-      { "id": "b4", "name": "updateWorkOrder", "httpMethod": "PUT", "endpointUrl": "/api/v1/work-orders/{id}", "headers": {}, "requestMapping": { "path": { "id": "id" }, "body": { "orderNumber": "orderNumber", "status": "status", "dueDate": "dueDate", "assignedTo": "assignedTo" } }, "responseMapping": { "item": "body" } },
-      { "id": "b5", "name": "deleteWorkOrder", "httpMethod": "DELETE", "endpointUrl": "/api/v1/work-orders/{id}", "headers": {}, "requestMapping": { "path": { "id": "id" } }, "responseMapping": {} }
+      { "id": "20000000-0000-4000-8000-000000000001", "name": "listWorkOrders", "httpMethod": "GET", "endpointUrl": "/api/v1/work-orders", "headers": {}, "requestMapping": { "query": { "status": "status" } }, "responseMapping": { "list": "body.data" } },
+      { "id": "20000000-0000-4000-8000-000000000002", "name": "createWorkOrder", "httpMethod": "POST", "endpointUrl": "/api/v1/work-orders", "headers": {}, "requestMapping": { "body": { "orderNumber": "orderNumber", "status": "status", "dueDate": "dueDate", "assignedTo": "assignedTo" } }, "responseMapping": { "item": "body" } },
+      { "id": "20000000-0000-4000-8000-000000000003", "name": "getWorkOrder", "httpMethod": "GET", "endpointUrl": "/api/v1/work-orders/{id}", "headers": {}, "requestMapping": { "path": { "id": "id" } }, "responseMapping": { "item": "body" } },
+      { "id": "20000000-0000-4000-8000-000000000004", "name": "updateWorkOrder", "httpMethod": "PUT", "endpointUrl": "/api/v1/work-orders/{id}", "headers": {}, "requestMapping": { "path": { "id": "id" }, "body": { "orderNumber": "orderNumber", "status": "status", "dueDate": "dueDate", "assignedTo": "assignedTo" } }, "responseMapping": { "item": "body" } },
+      { "id": "20000000-0000-4000-8000-000000000005", "name": "deleteWorkOrder", "httpMethod": "DELETE", "endpointUrl": "/api/v1/work-orders/{id}", "headers": {}, "requestMapping": { "path": { "id": "id" } }, "responseMapping": {} }
     ]
   }
 }
