@@ -1,33 +1,49 @@
 package eg.mts.gsuif.exception;
 
 import eg.mts.gsuif.dto.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.core.MethodParameter;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.lang.Nullable;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
+import org.springframework.validation.method.ParameterErrors;
+import org.springframework.validation.method.ParameterValidationResult;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.MatrixVariable;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import org.springframework.context.MessageSourceResolvable;
-import org.springframework.web.method.annotation.HandlerMethodValidationException;
-
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
-import jakarta.validation.ConstraintViolationException;
-import org.springframework.web.HttpRequestMethodNotSupportedException;
-import org.springframework.web.HttpMediaTypeNotSupportedException;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
-
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /** Reserved errors-map key for object-level and cross-parameter validation messages (STD-03). */
+    private static final String GLOBAL_ERROR_KEY = "_global";
 
     private Map<String, String> createSingleErrorMap(String key, String message) {
         Map<String, String> errors = new LinkedHashMap<>();
@@ -91,19 +107,156 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<ApiResponse<Void>> handleHandlerMethodValidationException(HandlerMethodValidationException ex) {
         log.error("Method validation failed: {}", ex.getMessage(), ex);
-        Map<String, String> errors = new LinkedHashMap<>();
-        for (var result : ex.getParameterValidationResults()) {
-            String paramName = result.getMethodParameter().getParameterName();
-            if (paramName == null) {
-                paramName = "unknown";
-            }
-            for (MessageSourceResolvable error : result.getResolvableErrors()) {
-                errors.putIfAbsent(paramName, error.getDefaultMessage());
-            }
+
+        if (ex.isForReturnValue()) {
+            return ResponseEntity
+                    .internalServerError()
+                    .body(ApiResponse.error(500, "An unexpected error occurred", null));
         }
+
+        Map<String, String> errors = new LinkedHashMap<>();
+        collectMethodValidationErrors(ex, errors);
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.error(400, "Request validation failed", errors));
+    }
+
+    private void collectMethodValidationErrors(HandlerMethodValidationException ex, Map<String, String> errors) {
+        ex.visitResults(new HandlerMethodValidationException.Visitor() {
+            @Override
+            public void cookieValue(@Nullable CookieValue cookieValue, ParameterValidationResult result) {
+                addSimpleParameterResult(result, errors);
+            }
+
+            @Override
+            public void matrixVariable(@Nullable MatrixVariable matrixVariable, ParameterValidationResult result) {
+                addSimpleParameterResult(result, errors);
+            }
+
+            @Override
+            public void modelAttribute(@Nullable ModelAttribute modelAttribute, ParameterErrors paramErrors) {
+                addParameterErrors(paramErrors, errors);
+            }
+
+            @Override
+            public void pathVariable(@Nullable PathVariable pathVariable, ParameterValidationResult result) {
+                addSimpleParameterResult(result, errors);
+            }
+
+            @Override
+            public void requestBody(@Nullable RequestBody requestBody, ParameterErrors paramErrors) {
+                addParameterErrors(paramErrors, errors);
+            }
+
+            @Override
+            public void requestHeader(@Nullable RequestHeader requestHeader, ParameterValidationResult result) {
+                addSimpleParameterResult(result, errors);
+            }
+
+            @Override
+            public void requestParam(@Nullable RequestParam requestParam, ParameterValidationResult result) {
+                addSimpleParameterResult(result, errors);
+            }
+
+            @Override
+            public void requestPart(@Nullable RequestPart requestPart, ParameterErrors paramErrors) {
+                addParameterErrors(paramErrors, errors);
+            }
+
+            @Override
+            public void other(ParameterValidationResult result) {
+                addSimpleParameterResult(result, errors);
+            }
+        });
+
+        for (MessageSourceResolvable crossError : ex.getCrossParameterValidationResults()) {
+            putValidationMessage(errors, GLOBAL_ERROR_KEY, crossError.getDefaultMessage());
+        }
+    }
+
+    private void addSimpleParameterResult(ParameterValidationResult result, Map<String, String> errors) {
+        if (result instanceof ParameterErrors paramErrors) {
+            addParameterErrors(paramErrors, errors);
+            return;
+        }
+        String key = parameterName(result.getMethodParameter());
+        for (MessageSourceResolvable error : result.getResolvableErrors()) {
+            putValidationMessage(errors, key, error.getDefaultMessage());
+        }
+    }
+
+    private void addParameterErrors(ParameterErrors paramErrors, Map<String, String> errors) {
+        for (FieldError fieldError : paramErrors.getFieldErrors()) {
+            putValidationMessage(errors, fieldError.getField(), fieldError.getDefaultMessage());
+        }
+        for (ObjectError globalError : paramErrors.getGlobalErrors()) {
+            putValidationMessage(errors, GLOBAL_ERROR_KEY, globalError.getDefaultMessage());
+        }
+    }
+
+    private String parameterName(MethodParameter methodParameter) {
+        String name = methodParameter.getParameterName();
+        return name != null ? name : "unknown";
+    }
+
+    private void putValidationMessage(Map<String, String> errors, String key, @Nullable String message) {
+        if (message != null) {
+            errors.putIfAbsent(key, message);
+        }
+    }
+
+    /** Invalid pagination sort property → HTTP 400. */
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePropertyReferenceException(PropertyReferenceException ex) {
+        log.error("Invalid property reference: {}", ex.getMessage(), ex);
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(400, "Invalid property reference in sorting", null));
+    }
+
+    /** Application-level duplicate business key → HTTP 400. */
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateResource(DuplicateResourceException ex) {
+        log.error("Duplicate resource: {}", ex.getMessage(), ex);
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(400, ex.getMessage(), null));
+    }
+
+    /**
+     * Race-condition fallback when a unique DB constraint is hit despite the service pre-check.
+     * Only unique violations map to HTTP 400; other integrity failures fall through to HTTP 500.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.error("Data integrity violation: {}", ex.getMessage(), ex);
+
+        if (isUniqueConstraintViolation(ex)) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(ApiResponse.error(400, "Resource already exists or violates unique constraint", null));
+        }
+
+        return handleGeneral(ex);
+    }
+
+    private boolean isUniqueConstraintViolation(DataIntegrityViolationException ex) {
+        Throwable cause = ex;
+        while (cause != null) {
+            if (cause instanceof java.sql.SQLException sqlEx) {
+                // SQLState 23505 (unique_violation): used by PostgreSQL and H2 in PostgreSQL mode (STD-34).
+                if ("23505".equals(sqlEx.getSQLState())) {
+                    return true;
+                }
+            }
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+                if ("23505".equals(cve.getSQLState())) {
+                    return true;
+                }
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     // Branch 2: resource not found → 404

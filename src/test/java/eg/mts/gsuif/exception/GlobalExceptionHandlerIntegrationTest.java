@@ -11,6 +11,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import java.lang.reflect.Method;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.test.context.ActiveProfiles;
@@ -26,7 +28,12 @@ import jakarta.validation.constraints.Min;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import({GlobalExceptionHandlerIntegrationTest.TestController.class, GlobalExceptionHandlerIntegrationTest.NativeValidationController.class})
+@Import({
+        GlobalExceptionHandlerIntegrationTest.TestController.class,
+        GlobalExceptionHandlerIntegrationTest.NativeValidationController.class,
+        GlobalExceptionHandlerIntegrationTest.CrossParameterValidationController.class,
+        GlobalExceptionHandlerIntegrationTest.ReturnValueValidationController.class
+})
 public class GlobalExceptionHandlerIntegrationTest {
 
     @Autowired
@@ -78,11 +85,54 @@ public class GlobalExceptionHandlerIntegrationTest {
         public String constraint(@RequestParam @Min(1) int page) {
             return String.valueOf(page);
         }
+
+    }
+
+    /**
+     * Synthetic cross-parameter fixture only. Builds a real {@code HandlerMethodValidationException}
+     * via {@code MethodValidationResult.create}; this is not native Spring MVC end-to-end validation.
+     */
+    @RestController
+    @RequestMapping("/api/test-exception/cross-param")
+    public static class CrossParameterValidationController {
+        @GetMapping("/synthetic")
+        public String syntheticCrossParameterFailure() throws NoSuchMethodException {
+            Method method = getClass().getDeclaredMethod("sampleMethod", String.class, String.class);
+            org.springframework.validation.method.MethodValidationResult result =
+                    org.springframework.validation.method.MethodValidationResult.create(
+                            this,
+                            method,
+                            List.of(),
+                            List.of(new org.springframework.context.support.DefaultMessageSourceResolvable(
+                                    new String[] {}, "At least one parameter must be present")));
+            throw new org.springframework.web.method.annotation.HandlerMethodValidationException(result);
+        }
+
+        @SuppressWarnings("unused")
+        public void sampleMethod(String first, String second) {
+        }
+    }
+
+    @RestController
+    @RequestMapping("/api/test-exception/return-value")
+    public static class ReturnValueValidationController {
+        @GetMapping("/invalid")
+        public @Valid NestedRequest invalidReturn() {
+            return new NestedRequest();
+        }
     }
 
     public static class TestRequest {
         @NotNull
         public String field;
+    }
+
+    public static class NestedRequest {
+        @NotNull
+        public String orderNumber;
+
+        @NotNull
+        public String dueDate;
     }
 
     @Test
@@ -227,5 +277,35 @@ public class GlobalExceptionHandlerIntegrationTest {
                 .andExpect(jsonPath("$.statusCode").value(400))
                 .andExpect(jsonPath("$.body").isEmpty())
                 .andExpect(jsonPath("$.errors.page").value("must be greater than or equal to 1"));
+    }
+
+    /** Synthetic exception fixture — verifies {@code _global} mapping, not native MVC cross-parameter validation. */
+    @Test
+    @WithMockUser
+    void testSyntheticCrossParameterValidation_Returns400WithGlobalError() throws Exception {
+        mockMvc.perform(get("/api/test-exception/cross-param/synthetic"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$", aMapWithSize(5)))
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.clientMessage").value("Request validation failed"))
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.body").isEmpty())
+                .andExpect(jsonPath("$.errors._global").value("At least one parameter must be present"));
+    }
+
+    @Test
+    @WithMockUser
+    void testReturnValueValidation_ReturnsSanitized500() throws Exception {
+        mockMvc.perform(get("/api/test-exception/return-value/invalid"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$", aMapWithSize(5)))
+                .andExpect(jsonPath("$.status").value("INTERNAL_SERVER_ERROR"))
+                .andExpect(jsonPath("$.clientMessage").value("An unexpected error occurred"))
+                .andExpect(jsonPath("$.statusCode").value(500))
+                .andExpect(jsonPath("$.body").isEmpty())
+                .andExpect(jsonPath("$.errors").isEmpty())
+                .andExpect(content().string(not(containsString("orderNumber"))))
+                .andExpect(content().string(not(containsString("must not be null"))))
+                .andExpect(content().string(not(containsString("HandlerMethodValidationException"))));
     }
 }

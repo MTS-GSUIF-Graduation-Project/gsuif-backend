@@ -1,3 +1,14 @@
+# ---------------------------------------------------------------------------
+# T-09 OpenAPI Generator Capability Spike
+#
+# This specification was created only as input for the OpenAPI Generator
+# capability evaluation. It is NOT the canonical GSUIF WorkOrder API contract
+# and is NOT the source of truth for generated CRUD templates.
+#
+# The standards-conformant WorkOrder implementation is SCRUM-36 / T-10.
+# Known differences may exist, including field definitions and HTTP status
+# codes.
+# ---------------------------------------------------------------------------
 openapi: 3.0.3
 info:
   title: Work Order API
