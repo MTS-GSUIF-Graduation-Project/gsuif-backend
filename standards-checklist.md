@@ -252,8 +252,8 @@ The Technical Document predates the team's confirmed architecture decisions. The
 ### STD-28 — HTTP status code usage
 🟪 BOTH · 🟢 MANDATORY
 
-- **🛠️ Implement:** 200 (GET/PUT/PATCH/DELETE success), 201 (POST creates a resource), 400/401/403/404/500 per Section 3.
-- **🔍 Check:** Fail if a creating POST returns 200 instead of 201, or any code deviates from this table.
+- **🛠️ Implement:** Apply these mandatory semantic mappings when applicable: 200 (successful non-creating operation), 201 (POST creates a resource), 400 (malformed request or invalid body/parameter/value), 401 (missing or invalid authentication), 403 (insufficient permission), 404 (resource not found), 405 (HTTP method not supported), 415 (request media type not supported), and 500 (unexpected server failure). Other standard HTTP status codes are allowed only when documented and semantically appropriate. Every error response must use the five-field `ApiResponse` envelope.
+- **🔍 Check:** Fail if a creating POST returns 200 instead of 201, a request outcome maps to a semantically incorrect status, an additional status is undocumented, or an error bypasses the standard `ApiResponse` envelope.
 
 ---
 
