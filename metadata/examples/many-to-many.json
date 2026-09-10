@@ -2,13 +2,26 @@
   "project": {
     "id": "00000000-0000-4000-8000-000000000099",
     "name": "GSUIF Phase 1 Reference",
-    "description": "Many-to-many example: GSUIF_USER — GSUIF_USER_ROLE — GSUIF_ROLE (SCRUM-21 / T-14 tables, BE-07 basic RBAC). Nested role URLs follow the same /api/v1 relative pattern as BE-15; T-16 does not yet publish these paths."
+    "description": "Many-to-many example: User — UserRole — Role (T-14 GSUIF_USER / GSUIF_USER_ROLE / GSUIF_ROLE) with an explicit join-entity relationship."
   },
   "page": {
     "id": "00000000-0000-4000-8000-000000000003",
     "projectId": "00000000-0000-4000-8000-000000000099",
     "name": "Users and Roles",
     "route": "/users-roles",
+    "relationships": [
+      {
+        "id": "40000000-0000-4000-8000-000000000002",
+        "cardinality": "many-to-many",
+        "sourceEntity": "User",
+        "targetEntity": "Role",
+        "sourceKey": "id",
+        "targetKey": "id",
+        "joinEntity": "UserRole",
+        "joinSourceForeignKey": "userId",
+        "joinTargetForeignKey": "roleId"
+      }
+    ],
     "components": [
       {
         "id": "12000000-0000-4000-8000-000000000001",
@@ -90,7 +103,8 @@
         "headers": {},
         "requestMapping": { "path": { "id": "id" } },
         "responseMapping": { "list": "body.data" },
-        "linkedComponentIds": ["12000000-0000-4000-8000-000000000005"]
+        "linkedComponentIds": ["12000000-0000-4000-8000-000000000005"],
+        "relationshipId": "40000000-0000-4000-8000-000000000002"
       },
       {
         "id": "22000000-0000-4000-8000-000000000004",
@@ -102,7 +116,8 @@
           "path": { "id": "id" },
           "body": { "roleName": "roleName" }
         },
-        "responseMapping": { "item": "body" }
+        "responseMapping": { "item": "body" },
+        "relationshipId": "40000000-0000-4000-8000-000000000002"
       },
       {
         "id": "22000000-0000-4000-8000-000000000005",
@@ -111,7 +126,8 @@
         "endpointUrl": "/api/v1/users/{id}/roles/{roleId}",
         "headers": {},
         "requestMapping": { "path": { "id": "id", "roleId": "roleId" } },
-        "responseMapping": {}
+        "responseMapping": {},
+        "relationshipId": "40000000-0000-4000-8000-000000000002"
       }
     ]
   },
@@ -123,6 +139,19 @@
     "schemaVersion": "1.0.0",
     "isCurrent": true,
     "snapshot": {
+      "relationships": [
+        {
+          "id": "40000000-0000-4000-8000-000000000002",
+          "cardinality": "many-to-many",
+          "sourceEntity": "User",
+          "targetEntity": "Role",
+          "sourceKey": "id",
+          "targetKey": "id",
+          "joinEntity": "UserRole",
+          "joinSourceForeignKey": "userId",
+          "joinTargetForeignKey": "roleId"
+        }
+      ],
       "components": [
         {
           "id": "12000000-0000-4000-8000-000000000001",
@@ -204,7 +233,8 @@
           "headers": {},
           "requestMapping": { "path": { "id": "id" } },
           "responseMapping": { "list": "body.data" },
-          "linkedComponentIds": ["12000000-0000-4000-8000-000000000005"]
+          "linkedComponentIds": ["12000000-0000-4000-8000-000000000005"],
+          "relationshipId": "40000000-0000-4000-8000-000000000002"
         },
         {
           "id": "22000000-0000-4000-8000-000000000004",
@@ -216,7 +246,8 @@
             "path": { "id": "id" },
             "body": { "roleName": "roleName" }
           },
-          "responseMapping": { "item": "body" }
+          "responseMapping": { "item": "body" },
+          "relationshipId": "40000000-0000-4000-8000-000000000002"
         },
         {
           "id": "22000000-0000-4000-8000-000000000005",
@@ -225,7 +256,8 @@
           "endpointUrl": "/api/v1/users/{id}/roles/{roleId}",
           "headers": {},
           "requestMapping": { "path": { "id": "id", "roleId": "roleId" } },
-          "responseMapping": {}
+          "responseMapping": {},
+          "relationshipId": "40000000-0000-4000-8000-000000000002"
         }
       ]
     }

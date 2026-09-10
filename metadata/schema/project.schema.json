@@ -22,15 +22,15 @@
       "type": "string",
       "description": "Optional project description (T-12 Week 1 metadata outline)."
     },
-    "createdDate": {
+    "createdAt": {
       "type": "string",
       "format": "date-time",
-      "description": "Set by JPA @CreatedDate on save (STD-24). Not client-supplied on create."
+      "description": "JSON/JPA property createdAt (T-12, AuditableEntity). Filled by @CreatedDate (STD-24). Not client-supplied on create."
     },
-    "lastModifiedDate": {
+    "updatedAt": {
       "type": "string",
       "format": "date-time",
-      "description": "Set by JPA @LastModifiedDate on save (STD-24). Not client-supplied on create."
+      "description": "JSON/JPA property updatedAt (T-12, AuditableEntity). Filled by @LastModifiedDate (STD-24). Not client-supplied on create."
     },
     "createdBy": {
       "type": "string",

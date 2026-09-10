@@ -25,8 +25,8 @@
     "endpointUrl": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^/",
-      "description": "Relative URL only, e.g. /api/v1/work-orders. Must start with /. No scheme or host (SCRUM-20 environment-agnostic rule)."
+      "pattern": "^/(?!/)",
+      "description": "Environment-agnostic relative path: a single leading slash, e.g. /api/v1/work-orders or /api/v1/work-orders/{id} (SCRUM-20 / T-12). Rejects //host protocol-relative URLs and scheme+host URLs (they do not start with a single /)."
     },
     "headers": {
       "type": "object",
@@ -71,6 +71,11 @@
         "type": "string",
         "format": "uuid"
       }
+    },
+    "relationshipId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Optional Page.relationships[].id this binding implements (nested list, assign, or join operations)."
     }
   }
 }

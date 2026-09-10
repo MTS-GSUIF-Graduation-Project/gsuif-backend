@@ -40,15 +40,22 @@
         "$ref": "api-binding.schema.json"
       }
     },
-    "createdDate": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Set by JPA @CreatedDate (STD-24). Not client-supplied on create."
+    "relationships": {
+      "type": "array",
+      "description": "Reusable entity relationships for this page (one-to-many / many-to-many). Optional; simple CRUD pages omit it.",
+      "items": {
+        "$ref": "relationship.schema.json"
+      }
     },
-    "lastModifiedDate": {
+    "createdAt": {
       "type": "string",
       "format": "date-time",
-      "description": "Set by JPA @LastModifiedDate (STD-24). Not client-supplied on create."
+      "description": "JSON/JPA property createdAt (T-12, AuditableEntity). Filled by @CreatedDate (STD-24). Not client-supplied on create."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "JSON/JPA property updatedAt (T-12, AuditableEntity). Filled by @LastModifiedDate (STD-24). Not client-supplied on create."
     },
     "createdBy": {
       "type": "string",

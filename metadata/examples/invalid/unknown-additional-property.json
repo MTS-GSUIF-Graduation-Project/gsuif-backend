@@ -1,0 +1,8 @@
+{
+  "target": "project",
+  "instance": {
+    "id": "00000000-0000-4000-8000-000000000099",
+    "name": "GSUIF Phase 1 Reference",
+    "tenantId": "should-not-be-here"
+  }
+}

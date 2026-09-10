@@ -26,20 +26,20 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["row", "col"],
-      "description": "Grid position. Keys taken from the T-12 outline example { row, col }.",
+      "description": "Grid position. Keys taken from the T-12 outline example { row, col }. Origin is (0, 0); negatives are invalid.",
       "properties": {
-        "row": { "type": "integer" },
-        "col": { "type": "integer" }
+        "row": { "type": "integer", "minimum": 0 },
+        "col": { "type": "integer", "minimum": 0 }
       }
     },
     "size": {
       "type": "object",
       "additionalProperties": false,
       "required": ["width", "height"],
-      "description": "Grid size. Keys taken from the T-12 outline example { width, height }.",
+      "description": "Grid size. Keys taken from the T-12 outline example { width, height }. Span must be at least 1 so the component occupies space.",
       "properties": {
-        "width": { "type": "integer" },
-        "height": { "type": "integer" }
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
       }
     },
     "visibility": {
