@@ -21,7 +21,6 @@ const invalidDir = path.join(examplesDir, "invalid");
 const schemaFiles = [
   "component.schema.json",
   "api-binding.schema.json",
-  "relationship.schema.json",
   "project.schema.json",
   "page.schema.json",
   "metadata-version.schema.json",
@@ -55,7 +54,6 @@ const validators = {
   page: ajv.getSchema("gsuif/page.schema.json"),
   component: ajv.getSchema("gsuif/component.schema.json"),
   apiBinding: ajv.getSchema("gsuif/api-binding.schema.json"),
-  relationship: ajv.getSchema("gsuif/relationship.schema.json"),
   metadataVersion: ajv.getSchema("gsuif/metadata-version.schema.json"),
 };
 

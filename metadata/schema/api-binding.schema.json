@@ -71,11 +71,6 @@
         "type": "string",
         "format": "uuid"
       }
-    },
-    "relationshipId": {
-      "type": "string",
-      "format": "uuid",
-      "description": "Optional Page.relationships[].id this binding implements (nested list, assign, or join operations)."
     }
   }
 }
