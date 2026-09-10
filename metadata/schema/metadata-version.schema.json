@@ -48,7 +48,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["components", "apiBindings"],
-      "description": "Immutable copy of the page's components, apiBindings, and relationships at save time (T-12 snapshot plus optional relationships).",
+      "description": "Immutable copy of the page's components and apiBindings at save time (T-12, ADR-006).",
       "properties": {
         "components": {
           "type": "array",
@@ -60,12 +60,6 @@
           "type": "array",
           "items": {
             "$ref": "api-binding.schema.json"
-          }
-        },
-        "relationships": {
-          "type": "array",
-          "items": {
-            "$ref": "relationship.schema.json"
           }
         }
       }

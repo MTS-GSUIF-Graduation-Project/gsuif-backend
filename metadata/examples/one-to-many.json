@@ -2,31 +2,27 @@
   "project": {
     "id": "00000000-0000-4000-8000-000000000099",
     "name": "GSUIF Phase 1 Reference",
-    "description": "One-to-many example: Project 1—N Page with an explicit relationship (source, target, FK) plus BE-15 nested page APIs."
+    "description": "One-to-many example: Project 1—N Page illustrated via BE-15 nested page APIs (T-12 relationship diagram). Not a reusable relationship schema."
   },
   "page": {
     "id": "00000000-0000-4000-8000-000000000002",
     "projectId": "00000000-0000-4000-8000-000000000099",
     "name": "Project Pages",
     "route": "/projects/pages",
-    "relationships": [
-      {
-        "id": "40000000-0000-4000-8000-000000000001",
-        "cardinality": "one-to-many",
-        "sourceEntity": "Project",
-        "targetEntity": "Page",
-        "sourceKey": "id",
-        "foreignKey": "projectId"
-      }
-    ],
     "components": [
       {
         "id": "11000000-0000-4000-8000-000000000001",
         "type": "text-field",
         "label": "Project Name",
         "fieldKey": "name",
-        "position": { "row": 0, "col": 0 },
-        "size": { "width": 6, "height": 1 },
+        "position": {
+          "row": 0,
+          "col": 0
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
         "visibility": true,
         "disabled": false
       },
@@ -35,8 +31,14 @@
         "type": "text-field",
         "label": "Page Name",
         "fieldKey": "pageName",
-        "position": { "row": 1, "col": 0 },
-        "size": { "width": 6, "height": 1 },
+        "position": {
+          "row": 1,
+          "col": 0
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
         "visibility": true,
         "disabled": false
       },
@@ -45,8 +47,14 @@
         "type": "text-field",
         "label": "Page Route",
         "fieldKey": "route",
-        "position": { "row": 1, "col": 6 },
-        "size": { "width": 6, "height": 1 },
+        "position": {
+          "row": 1,
+          "col": 6
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
         "visibility": true,
         "disabled": false
       },
@@ -55,8 +63,14 @@
         "type": "table",
         "label": "Pages",
         "fieldKey": "pages",
-        "position": { "row": 2, "col": 0 },
-        "size": { "width": 12, "height": 4 },
+        "position": {
+          "row": 2,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 4
+        },
         "visibility": true,
         "disabled": false
       }
@@ -68,9 +82,17 @@
         "httpMethod": "GET",
         "endpointUrl": "/api/v1/projects/{projectId}",
         "headers": {},
-        "requestMapping": { "path": { "projectId": "projectId" } },
-        "responseMapping": { "item": "body" },
-        "linkedComponentIds": ["11000000-0000-4000-8000-000000000001"]
+        "requestMapping": {
+          "path": {
+            "projectId": "projectId"
+          }
+        },
+        "responseMapping": {
+          "item": "body"
+        },
+        "linkedComponentIds": [
+          "11000000-0000-4000-8000-000000000001"
+        ]
       },
       {
         "id": "21000000-0000-4000-8000-000000000002",
@@ -78,10 +100,18 @@
         "httpMethod": "GET",
         "endpointUrl": "/api/v1/projects/{projectId}/pages",
         "headers": {},
-        "requestMapping": { "path": { "projectId": "projectId" } },
-        "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
-        "linkedComponentIds": ["11000000-0000-4000-8000-000000000004"],
-        "relationshipId": "40000000-0000-4000-8000-000000000001"
+        "requestMapping": {
+          "path": {
+            "projectId": "projectId"
+          }
+        },
+        "responseMapping": {
+          "list": "body.data",
+          "pagination": "body.totalPages"
+        },
+        "linkedComponentIds": [
+          "11000000-0000-4000-8000-000000000004"
+        ]
       },
       {
         "id": "21000000-0000-4000-8000-000000000003",
@@ -90,11 +120,17 @@
         "endpointUrl": "/api/v1/projects/{projectId}/pages",
         "headers": {},
         "requestMapping": {
-          "path": { "projectId": "projectId" },
-          "body": { "name": "pageName", "route": "route" }
+          "path": {
+            "projectId": "projectId"
+          },
+          "body": {
+            "name": "pageName",
+            "route": "route"
+          }
         },
-        "responseMapping": { "item": "body" },
-        "relationshipId": "40000000-0000-4000-8000-000000000001"
+        "responseMapping": {
+          "item": "body"
+        }
       },
       {
         "id": "21000000-0000-4000-8000-000000000004",
@@ -102,9 +138,15 @@
         "httpMethod": "GET",
         "endpointUrl": "/api/v1/projects/{projectId}/pages/{id}",
         "headers": {},
-        "requestMapping": { "path": { "projectId": "projectId", "id": "id" } },
-        "responseMapping": { "item": "body" },
-        "relationshipId": "40000000-0000-4000-8000-000000000001"
+        "requestMapping": {
+          "path": {
+            "projectId": "projectId",
+            "id": "id"
+          }
+        },
+        "responseMapping": {
+          "item": "body"
+        }
       },
       {
         "id": "21000000-0000-4000-8000-000000000005",
@@ -113,11 +155,18 @@
         "endpointUrl": "/api/v1/projects/{projectId}/pages/{id}",
         "headers": {},
         "requestMapping": {
-          "path": { "projectId": "projectId", "id": "id" },
-          "body": { "name": "pageName", "route": "route" }
+          "path": {
+            "projectId": "projectId",
+            "id": "id"
+          },
+          "body": {
+            "name": "pageName",
+            "route": "route"
+          }
         },
-        "responseMapping": { "item": "body" },
-        "relationshipId": "40000000-0000-4000-8000-000000000001"
+        "responseMapping": {
+          "item": "body"
+        }
       },
       {
         "id": "21000000-0000-4000-8000-000000000006",
@@ -125,9 +174,13 @@
         "httpMethod": "DELETE",
         "endpointUrl": "/api/v1/projects/{projectId}/pages/{id}",
         "headers": {},
-        "requestMapping": { "path": { "projectId": "projectId", "id": "id" } },
-        "responseMapping": {},
-        "relationshipId": "40000000-0000-4000-8000-000000000001"
+        "requestMapping": {
+          "path": {
+            "projectId": "projectId",
+            "id": "id"
+          }
+        },
+        "responseMapping": {}
       }
     ]
   },
@@ -139,24 +192,20 @@
     "schemaVersion": "1.0.0",
     "isCurrent": true,
     "snapshot": {
-      "relationships": [
-        {
-          "id": "40000000-0000-4000-8000-000000000001",
-          "cardinality": "one-to-many",
-          "sourceEntity": "Project",
-          "targetEntity": "Page",
-          "sourceKey": "id",
-          "foreignKey": "projectId"
-        }
-      ],
       "components": [
         {
           "id": "11000000-0000-4000-8000-000000000001",
           "type": "text-field",
           "label": "Project Name",
           "fieldKey": "name",
-          "position": { "row": 0, "col": 0 },
-          "size": { "width": 6, "height": 1 },
+          "position": {
+            "row": 0,
+            "col": 0
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
           "visibility": true,
           "disabled": false
         },
@@ -165,8 +214,14 @@
           "type": "text-field",
           "label": "Page Name",
           "fieldKey": "pageName",
-          "position": { "row": 1, "col": 0 },
-          "size": { "width": 6, "height": 1 },
+          "position": {
+            "row": 1,
+            "col": 0
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
           "visibility": true,
           "disabled": false
         },
@@ -175,8 +230,14 @@
           "type": "text-field",
           "label": "Page Route",
           "fieldKey": "route",
-          "position": { "row": 1, "col": 6 },
-          "size": { "width": 6, "height": 1 },
+          "position": {
+            "row": 1,
+            "col": 6
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
           "visibility": true,
           "disabled": false
         },
@@ -185,8 +246,14 @@
           "type": "table",
           "label": "Pages",
           "fieldKey": "pages",
-          "position": { "row": 2, "col": 0 },
-          "size": { "width": 12, "height": 4 },
+          "position": {
+            "row": 2,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 4
+          },
           "visibility": true,
           "disabled": false
         }
@@ -198,9 +265,17 @@
           "httpMethod": "GET",
           "endpointUrl": "/api/v1/projects/{projectId}",
           "headers": {},
-          "requestMapping": { "path": { "projectId": "projectId" } },
-          "responseMapping": { "item": "body" },
-          "linkedComponentIds": ["11000000-0000-4000-8000-000000000001"]
+          "requestMapping": {
+            "path": {
+              "projectId": "projectId"
+            }
+          },
+          "responseMapping": {
+            "item": "body"
+          },
+          "linkedComponentIds": [
+            "11000000-0000-4000-8000-000000000001"
+          ]
         },
         {
           "id": "21000000-0000-4000-8000-000000000002",
@@ -208,10 +283,18 @@
           "httpMethod": "GET",
           "endpointUrl": "/api/v1/projects/{projectId}/pages",
           "headers": {},
-          "requestMapping": { "path": { "projectId": "projectId" } },
-          "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
-          "linkedComponentIds": ["11000000-0000-4000-8000-000000000004"],
-          "relationshipId": "40000000-0000-4000-8000-000000000001"
+          "requestMapping": {
+            "path": {
+              "projectId": "projectId"
+            }
+          },
+          "responseMapping": {
+            "list": "body.data",
+            "pagination": "body.totalPages"
+          },
+          "linkedComponentIds": [
+            "11000000-0000-4000-8000-000000000004"
+          ]
         },
         {
           "id": "21000000-0000-4000-8000-000000000003",
@@ -220,11 +303,17 @@
           "endpointUrl": "/api/v1/projects/{projectId}/pages",
           "headers": {},
           "requestMapping": {
-            "path": { "projectId": "projectId" },
-            "body": { "name": "pageName", "route": "route" }
+            "path": {
+              "projectId": "projectId"
+            },
+            "body": {
+              "name": "pageName",
+              "route": "route"
+            }
           },
-          "responseMapping": { "item": "body" },
-          "relationshipId": "40000000-0000-4000-8000-000000000001"
+          "responseMapping": {
+            "item": "body"
+          }
         },
         {
           "id": "21000000-0000-4000-8000-000000000004",
@@ -232,9 +321,15 @@
           "httpMethod": "GET",
           "endpointUrl": "/api/v1/projects/{projectId}/pages/{id}",
           "headers": {},
-          "requestMapping": { "path": { "projectId": "projectId", "id": "id" } },
-          "responseMapping": { "item": "body" },
-          "relationshipId": "40000000-0000-4000-8000-000000000001"
+          "requestMapping": {
+            "path": {
+              "projectId": "projectId",
+              "id": "id"
+            }
+          },
+          "responseMapping": {
+            "item": "body"
+          }
         },
         {
           "id": "21000000-0000-4000-8000-000000000005",
@@ -243,11 +338,18 @@
           "endpointUrl": "/api/v1/projects/{projectId}/pages/{id}",
           "headers": {},
           "requestMapping": {
-            "path": { "projectId": "projectId", "id": "id" },
-            "body": { "name": "pageName", "route": "route" }
+            "path": {
+              "projectId": "projectId",
+              "id": "id"
+            },
+            "body": {
+              "name": "pageName",
+              "route": "route"
+            }
           },
-          "responseMapping": { "item": "body" },
-          "relationshipId": "40000000-0000-4000-8000-000000000001"
+          "responseMapping": {
+            "item": "body"
+          }
         },
         {
           "id": "21000000-0000-4000-8000-000000000006",
@@ -255,9 +357,13 @@
           "httpMethod": "DELETE",
           "endpointUrl": "/api/v1/projects/{projectId}/pages/{id}",
           "headers": {},
-          "requestMapping": { "path": { "projectId": "projectId", "id": "id" } },
-          "responseMapping": {},
-          "relationshipId": "40000000-0000-4000-8000-000000000001"
+          "requestMapping": {
+            "path": {
+              "projectId": "projectId",
+              "id": "id"
+            }
+          },
+          "responseMapping": {}
         }
       ]
     }

@@ -2,34 +2,27 @@
   "project": {
     "id": "00000000-0000-4000-8000-000000000099",
     "name": "GSUIF Phase 1 Reference",
-    "description": "Many-to-many example: User — UserRole — Role (T-14 GSUIF_USER / GSUIF_USER_ROLE / GSUIF_ROLE) with an explicit join-entity relationship."
+    "description": "Many-to-many example: User and Role illustrated with join-style nested APIs (T-14 GSUIF_USER / GSUIF_USER_ROLE / GSUIF_ROLE). Not a reusable relationship schema; T-16 does not publish these paths."
   },
   "page": {
     "id": "00000000-0000-4000-8000-000000000003",
     "projectId": "00000000-0000-4000-8000-000000000099",
     "name": "Users and Roles",
     "route": "/users-roles",
-    "relationships": [
-      {
-        "id": "40000000-0000-4000-8000-000000000002",
-        "cardinality": "many-to-many",
-        "sourceEntity": "User",
-        "targetEntity": "Role",
-        "sourceKey": "id",
-        "targetKey": "id",
-        "joinEntity": "UserRole",
-        "joinSourceForeignKey": "userId",
-        "joinTargetForeignKey": "roleId"
-      }
-    ],
     "components": [
       {
         "id": "12000000-0000-4000-8000-000000000001",
         "type": "text-field",
         "label": "Username",
         "fieldKey": "username",
-        "position": { "row": 0, "col": 0 },
-        "size": { "width": 6, "height": 1 },
+        "position": {
+          "row": 0,
+          "col": 0
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
         "visibility": true,
         "disabled": false
       },
@@ -38,8 +31,14 @@
         "type": "text-field",
         "label": "Role Name",
         "fieldKey": "roleName",
-        "position": { "row": 0, "col": 6 },
-        "size": { "width": 6, "height": 1 },
+        "position": {
+          "row": 0,
+          "col": 6
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
         "visibility": true,
         "disabled": false
       },
@@ -48,8 +47,14 @@
         "type": "table",
         "label": "Users",
         "fieldKey": "users",
-        "position": { "row": 1, "col": 0 },
-        "size": { "width": 6, "height": 4 },
+        "position": {
+          "row": 1,
+          "col": 0
+        },
+        "size": {
+          "width": 6,
+          "height": 4
+        },
         "visibility": true,
         "disabled": false
       },
@@ -58,8 +63,14 @@
         "type": "table",
         "label": "Roles",
         "fieldKey": "roles",
-        "position": { "row": 1, "col": 6 },
-        "size": { "width": 6, "height": 4 },
+        "position": {
+          "row": 1,
+          "col": 6
+        },
+        "size": {
+          "width": 6,
+          "height": 4
+        },
         "visibility": true,
         "disabled": false
       },
@@ -68,8 +79,14 @@
         "type": "table",
         "label": "User Roles",
         "fieldKey": "userRoles",
-        "position": { "row": 2, "col": 0 },
-        "size": { "width": 12, "height": 4 },
+        "position": {
+          "row": 2,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 4
+        },
         "visibility": true,
         "disabled": false
       }
@@ -82,8 +99,13 @@
         "endpointUrl": "/api/v1/users",
         "headers": {},
         "requestMapping": {},
-        "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
-        "linkedComponentIds": ["12000000-0000-4000-8000-000000000003"]
+        "responseMapping": {
+          "list": "body.data",
+          "pagination": "body.totalPages"
+        },
+        "linkedComponentIds": [
+          "12000000-0000-4000-8000-000000000003"
+        ]
       },
       {
         "id": "22000000-0000-4000-8000-000000000002",
@@ -92,8 +114,13 @@
         "endpointUrl": "/api/v1/roles",
         "headers": {},
         "requestMapping": {},
-        "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
-        "linkedComponentIds": ["12000000-0000-4000-8000-000000000004"]
+        "responseMapping": {
+          "list": "body.data",
+          "pagination": "body.totalPages"
+        },
+        "linkedComponentIds": [
+          "12000000-0000-4000-8000-000000000004"
+        ]
       },
       {
         "id": "22000000-0000-4000-8000-000000000003",
@@ -101,10 +128,17 @@
         "httpMethod": "GET",
         "endpointUrl": "/api/v1/users/{id}/roles",
         "headers": {},
-        "requestMapping": { "path": { "id": "id" } },
-        "responseMapping": { "list": "body.data" },
-        "linkedComponentIds": ["12000000-0000-4000-8000-000000000005"],
-        "relationshipId": "40000000-0000-4000-8000-000000000002"
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          }
+        },
+        "responseMapping": {
+          "list": "body.data"
+        },
+        "linkedComponentIds": [
+          "12000000-0000-4000-8000-000000000005"
+        ]
       },
       {
         "id": "22000000-0000-4000-8000-000000000004",
@@ -113,11 +147,16 @@
         "endpointUrl": "/api/v1/users/{id}/roles",
         "headers": {},
         "requestMapping": {
-          "path": { "id": "id" },
-          "body": { "roleName": "roleName" }
+          "path": {
+            "id": "id"
+          },
+          "body": {
+            "roleName": "roleName"
+          }
         },
-        "responseMapping": { "item": "body" },
-        "relationshipId": "40000000-0000-4000-8000-000000000002"
+        "responseMapping": {
+          "item": "body"
+        }
       },
       {
         "id": "22000000-0000-4000-8000-000000000005",
@@ -125,9 +164,13 @@
         "httpMethod": "DELETE",
         "endpointUrl": "/api/v1/users/{id}/roles/{roleId}",
         "headers": {},
-        "requestMapping": { "path": { "id": "id", "roleId": "roleId" } },
-        "responseMapping": {},
-        "relationshipId": "40000000-0000-4000-8000-000000000002"
+        "requestMapping": {
+          "path": {
+            "id": "id",
+            "roleId": "roleId"
+          }
+        },
+        "responseMapping": {}
       }
     ]
   },
@@ -139,27 +182,20 @@
     "schemaVersion": "1.0.0",
     "isCurrent": true,
     "snapshot": {
-      "relationships": [
-        {
-          "id": "40000000-0000-4000-8000-000000000002",
-          "cardinality": "many-to-many",
-          "sourceEntity": "User",
-          "targetEntity": "Role",
-          "sourceKey": "id",
-          "targetKey": "id",
-          "joinEntity": "UserRole",
-          "joinSourceForeignKey": "userId",
-          "joinTargetForeignKey": "roleId"
-        }
-      ],
       "components": [
         {
           "id": "12000000-0000-4000-8000-000000000001",
           "type": "text-field",
           "label": "Username",
           "fieldKey": "username",
-          "position": { "row": 0, "col": 0 },
-          "size": { "width": 6, "height": 1 },
+          "position": {
+            "row": 0,
+            "col": 0
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
           "visibility": true,
           "disabled": false
         },
@@ -168,8 +204,14 @@
           "type": "text-field",
           "label": "Role Name",
           "fieldKey": "roleName",
-          "position": { "row": 0, "col": 6 },
-          "size": { "width": 6, "height": 1 },
+          "position": {
+            "row": 0,
+            "col": 6
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
           "visibility": true,
           "disabled": false
         },
@@ -178,8 +220,14 @@
           "type": "table",
           "label": "Users",
           "fieldKey": "users",
-          "position": { "row": 1, "col": 0 },
-          "size": { "width": 6, "height": 4 },
+          "position": {
+            "row": 1,
+            "col": 0
+          },
+          "size": {
+            "width": 6,
+            "height": 4
+          },
           "visibility": true,
           "disabled": false
         },
@@ -188,8 +236,14 @@
           "type": "table",
           "label": "Roles",
           "fieldKey": "roles",
-          "position": { "row": 1, "col": 6 },
-          "size": { "width": 6, "height": 4 },
+          "position": {
+            "row": 1,
+            "col": 6
+          },
+          "size": {
+            "width": 6,
+            "height": 4
+          },
           "visibility": true,
           "disabled": false
         },
@@ -198,8 +252,14 @@
           "type": "table",
           "label": "User Roles",
           "fieldKey": "userRoles",
-          "position": { "row": 2, "col": 0 },
-          "size": { "width": 12, "height": 4 },
+          "position": {
+            "row": 2,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 4
+          },
           "visibility": true,
           "disabled": false
         }
@@ -212,8 +272,13 @@
           "endpointUrl": "/api/v1/users",
           "headers": {},
           "requestMapping": {},
-          "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
-          "linkedComponentIds": ["12000000-0000-4000-8000-000000000003"]
+          "responseMapping": {
+            "list": "body.data",
+            "pagination": "body.totalPages"
+          },
+          "linkedComponentIds": [
+            "12000000-0000-4000-8000-000000000003"
+          ]
         },
         {
           "id": "22000000-0000-4000-8000-000000000002",
@@ -222,8 +287,13 @@
           "endpointUrl": "/api/v1/roles",
           "headers": {},
           "requestMapping": {},
-          "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
-          "linkedComponentIds": ["12000000-0000-4000-8000-000000000004"]
+          "responseMapping": {
+            "list": "body.data",
+            "pagination": "body.totalPages"
+          },
+          "linkedComponentIds": [
+            "12000000-0000-4000-8000-000000000004"
+          ]
         },
         {
           "id": "22000000-0000-4000-8000-000000000003",
@@ -231,10 +301,17 @@
           "httpMethod": "GET",
           "endpointUrl": "/api/v1/users/{id}/roles",
           "headers": {},
-          "requestMapping": { "path": { "id": "id" } },
-          "responseMapping": { "list": "body.data" },
-          "linkedComponentIds": ["12000000-0000-4000-8000-000000000005"],
-          "relationshipId": "40000000-0000-4000-8000-000000000002"
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            }
+          },
+          "responseMapping": {
+            "list": "body.data"
+          },
+          "linkedComponentIds": [
+            "12000000-0000-4000-8000-000000000005"
+          ]
         },
         {
           "id": "22000000-0000-4000-8000-000000000004",
@@ -243,11 +320,16 @@
           "endpointUrl": "/api/v1/users/{id}/roles",
           "headers": {},
           "requestMapping": {
-            "path": { "id": "id" },
-            "body": { "roleName": "roleName" }
+            "path": {
+              "id": "id"
+            },
+            "body": {
+              "roleName": "roleName"
+            }
           },
-          "responseMapping": { "item": "body" },
-          "relationshipId": "40000000-0000-4000-8000-000000000002"
+          "responseMapping": {
+            "item": "body"
+          }
         },
         {
           "id": "22000000-0000-4000-8000-000000000005",
@@ -255,9 +337,13 @@
           "httpMethod": "DELETE",
           "endpointUrl": "/api/v1/users/{id}/roles/{roleId}",
           "headers": {},
-          "requestMapping": { "path": { "id": "id", "roleId": "roleId" } },
-          "responseMapping": {},
-          "relationshipId": "40000000-0000-4000-8000-000000000002"
+          "requestMapping": {
+            "path": {
+              "id": "id",
+              "roleId": "roleId"
+            }
+          },
+          "responseMapping": {}
         }
       ]
     }

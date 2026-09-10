@@ -24,7 +24,8 @@
     },
     "route": {
       "type": "string",
-      "description": "Optional relative UI route, e.g. /work-orders (T-12). Not an environment URL."
+      "pattern": "^/(?!/)",
+      "description": "Optional relative UI route, e.g. /work-orders (T-12). Same environment-agnostic rule as endpointUrl: a single leading slash; rejects https://... and //host/..."
     },
     "components": {
       "type": "array",
@@ -38,13 +39,6 @@
       "description": "API bindings on this page (T-12 required).",
       "items": {
         "$ref": "api-binding.schema.json"
-      }
-    },
-    "relationships": {
-      "type": "array",
-      "description": "Reusable entity relationships for this page (one-to-many / many-to-many). Optional; simple CRUD pages omit it.",
-      "items": {
-        "$ref": "relationship.schema.json"
       }
     },
     "createdAt": {
