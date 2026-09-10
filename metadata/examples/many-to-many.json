@@ -1,0 +1,233 @@
+{
+  "project": {
+    "id": "00000000-0000-4000-8000-000000000099",
+    "name": "GSUIF Phase 1 Reference",
+    "description": "Many-to-many example: GSUIF_USER — GSUIF_USER_ROLE — GSUIF_ROLE (SCRUM-21 / T-14 tables, BE-07 basic RBAC). Nested role URLs follow the same /api/v1 relative pattern as BE-15; T-16 does not yet publish these paths."
+  },
+  "page": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "projectId": "00000000-0000-4000-8000-000000000099",
+    "name": "Users and Roles",
+    "route": "/users-roles",
+    "components": [
+      {
+        "id": "12000000-0000-4000-8000-000000000001",
+        "type": "text-field",
+        "label": "Username",
+        "fieldKey": "username",
+        "position": { "row": 0, "col": 0 },
+        "size": { "width": 6, "height": 1 },
+        "visibility": true,
+        "disabled": false
+      },
+      {
+        "id": "12000000-0000-4000-8000-000000000002",
+        "type": "text-field",
+        "label": "Role Name",
+        "fieldKey": "roleName",
+        "position": { "row": 0, "col": 6 },
+        "size": { "width": 6, "height": 1 },
+        "visibility": true,
+        "disabled": false
+      },
+      {
+        "id": "12000000-0000-4000-8000-000000000003",
+        "type": "table",
+        "label": "Users",
+        "fieldKey": "users",
+        "position": { "row": 1, "col": 0 },
+        "size": { "width": 6, "height": 4 },
+        "visibility": true,
+        "disabled": false
+      },
+      {
+        "id": "12000000-0000-4000-8000-000000000004",
+        "type": "table",
+        "label": "Roles",
+        "fieldKey": "roles",
+        "position": { "row": 1, "col": 6 },
+        "size": { "width": 6, "height": 4 },
+        "visibility": true,
+        "disabled": false
+      },
+      {
+        "id": "12000000-0000-4000-8000-000000000005",
+        "type": "table",
+        "label": "User Roles",
+        "fieldKey": "userRoles",
+        "position": { "row": 2, "col": 0 },
+        "size": { "width": 12, "height": 4 },
+        "visibility": true,
+        "disabled": false
+      }
+    ],
+    "apiBindings": [
+      {
+        "id": "22000000-0000-4000-8000-000000000001",
+        "name": "listUsers",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/v1/users",
+        "headers": {},
+        "requestMapping": {},
+        "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
+        "linkedComponentIds": ["12000000-0000-4000-8000-000000000003"]
+      },
+      {
+        "id": "22000000-0000-4000-8000-000000000002",
+        "name": "listRoles",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/v1/roles",
+        "headers": {},
+        "requestMapping": {},
+        "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
+        "linkedComponentIds": ["12000000-0000-4000-8000-000000000004"]
+      },
+      {
+        "id": "22000000-0000-4000-8000-000000000003",
+        "name": "listRolesForUser",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/v1/users/{id}/roles",
+        "headers": {},
+        "requestMapping": { "path": { "id": "id" } },
+        "responseMapping": { "list": "body.data" },
+        "linkedComponentIds": ["12000000-0000-4000-8000-000000000005"]
+      },
+      {
+        "id": "22000000-0000-4000-8000-000000000004",
+        "name": "assignRoleToUser",
+        "httpMethod": "POST",
+        "endpointUrl": "/api/v1/users/{id}/roles",
+        "headers": {},
+        "requestMapping": {
+          "path": { "id": "id" },
+          "body": { "roleName": "roleName" }
+        },
+        "responseMapping": { "item": "body" }
+      },
+      {
+        "id": "22000000-0000-4000-8000-000000000005",
+        "name": "removeRoleFromUser",
+        "httpMethod": "DELETE",
+        "endpointUrl": "/api/v1/users/{id}/roles/{roleId}",
+        "headers": {},
+        "requestMapping": { "path": { "id": "id", "roleId": "roleId" } },
+        "responseMapping": {}
+      }
+    ]
+  },
+  "metadataVersion": {
+    "id": "30000000-0000-4000-8000-000000000003",
+    "projectId": "00000000-0000-4000-8000-000000000099",
+    "pageId": "00000000-0000-4000-8000-000000000003",
+    "version": 1,
+    "schemaVersion": "1.0.0",
+    "isCurrent": true,
+    "snapshot": {
+      "components": [
+        {
+          "id": "12000000-0000-4000-8000-000000000001",
+          "type": "text-field",
+          "label": "Username",
+          "fieldKey": "username",
+          "position": { "row": 0, "col": 0 },
+          "size": { "width": 6, "height": 1 },
+          "visibility": true,
+          "disabled": false
+        },
+        {
+          "id": "12000000-0000-4000-8000-000000000002",
+          "type": "text-field",
+          "label": "Role Name",
+          "fieldKey": "roleName",
+          "position": { "row": 0, "col": 6 },
+          "size": { "width": 6, "height": 1 },
+          "visibility": true,
+          "disabled": false
+        },
+        {
+          "id": "12000000-0000-4000-8000-000000000003",
+          "type": "table",
+          "label": "Users",
+          "fieldKey": "users",
+          "position": { "row": 1, "col": 0 },
+          "size": { "width": 6, "height": 4 },
+          "visibility": true,
+          "disabled": false
+        },
+        {
+          "id": "12000000-0000-4000-8000-000000000004",
+          "type": "table",
+          "label": "Roles",
+          "fieldKey": "roles",
+          "position": { "row": 1, "col": 6 },
+          "size": { "width": 6, "height": 4 },
+          "visibility": true,
+          "disabled": false
+        },
+        {
+          "id": "12000000-0000-4000-8000-000000000005",
+          "type": "table",
+          "label": "User Roles",
+          "fieldKey": "userRoles",
+          "position": { "row": 2, "col": 0 },
+          "size": { "width": 12, "height": 4 },
+          "visibility": true,
+          "disabled": false
+        }
+      ],
+      "apiBindings": [
+        {
+          "id": "22000000-0000-4000-8000-000000000001",
+          "name": "listUsers",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/v1/users",
+          "headers": {},
+          "requestMapping": {},
+          "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
+          "linkedComponentIds": ["12000000-0000-4000-8000-000000000003"]
+        },
+        {
+          "id": "22000000-0000-4000-8000-000000000002",
+          "name": "listRoles",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/v1/roles",
+          "headers": {},
+          "requestMapping": {},
+          "responseMapping": { "list": "body.data", "pagination": "body.totalPages" },
+          "linkedComponentIds": ["12000000-0000-4000-8000-000000000004"]
+        },
+        {
+          "id": "22000000-0000-4000-8000-000000000003",
+          "name": "listRolesForUser",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/v1/users/{id}/roles",
+          "headers": {},
+          "requestMapping": { "path": { "id": "id" } },
+          "responseMapping": { "list": "body.data" },
+          "linkedComponentIds": ["12000000-0000-4000-8000-000000000005"]
+        },
+        {
+          "id": "22000000-0000-4000-8000-000000000004",
+          "name": "assignRoleToUser",
+          "httpMethod": "POST",
+          "endpointUrl": "/api/v1/users/{id}/roles",
+          "headers": {},
+          "requestMapping": {
+            "path": { "id": "id" },
+            "body": { "roleName": "roleName" }
+          },
+          "responseMapping": { "item": "body" }
+        },
+        {
+          "id": "22000000-0000-4000-8000-000000000005",
+          "name": "removeRoleFromUser",
+          "httpMethod": "DELETE",
+          "endpointUrl": "/api/v1/users/{id}/roles/{roleId}",
+          "headers": {},
+          "requestMapping": { "path": { "id": "id", "roleId": "roleId" } },
+          "responseMapping": {}
+        }
+      ]
+    }
+  }
+}

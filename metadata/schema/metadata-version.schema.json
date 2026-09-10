@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gsuif/metadata-version.schema.json",
+  "title": "MetadataVersion",
+  "type": "object",
+  "description": "Immutable snapshot envelope for a page save (ADR-006, BE-17, SCRUM-20). New save creates a new record; existing versions are not updated or deleted. schemaVersion is the metadata contract version for future evolution.",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "pageId",
+    "version",
+    "schemaVersion",
+    "isCurrent",
+    "snapshot"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID identifier (ADR-005, STD-35). Server-generated on save."
+    },
+    "projectId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning Project id (SCRUM-20 envelope, T-12)."
+    },
+    "pageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning Page id (SCRUM-20 envelope, T-12). Matches /api/v1/pages/{pageId}/metadata (BE-15)."
+    },
+    "version": {
+      "type": "integer",
+      "description": "Monotonic version number per page (T-12, ADR-006)."
+    },
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Phase 1 metadata JSON contract version (T-12 example, SCRUM-20). This schema file accepts only 1.0.0; a later contract gets a new schema (or an updated const)."
+    },
+    "isCurrent": {
+      "type": "boolean",
+      "description": "Atomically maintained latest-version flag (BE-17, T-12). Server-managed on save."
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["components", "apiBindings"],
+      "description": "Immutable copy of the page's components and apiBindings at save time (T-12, ADR-006).",
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "component.schema.json"
+          }
+        },
+        "apiBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "api-binding.schema.json"
+          }
+        }
+      }
+    },
+    "createdDate": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by JPA @CreatedDate (STD-24). SCRUM-20 envelope name createdAt maps to this Java/JSON field. Not client-supplied."
+    },
+    "createdBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Username from AuditorAware / JWT (STD-23, SCRUM-20 envelope). Not client-supplied."
+    },
+    "lastModifiedDate": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by JPA @LastModifiedDate (STD-24). On an immutable version this should match createdDate."
+    },
+    "lastModifiedBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Set by JPA @LastModifiedBy (STD-24). On an immutable version this should match createdBy."
+    }
+  }
+}

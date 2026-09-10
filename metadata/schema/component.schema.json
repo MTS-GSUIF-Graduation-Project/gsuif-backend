@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gsuif/component.schema.json",
+  "title": "Component",
+  "type": "object",
+  "description": "UI component instance on a Page (BE-02, SCRUM-20). Full UI type catalog is deferred (DEF-05); type is an open string, not a closed enum (T-12 gap).",
+  "additionalProperties": false,
+  "required": ["id", "type", "label", "position", "size", "visibility", "disabled"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID identifier (ADR-005, STD-35)."
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Component type string (SCRUM-20). T-12 examples include text-field, select, table, button, date-field. Not a closed enum in Phase 1 (DEF-05)."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display label (SCRUM-20, T-12)."
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["row", "col"],
+      "description": "Grid position. Keys taken from the T-12 outline example { row, col }.",
+      "properties": {
+        "row": { "type": "integer" },
+        "col": { "type": "integer" }
+      }
+    },
+    "size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "description": "Grid size. Keys taken from the T-12 outline example { width, height }.",
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      }
+    },
+    "visibility": {
+      "type": "boolean",
+      "description": "Whether the component is visible (SCRUM-20, T-12)."
+    },
+    "disabled": {
+      "type": "boolean",
+      "description": "Whether the component is disabled (SCRUM-20, T-12)."
+    },
+    "fieldKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional mapping to a generated entity/DTO field (T-12). WorkOrder sanity check uses orderNumber, status, dueDate, assignedTo."
+    }
+  }
+}

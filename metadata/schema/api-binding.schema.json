@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gsuif/api-binding.schema.json",
+  "title": "APIBinding",
+  "type": "object",
+  "description": "Binds a page to a relative HTTP endpoint (BE-02, SCRUM-20). endpointUrl must be environment-agnostic — relative path only, no host or scheme (T-13 / T-12).",
+  "additionalProperties": false,
+  "required": ["id", "httpMethod", "endpointUrl", "headers", "requestMapping", "responseMapping"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID identifier (ADR-005, STD-35)."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional binding name (T-12 examples: listWorkOrders, createWorkOrder)."
+    },
+    "httpMethod": {
+      "type": "string",
+      "enum": ["GET", "POST", "PUT", "DELETE"],
+      "description": "HTTP method (T-12). Closed to the four methods listed in the T-12 outline."
+    },
+    "endpointUrl": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/",
+      "description": "Relative URL only, e.g. /api/v1/work-orders. Must start with /. No scheme or host (SCRUM-20 environment-agnostic rule)."
+    },
+    "headers": {
+      "type": "object",
+      "description": "Header name to value or placeholder (T-12). Required; empty object is valid.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "requestMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Maps UI/entity fields to request locations. Shape from the T-12 outline (path, query, body).",
+      "properties": {
+        "path": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "body": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "responseMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Maps API response paths to UI usage. Shape from the T-12 outline (item, list, pagination). Empty object is valid.",
+      "properties": {
+        "item": { "type": "string" },
+        "list": { "type": "string" },
+        "pagination": { "type": "string" }
+      }
+    },
+    "linkedComponentIds": {
+      "type": "array",
+      "description": "Optional component UUIDs that consume this binding (T-12).",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      }
+    }
+  }
+}

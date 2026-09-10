@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gsuif/page.schema.json",
+  "title": "Page",
+  "type": "object",
+  "description": "A UI page belonging to a Project (BE-02). Project 1—N Page; Page 1—N Component; Page 1—N APIBinding (T-12). Audit fields optional — JPA Auditing on GsuifPage (STD-24, BE-08).",
+  "additionalProperties": false,
+  "required": ["id", "projectId", "name", "components", "apiBindings"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID identifier (ADR-005, STD-35). Server-generated on create."
+    },
+    "projectId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning Project id (T-12). Matches /api/v1/projects/{projectId}/pages (BE-15 / SCRUM-22)."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Page name (T-12)."
+    },
+    "route": {
+      "type": "string",
+      "description": "Optional relative UI route, e.g. /work-orders (T-12). Not an environment URL."
+    },
+    "components": {
+      "type": "array",
+      "description": "Components on this page (T-12 required).",
+      "items": {
+        "$ref": "component.schema.json"
+      }
+    },
+    "apiBindings": {
+      "type": "array",
+      "description": "API bindings on this page (T-12 required).",
+      "items": {
+        "$ref": "api-binding.schema.json"
+      }
+    },
+    "createdDate": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by JPA @CreatedDate (STD-24). Not client-supplied on create."
+    },
+    "lastModifiedDate": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by JPA @LastModifiedDate (STD-24). Not client-supplied on create."
+    },
+    "createdBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Username from AuditorAware / JWT (STD-23). Not client-supplied on create."
+    },
+    "lastModifiedBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Username from AuditorAware (STD-23, STD-24). Not client-supplied on create."
+    }
+  }
+}
