@@ -1,0 +1,12 @@
+{
+  "target": "apiBinding",
+  "instance": {
+    "id": "20000000-0000-4000-8000-000000000001",
+    "name": "listWorkOrders",
+    "httpMethod": "GET",
+    "endpointUrl": "https://example.com/api/v1/work-orders",
+    "headers": {},
+    "requestMapping": {},
+    "responseMapping": {}
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "gsuif-metadata-schema",
+  "private": true,
+  "description": "T-13 local check: Ajv 2020-12 validation of metadata examples. Not the T-24 runtime validator.",
+  "scripts": {
+    "validate": "node validate-examples.cjs"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  }
+}

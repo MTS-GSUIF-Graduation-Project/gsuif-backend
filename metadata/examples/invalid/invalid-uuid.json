@@ -1,0 +1,7 @@
+{
+  "target": "project",
+  "instance": {
+    "id": "not-a-uuid",
+    "name": "GSUIF Phase 1 Reference"
+  }
+}

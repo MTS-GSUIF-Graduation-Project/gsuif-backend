@@ -1,0 +1,15 @@
+{
+  "target": "metadataVersion",
+  "instance": {
+    "id": "30000000-0000-4000-8000-000000000001",
+    "projectId": "00000000-0000-4000-8000-000000000099",
+    "pageId": "00000000-0000-4000-8000-000000000001",
+    "version": 1,
+    "schemaVersion": "2.0.0",
+    "isCurrent": true,
+    "snapshot": {
+      "components": [],
+      "apiBindings": []
+    }
+  }
+}

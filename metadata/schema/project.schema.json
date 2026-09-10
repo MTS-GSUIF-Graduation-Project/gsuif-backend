@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gsuif/project.schema.json",
+  "title": "Project",
+  "type": "object",
+  "description": "Full Project representation (BE-02). This is the stored/response shape, not a POST /api/v1/projects create-only body. Audit fields are filled by JPA Auditing from the JWT principal (STD-23, STD-24); they are optional so create requests are not required to send them.",
+  "additionalProperties": false,
+  "required": ["id", "name"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID identifier (ADR-005, STD-35). Server-generated on create."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Project name. Required (T-12). maxLength 200 aligns with T-24 structural validator (PROJECT_NAME_MAX / MetadataProject.name)."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional project description (T-12 Week 1 metadata outline)."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "JSON/JPA property createdAt (T-12, AuditableEntity). Filled by @CreatedDate (STD-24). Not client-supplied on create."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "JSON/JPA property updatedAt (T-12, AuditableEntity). Filled by @LastModifiedDate (STD-24). Not client-supplied on create."
+    },
+    "createdBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Username from SecurityContextHolder / JWT via AuditorAware (STD-23, BE-08). Not client-supplied on create."
+    },
+    "lastModifiedBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Username from AuditorAware on update (STD-23, STD-24). Not client-supplied on create."
+    }
+  }
+}
