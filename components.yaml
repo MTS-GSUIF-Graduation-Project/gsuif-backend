@@ -1,10 +1,9 @@
 # =============================================================================
 # GSUIF Component Catalog — components.yaml
-# Ticket: SCRUM-39 (T-07: Component Catalog Skeleton)
-# Blocked by: SCRUM-35 (T-06, Done)
-# Blocks: SCRUM-20 (T-13: Metadata JSON Schema Design)
-#         SCRUM-45 (T-17: Component Catalog v1)
-# Owner: M1 — Sondos Hashem | Reviewer: M2 — Alaa Elmassry
+# Ticket: SCRUM-45 (T-17: Component Catalog v1 — tool/template decisions)
+# Blocked by: SCRUM-39 (T-07, Done), SCRUM-40 (T-11, Done)
+# Blocks: SCRUM-44 (T-40: Template Foundation), SCRUM-28 (T-28: TemplateOnlyProvider)
+# Owner: M2 — Alaa Elmassry | Reviewer: M1 — Sondos Hashem
 #
 # Legend
 #   scope: GEN  = applies to AI/template-generated code only
@@ -28,8 +27,8 @@
 # implicit.
 # =============================================================================
 
-catalog_version: "0.6"
-generated_for: "SCRUM-39 (T-07)"
+catalog_version: "1.0"
+generated_for: "SCRUM-45 (T-17)"
 
 # `dependencies` records implementation prerequisites aligned with Jira's
 # blocked-by chain. It does not imply runtime coupling or standards inheritance.
@@ -41,17 +40,36 @@ dependency_semantics: IMPLEMENTATION_PREREQUISITES
 # T-17 or the SCRUM-50 golden tests.
 standards_semantics: DIRECTLY_APPLICABLE_TO_COMPONENT
 
-# `tool` and `template` are intentionally null on every entry. They are filled
-# in by the spike consolidation and catalog v1 tickets, not by T-07.
+# Generation decisions are filled per SCRUM-45 (T-17) from capability-matrix.md (T-11).
+# TemplateOnlyProvider (SCRUM-28) and template foundation (SCRUM-44) MUST read
+# these fields — never hardcode tool/template choices in Java.
 tool_template_resolution:
+  status: COMPLETE
   filled_by:
     - "SCRUM-40 (T-11: Capability Matrix v1 — consolidate both spikes)"
     - "SCRUM-45 (T-17: Component Catalog v1 — tool/template decisions)"
   inputs:
     - "SCRUM-37 (T-08: Jmix Capability Spike, Done)"
     - "SCRUM-38 (T-09: OpenAPI Generator Capability Spike, Done)"
+    - "capability-matrix.md (DEC-021, DEC-022, DEC-023)"
   downstream_consumers:
     - "SCRUM-44 (T-40: Phase 1 Template Foundation & Catalog Support)"
+    - "SCRUM-28 (T-28: TemplateOnlyProvider — reads this catalog at runtime)"
+
+# Shared vocabulary for `generation` blocks on each component entry.
+generation_field_schema:
+  status: "CONFIRMED | PLANNED | DEFERRED — decision state for this component"
+  strategy: >
+    HAND_WRITTEN | FREEMARKER | OPENAPI_GENERATOR | OPENAPI_PLUS_FREEMARKER |
+    OPENAPI_DTO_PLUS_HAND_WRITTEN | OPENAPI_ANNOTATIONS_PLUS_HAND_WRITTEN | DEFERRED
+  tool.name: "Primary tool; hand-written when no generator applies"
+  tool.version: "Pinned tool version from spike; null for hand-written"
+  tool.supplement: "Secondary tool when partial adoption applies (DEC-022 pattern)"
+  template.path: "Classpath-relative FreeMarker/OpenAPI template; null when not applicable"
+  template.version: "Template semver; 0.0.0-planned until SCRUM-44 delivers files"
+  metadata_fields: "Metadata schema paths or field refs consumed by generation; [] for SYS-only"
+  validation_rules: "Standards and structural checks enforced for this component's artifacts"
+  decision_source: "Traceability back to capability-matrix.md row and DEC-* items"
 
 category_values:
   - Architecture
@@ -167,8 +185,21 @@ components:
     sys_only_standards: [STD-34]
     decisions: [ADR-001]
     dependencies: []
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-06, STD-08, STD-33, STD-35, STD-34]
+      decision_source:
+        capability_matrix: BE-01
+        decisions: [ADR-001]
 
   - id: BE-02
     name: Metadata Model (Project, Page, Component, APIBinding, MetadataVersion)
@@ -191,8 +222,31 @@ components:
     standards: [STD-33, STD-35]
     decisions: [ADR-005, ADR-006]
     dependencies: [BE-01]
-    tool: null
-    template: null
+    generation:
+      status: PLANNED
+      strategy: FREEMARKER
+      tool:
+        name: Apache FreeMarker
+        version: "2.3.34"
+        supplement: null
+      template:
+        path: src/main/resources/templates/freemarker/entity.ftl
+        version: "0.0.0-planned"
+      metadata_fields:
+        - metadata/schema/project.schema.json
+        - metadata/schema/page.schema.json
+        - metadata/schema/component.schema.json
+        - metadata/schema/api-binding.schema.json
+        - metadata/schema/metadata-version.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-33, STD-35]
+        structural_schema: metadata/schema/*.schema.json
+        sys_implementation: "GSUIF metadata JPA entities are hand-written (SCRUM-21); FreeMarker applies to generated consumer entity output"
+      decision_source:
+        capability_matrix: BE-02
+        decisions: [ADR-004, ADR-005, ADR-006, ADR-008]
+        rejected_tool: { name: Jmix, version: "3.0.1", decision: DEC-021 }
 
   - id: BE-03
     name: Unified Request Framework
@@ -217,8 +271,30 @@ components:
     excluded_subitems:
       - {item: "Tenant information", reason: "No multi-tenancy in the framework.", decision: DEC-012}
     dependencies: [BE-01]
-    tool: null
-    template: null
+    generation:
+      status: PLANNED
+      strategy: OPENAPI_DTO_PLUS_HAND_WRITTEN
+      tool:
+        name: openapi-generator-maven-plugin
+        version: "7.16.0"
+        supplement:
+          name: hand-written
+          version: null
+          scope: "CorrelationIdFilter, MDC wiring, validation integration"
+      template:
+        path: src/main/resources/openapi/work-order-api.yaml
+        version: "1.0.0-spike"
+        note: "Consumer API specs are authored per entity; spike YAML is evaluation-only"
+      metadata_fields:
+        - metadata/schema/api-binding.schema.json#requestMapping
+        - metadata/schema/component.schema.json#fieldKey
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-10, STD-17]
+        partial_coverage: true
+      decision_source:
+        capability_matrix: BE-03
+        decisions: [DEC-022]
 
   - id: BE-04
     name: Unified Response Framework
@@ -240,8 +316,21 @@ components:
     open_subitems:
       - {item: Localization, reason: "No i18n requirement is confirmed on record; this remains an open requirement."}
     dependencies: [BE-01]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-01, STD-02, STD-03, STD-04, STD-05]
+      decision_source:
+        capability_matrix: BE-04
+        decisions: [DEC-021, DEC-022]
 
   - id: BE-05
     name: Automatic CRUD Generator (generated application code)
@@ -277,8 +366,32 @@ components:
         target_phase: PHASE_2_OR_LATER
         decision: DEC-014
     dependencies: [BE-04, BE-09]
-    tool: null
-    template: null
+    generation:
+      status: PLANNED
+      strategy: OPENAPI_PLUS_FREEMARKER
+      tool:
+        name: openapi-generator-maven-plugin
+        version: "7.16.0"
+        supplement:
+          name: Apache FreeMarker
+          version: "2.3.34"
+      template:
+        openapi_override: src/main/resources/templates/openapi/spring/responseType.mustache
+        freemarker_impl: src/main/resources/templates/freemarker/controller-crud.ftl
+        version: "0.0.0-planned"
+      metadata_fields:
+        - metadata/schema/api-binding.schema.json#httpMethod
+        - metadata/schema/api-binding.schema.json#endpointUrl
+        - metadata/schema/api-binding.schema.json#requestMapping
+        - metadata/schema/api-binding.schema.json#responseMapping
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-01, STD-02, STD-03, STD-04, STD-05, STD-28, STD-33]
+        build_validation: ADR-007
+        partial_coverage: true
+      decision_source:
+        capability_matrix: BE-05
+        decisions: [DEC-022, ADR-007, ADR-010]
 
   - id: BE-06
     name: Authentication Framework (JWT)
@@ -308,8 +421,21 @@ components:
       - {item: "JSESSIONID / WebLogic-specific session security", reason: "Framework is stateless JWT, not the legacy WOMS/WebLogic session model.", standard: STD-22, decision: DEC-020}
       - {item: "Multi-tenant login", reason: "No multi-tenancy in the framework.", decision: DEC-012}
     dependencies: [BE-18]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-18, STD-19, STD-21]
+      decision_source:
+        capability_matrix: BE-06
+        decisions: [DEC-020, DEC-021, DEC-022]
 
   - id: BE-07
     name: Authorization Framework (Basic RBAC)
@@ -335,8 +461,21 @@ components:
       - {item: "Field permissions", reason: "Advanced/dynamic authorization is deferred.", decision: DEC-017, target_phase: PHASE_2_OR_LATER}
       - {item: "Runtime dynamic evaluation", reason: "Advanced/dynamic authorization is deferred.", decision: DEC-017, target_phase: PHASE_2_OR_LATER}
     dependencies: [BE-06]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-20]
+      decision_source:
+        capability_matrix: BE-07
+        decisions: [DEC-017, DEC-021, DEC-022]
 
   - id: BE-08
     name: Audit Framework
@@ -358,8 +497,21 @@ components:
       - {doc: DOC-08, locator: "SCRUM-26 (T-22 / T-23: JPA Auditing & Hibernate Envers)"}
     standards: [STD-23, STD-24, STD-25]
     dependencies: [BE-18, BE-06]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-23, STD-24, STD-25]
+      decision_source:
+        capability_matrix: BE-08
+        decisions: [DEC-021, ADR-004, ADR-008]
 
   - id: BE-09
     name: Global Exception Handling
@@ -382,8 +534,21 @@ components:
       - {doc: DOC-08, locator: "SCRUM-23 (T-18: ApiResponse<T> Wrapper & GlobalExceptionHandler)"}
     standards: [STD-09, STD-10, STD-11, STD-12, STD-13, STD-28]
     dependencies: [BE-01]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-09, STD-10, STD-11, STD-12, STD-13, STD-28]
+      decision_source:
+        capability_matrix: BE-09
+        decisions: [DEC-023, DEC-021, DEC-022]
 
   - id: BE-10
     name: Logging (AOP + Correlation ID + Masking)
@@ -408,8 +573,21 @@ components:
     standards: [STD-15, STD-16]
     sys_only_standards: [STD-14, STD-17]
     dependencies: [BE-04]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-15, STD-16, STD-14, STD-17]
+      decision_source:
+        capability_matrix: BE-10
+        decisions: [DEC-021, DEC-022]
 
   - id: BE-11
     name: API Documentation (Swagger/OpenAPI)
@@ -436,8 +614,29 @@ components:
       - {doc: DOC-08, locator: "SCRUM-29 (T-20: Swagger / OpenAPI Documentation); SCRUM-38 (T-09: OpenAPI Generator Capability Spike)"}
     standards: [STD-27, STD-28]
     dependencies: [BE-04, BE-06]
-    tool: null
-    template: null
+    generation:
+      status: PLANNED
+      strategy: OPENAPI_ANNOTATIONS_PLUS_HAND_WRITTEN
+      tool:
+        name: openapi-generator-maven-plugin
+        version: "7.16.0"
+        supplement:
+          name: springdoc-openapi
+          version: "3.0.3"
+          scope: "SpringDoc bean config, SecurityConfig Swagger integration, @Schema on framework DTOs"
+      template:
+        path: src/main/resources/openapi/work-order-api.yaml
+        version: "1.0.0-spike"
+      metadata_fields:
+        - metadata/schema/api-binding.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-27, STD-28]
+        partial_coverage: true
+        open_gap: "SCRUM-29 (T-20) — full STD-28 OpenAPI coverage on framework endpoints"
+      decision_source:
+        capability_matrix: BE-11
+        decisions: [DEC-022, DEC-023]
 
   - id: BE-12
     name: Testing & Build Validation
@@ -474,8 +673,43 @@ components:
     sys_only_standards: [STD-34]
     decisions: [ADR-007, ADR-008, DEC-013]
     dependencies: [BE-13]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-06, STD-34]
+        build_validation:
+          ref: ADR-007
+          jira: SCRUM-47
+          task: T-29
+          command: "mvn compile then mvn test on generated project"
+        golden_tests:
+          jira: SCRUM-50
+          tasks: [T-36, T-37]
+          level: "Level 1 (structural — JavaParser: package, class, annotations, fields, methods vs Standards Checklist)"
+          editable_code_test: ADR-008
+        framework_test_suite:
+          jira: SCRUM-30
+          tasks: [T-33, T-34, T-35]
+          coverage_gate: "JaCoCo ≥ 80%"
+        ci_pipeline:
+          jira: SCRUM-19
+          task: T-05
+          profile: test
+          database: "H2 PostgreSQL compatibility mode (DEC-013)"
+        vertical_slice:
+          jira: SCRUM-31
+          tasks: [T-32, T-38]
+      decision_source:
+        capability_matrix: BE-12
+        decisions: [ADR-007, ADR-008, DEC-013]
 
   - id: BE-13
     name: Code Generation Engine (Template-based)
@@ -512,8 +746,31 @@ components:
     standards: [STD-06, STD-33]
     decisions: [ADR-002, ADR-003, ADR-007, ADR-008, ADR-009]
     dependencies: [BE-17]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: TemplateOnlyProvider
+        version: "0.0.1-planned"
+        supplement:
+          name: Apache FreeMarker
+          version: "2.3.34"
+          scope: "Runtime template engine invoked by the provider"
+      template:
+        path: components.yaml
+        version: "1.0"
+        note: "Engine reads tool/template decisions from this catalog — never hardcoded"
+      metadata_fields:
+        - metadata/schema/metadata-version.schema.json
+        - metadata/schema/project.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-06, STD-33]
+        no_external_ai: ADR-003
+        downstream_validation: "Generated artifacts validated by BE-12 golden tests (SCRUM-50) and build validation (SCRUM-47)"
+      decision_source:
+        capability_matrix: BE-13
+        decisions: [ADR-002, ADR-003, ADR-007, ADR-008, ADR-009, DEC-021]
 
   - id: BE-14
     name: Generation Export & Request Logging
@@ -536,8 +793,22 @@ components:
       - {doc: DOC-08, locator: "SCRUM-48 (T-30: Generation REST API)"}
     standards: [STD-14, STD-17]
     dependencies: [BE-10, BE-12, BE-13, BE-19]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields:
+        - metadata/schema/metadata-version.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-14, STD-17]
+      decision_source:
+        capability_matrix: BE-14
+        decisions: []
 
   - id: BE-15
     name: "Metadata CRUD REST APIs (GSUIF's own Project/Page/Version management)"
@@ -559,8 +830,24 @@ components:
       - {doc: DOC-08, locator: "SCRUM-22 (T-16: Metadata CRUD REST APIs (Project, Page, Version))"}
     standards: [STD-01, STD-02, STD-03, STD-04, STD-05, STD-28]
     dependencies: [BE-18, BE-04]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields:
+        - metadata/schema/project.schema.json
+        - metadata/schema/page.schema.json
+        - metadata/schema/metadata-version.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-01, STD-02, STD-03, STD-04, STD-05, STD-28]
+      decision_source:
+        capability_matrix: BE-15
+        decisions: [DEC-021, DEC-022]
 
   - id: BE-16
     name: Metadata Validation Framework
@@ -578,8 +865,26 @@ components:
       - {doc: DOC-08, locator: "SCRUM-51 (T-25: Business Rule Validator (pluggable rules))"}
     standards: [STD-10]
     dependencies: [BE-15, BE-02]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement:
+          name: AJV
+          version: "8.x"
+          scope: "Structural JSON Schema validation (metadata/ package)"
+      template: null
+      metadata_fields:
+        - metadata/schema/*.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-10]
+        structural_schema: metadata/schema/*.schema.json
+      decision_source:
+        capability_matrix: BE-16
+        decisions: []
 
   - id: BE-17
     name: Metadata Versioning Service
@@ -603,8 +908,23 @@ components:
     standards: [STD-33]
     decisions: [ADR-006]
     dependencies: [BE-16]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields:
+        - metadata/schema/metadata-version.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-33]
+        immutability: ADR-006
+      decision_source:
+        capability_matrix: BE-17
+        decisions: [ADR-006]
 
   - id: BE-18
     name: Database-Agnostic Persistence
@@ -631,8 +951,25 @@ components:
     sys_only_standards: [STD-34]
     decisions: [ADR-004, ADR-005, DEC-012, DEC-013, DEC-020]
     dependencies: [BE-02]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields:
+        - metadata/schema/project.schema.json
+        - metadata/schema/page.schema.json
+        - metadata/schema/metadata-version.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-33, STD-35, STD-34]
+        database_agnostic: ADR-004
+      decision_source:
+        capability_matrix: BE-18
+        decisions: [ADR-004, ADR-005, DEC-012, DEC-013, DEC-020, DEC-021]
 
   - id: BE-19
     name: Generated Artifact Registry
@@ -653,8 +990,23 @@ components:
       - {doc: DOC-08, locator: "SCRUM-49 (T-31: Generated Artifact Registry (traceability))"}
     standards: [STD-17, STD-33]
     dependencies: [BE-18, BE-12]
-    tool: null
-    template: null
+    generation:
+      status: CONFIRMED
+      strategy: HAND_WRITTEN
+      tool:
+        name: hand-written
+        version: null
+        supplement: null
+      template: null
+      metadata_fields:
+        - metadata/schema/metadata-version.schema.json
+      validation_rules:
+        enforce_standards: true
+        standard_refs: [STD-17, STD-33]
+        traceability: "Records tool name + version from catalog entry used during generation"
+      decision_source:
+        capability_matrix: BE-19
+        decisions: []
 
 # =============================================================================
 # DEFERRED COMPONENTS
@@ -683,8 +1035,21 @@ deferred_components:
     standards: [STD-06, STD-33]
     decisions: [DEC-015]
     dependencies: [BE-02, BE-13]
-    tool: null
-    template: null
+    generation:
+      status: DEFERRED
+      strategy: DEFERRED
+      tool:
+        name: pending-evaluation
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: false
+        note: "Re-evaluate when scheduled; REST envelope standards do not apply"
+      decision_source:
+        capability_matrix: DEF-01
+        decisions: [DEC-015]
     notes: >
       The REST response envelope (STD-01–STD-05) does not apply to a GraphQL
       surface; only the package-layout and database-agnostic standards carry
@@ -703,8 +1068,21 @@ deferred_components:
     standards: [STD-06]
     decisions: [DEC-011]
     dependencies: [BE-15]
-    tool: null
-    template: null
+    generation:
+      status: DEFERRED
+      strategy: DEFERRED
+      tool:
+        name: pending-evaluation
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: false
+        note: "Re-evaluate when scheduled"
+      decision_source:
+        capability_matrix: DEF-02
+        decisions: [DEC-011]
     notes: >
       Caching must not alter the ApiResponse contract of the endpoints it
       fronts. No cache-specific standard exists in the checklist yet; one may
@@ -726,8 +1104,21 @@ deferred_components:
     standards: [STD-01, STD-03, STD-16, STD-21]
     decisions: [DEC-018]
     dependencies: [BE-06]
-    tool: null
-    template: null
+    generation:
+      status: DEFERRED
+      strategy: DEFERRED
+      tool:
+        name: pending-evaluation
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: false
+        note: "STD-16 masking mandatory when implemented"
+      decision_source:
+        capability_matrix: DEF-03
+        decisions: [DEC-018]
     notes: >
       STD-16 (sensitive data masking) is the highest-priority standard here —
       reset tokens must never reach a log line.
@@ -749,8 +1140,21 @@ deferred_components:
     standards: [STD-17, STD-18, STD-26]
     decisions: [DEC-016]
     dependencies: [BE-06]
-    tool: null
-    template: null
+    generation:
+      status: DEFERRED
+      strategy: DEFERRED
+      tool:
+        name: pending-evaluation
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: false
+        note: "Re-evaluate when scheduled"
+      decision_source:
+        capability_matrix: DEF-04
+        decisions: [DEC-016]
 
   - id: DEF-05
     name: Full UI Component Metadata Catalog
@@ -769,8 +1173,21 @@ deferred_components:
     standards: [STD-33, STD-35]
     decisions: [DEC-019]
     dependencies: [BE-02]
-    tool: null
-    template: null
+    generation:
+      status: DEFERRED
+      strategy: DEFERRED
+      tool:
+        name: pending-evaluation
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: false
+        note: "Re-evaluate when scheduled"
+      decision_source:
+        capability_matrix: DEF-05
+        decisions: [DEC-019]
 
   - id: DEF-06
     name: Angular Frontend Application
@@ -792,8 +1209,21 @@ deferred_components:
     standards: [STD-07, STD-29, STD-30, STD-31, STD-32]
     decisions: [DEC-019]
     dependencies: [BE-04]
-    tool: null
-    template: null
+    generation:
+      status: DEFERRED
+      strategy: DEFERRED
+      tool:
+        name: pending-evaluation
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: false
+        note: "Re-evaluate when scheduled"
+      decision_source:
+        capability_matrix: DEF-06
+        decisions: [DEC-019]
 
   - id: DEF-07
     name: External AI Generation Provider
@@ -812,8 +1242,21 @@ deferred_components:
     standards: [STD-06, STD-33]
     decisions: [ADR-002, ADR-003]
     dependencies: [BE-13]
-    tool: null
-    template: null
+    generation:
+      status: DEFERRED
+      strategy: DEFERRED
+      tool:
+        name: pending-evaluation
+        version: null
+        supplement: null
+      template: null
+      metadata_fields: []
+      validation_rules:
+        enforce_standards: false
+        note: "Additional AICodeGenerationProvider implementation — Phase 2 only"
+      decision_source:
+        capability_matrix: DEF-07
+        decisions: [ADR-002, ADR-003]
 
 # =============================================================================
 # KNOWN TRACEABILITY GAPS
