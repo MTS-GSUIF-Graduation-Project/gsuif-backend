@@ -19,6 +19,8 @@ CREATE TABLE gsuif_page (
     id               CHAR(36)                  NOT NULL,
     project_id       CHAR(36)                  NOT NULL,
     name             VARCHAR(200)              NOT NULL,
+    -- route is intentionally nullable; multiple pages may have no route assigned.
+    -- When provided, the route must be unique within the project.
     route            VARCHAR(255)              NULL,
     created_at       TIMESTAMP WITH TIME ZONE  NOT NULL,
     updated_at       TIMESTAMP WITH TIME ZONE  NOT NULL,
