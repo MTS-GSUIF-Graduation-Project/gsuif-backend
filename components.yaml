@@ -67,7 +67,7 @@ generation_field_schema:
   tool.supplement: "Secondary tool when partial adoption applies (DEC-022 pattern)"
   template.path: "Classpath-relative FreeMarker/OpenAPI template; null when not applicable"
   template.version: "Template semver; 0.0.0-planned until SCRUM-44 delivers files"
-  metadata_fields: "Metadata schema paths or field refs consumed by generation; [] for SYS-only"
+  metadata_fields: "Metadata schema paths or field refs consumed by this component; [] when none apply"
   validation_rules: "Standards and structural checks enforced for this component's artifacts"
   decision_source: "Traceability back to capability-matrix.md row and DEC-* items"
 
@@ -756,10 +756,7 @@ components:
           name: Apache FreeMarker
           version: "2.3.34"
           scope: "Runtime template engine invoked by the provider"
-      template:
-        path: components.yaml
-        version: "1.0"
-        note: "Engine reads tool/template decisions from this catalog — never hardcoded"
+      template: null
       metadata_fields:
         - metadata/schema/metadata-version.schema.json
         - metadata/schema/project.schema.json
@@ -871,10 +868,7 @@ components:
       tool:
         name: hand-written
         version: null
-        supplement:
-          name: AJV
-          version: "8.x"
-          scope: "Structural JSON Schema validation (metadata/ package)"
+        supplement: null
       template: null
       metadata_fields:
         - metadata/schema/*.schema.json
