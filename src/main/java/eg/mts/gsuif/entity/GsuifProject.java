@@ -31,6 +31,7 @@ public class GsuifProject extends AuditableEntity {
     @Column(name = "name", nullable = false, length = 200)
     private String name;
 
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "description")
     private String description;
 

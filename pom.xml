@@ -107,6 +107,18 @@
     </dependencies>
 
     <build>
+        <testResources>
+            <testResource>
+                <directory>src/test/resources</directory>
+            </testResource>
+            <testResource>
+                <directory>${project.basedir}/sql</directory>
+                <targetPath>sql</targetPath>
+                <includes>
+                    <include>V1__init_schema.sql</include>
+                </includes>
+            </testResource>
+        </testResources>
         <plugins>
 
             <!-- Spring Boot -->

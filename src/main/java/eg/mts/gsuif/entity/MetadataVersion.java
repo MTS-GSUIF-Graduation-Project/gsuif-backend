@@ -60,6 +60,7 @@ public class MetadataVersion extends AuditableEntity {
     @Column(name = "is_current", nullable = false)
     private boolean current;
 
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "snapshot", nullable = false)
     private String snapshot;
 
