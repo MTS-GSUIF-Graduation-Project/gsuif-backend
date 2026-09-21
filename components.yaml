@@ -58,18 +58,19 @@ tool_template_resolution:
 
 # Shared vocabulary for `generation` blocks on each component entry.
 generation_field_schema:
-  status: "CONFIRMED | PLANNED | DEFERRED — decision state for this component"
+  decision_status: "CONFIRMED | DEFERRED — whether the tool/template decision is confirmed"
+  implementation_status: "CONFIRMED | PLANNED | DEFERRED — code implementation state"
   strategy: >
     HAND_WRITTEN | FREEMARKER | OPENAPI_GENERATOR | OPENAPI_PLUS_FREEMARKER |
     OPENAPI_DTO_PLUS_HAND_WRITTEN | OPENAPI_ANNOTATIONS_PLUS_HAND_WRITTEN | DEFERRED
   tool.name: "Primary tool; hand-written when no generator applies"
   tool.version: "Pinned tool version from spike; null for hand-written"
   tool.supplement: "Secondary tool when partial adoption applies (DEC-022 pattern)"
-  template.path: "Classpath-relative FreeMarker/OpenAPI template; null when not applicable"
-  template.version: "Template semver; 0.0.0-planned until SCRUM-44 delivers files"
-  metadata_fields: "Metadata schema paths or field refs consumed by this component; [] when none apply"
+  template: "null | Object with path/version OR artifacts list for multi-template components"
+  metadata_fields: "Metadata schema paths or field refs (JSON Pointer format) consumed by this component; [] when none apply"
   validation_rules: "Standards and structural checks enforced for this component's artifacts"
   decision_source: "Traceability back to capability-matrix.md row and DEC-* items"
+
 
 category_values:
   - Architecture
@@ -186,7 +187,8 @@ components:
     decisions: [ADR-001]
     dependencies: []
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -223,14 +225,15 @@ components:
     decisions: [ADR-005, ADR-006]
     dependencies: [BE-01]
     generation:
-      status: PLANNED
+      decision_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: FREEMARKER
       tool:
         name: Apache FreeMarker
         version: "2.3.34"
         supplement: null
       template:
-        path: src/main/resources/templates/freemarker/entity.ftl
+        path: templates/freemarker/entity.ftl
         version: "0.0.0-planned"
       metadata_fields:
         - metadata/schema/project.schema.json
@@ -238,6 +241,7 @@ components:
         - metadata/schema/component.schema.json
         - metadata/schema/api-binding.schema.json
         - metadata/schema/metadata-version.schema.json
+
       validation_rules:
         enforce_standards: true
         standard_refs: [STD-33, STD-35]
@@ -272,7 +276,8 @@ components:
       - {item: "Tenant information", reason: "No multi-tenancy in the framework.", decision: DEC-012}
     dependencies: [BE-01]
     generation:
-      status: PLANNED
+      decision_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: OPENAPI_DTO_PLUS_HAND_WRITTEN
       tool:
         name: openapi-generator-maven-plugin
@@ -281,20 +286,19 @@ components:
           name: hand-written
           version: null
           scope: "CorrelationIdFilter, MDC wiring, validation integration"
-      template:
-        path: src/main/resources/openapi/work-order-api.yaml
-        version: "1.0.0-spike"
-        note: "Consumer API specs are authored per entity; spike YAML is evaluation-only"
+      template: null
       metadata_fields:
-        - metadata/schema/api-binding.schema.json#requestMapping
-        - metadata/schema/component.schema.json#fieldKey
+        - metadata/schema/api-binding.schema.json#/properties/requestMapping
+        - metadata/schema/component.schema.json#/properties/fieldKey
       validation_rules:
         enforce_standards: true
         standard_refs: [STD-10, STD-17]
         partial_coverage: true
       decision_source:
         capability_matrix: BE-03
+        spike_evidence: src/main/resources/openapi/work-order-api.yaml
         decisions: [DEC-022]
+
 
   - id: BE-04
     name: Unified Response Framework
@@ -317,7 +321,8 @@ components:
       - {item: Localization, reason: "No i18n requirement is confirmed on record; this remains an open requirement."}
     dependencies: [BE-01]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -367,7 +372,8 @@ components:
         decision: DEC-014
     dependencies: [BE-04, BE-09]
     generation:
-      status: PLANNED
+      decision_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: OPENAPI_PLUS_FREEMARKER
       tool:
         name: openapi-generator-maven-plugin
@@ -376,14 +382,20 @@ components:
           name: Apache FreeMarker
           version: "2.3.34"
       template:
-        openapi_override: src/main/resources/templates/openapi/spring/responseType.mustache
-        freemarker_impl: src/main/resources/templates/freemarker/controller-crud.ftl
+        artifacts:
+          - role: OPENAPI_OVERRIDE
+            location_type: CLASSPATH
+            path: templates/openapi/spring/responseType.mustache
+          - role: CONTROLLER_IMPLEMENTATION
+            location_type: CLASSPATH
+            path: templates/freemarker/controller-crud.ftl
         version: "0.0.0-planned"
       metadata_fields:
-        - metadata/schema/api-binding.schema.json#httpMethod
-        - metadata/schema/api-binding.schema.json#endpointUrl
-        - metadata/schema/api-binding.schema.json#requestMapping
-        - metadata/schema/api-binding.schema.json#responseMapping
+        - metadata/schema/api-binding.schema.json#/properties/httpMethod
+        - metadata/schema/api-binding.schema.json#/properties/endpointUrl
+        - metadata/schema/api-binding.schema.json#/properties/requestMapping
+        - metadata/schema/api-binding.schema.json#/properties/responseMapping
+
       validation_rules:
         enforce_standards: true
         standard_refs: [STD-01, STD-02, STD-03, STD-04, STD-05, STD-28, STD-33]
@@ -422,7 +434,8 @@ components:
       - {item: "Multi-tenant login", reason: "No multi-tenancy in the framework.", decision: DEC-012}
     dependencies: [BE-18]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -462,7 +475,8 @@ components:
       - {item: "Runtime dynamic evaluation", reason: "Advanced/dynamic authorization is deferred.", decision: DEC-017, target_phase: PHASE_2_OR_LATER}
     dependencies: [BE-06]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -498,7 +512,8 @@ components:
     standards: [STD-23, STD-24, STD-25]
     dependencies: [BE-18, BE-06]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -535,7 +550,8 @@ components:
     standards: [STD-09, STD-10, STD-11, STD-12, STD-13, STD-28]
     dependencies: [BE-01]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -574,7 +590,8 @@ components:
     sys_only_standards: [STD-14, STD-17]
     dependencies: [BE-04]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -615,7 +632,8 @@ components:
     standards: [STD-27, STD-28]
     dependencies: [BE-04, BE-06]
     generation:
-      status: PLANNED
+      decision_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: OPENAPI_ANNOTATIONS_PLUS_HAND_WRITTEN
       tool:
         name: openapi-generator-maven-plugin
@@ -624,9 +642,7 @@ components:
           name: springdoc-openapi
           version: "3.0.3"
           scope: "SpringDoc bean config, SecurityConfig Swagger integration, @Schema on framework DTOs"
-      template:
-        path: src/main/resources/openapi/work-order-api.yaml
-        version: "1.0.0-spike"
+      template: null
       metadata_fields:
         - metadata/schema/api-binding.schema.json
       validation_rules:
@@ -636,7 +652,9 @@ components:
         open_gap: "SCRUM-29 (T-20) — full STD-28 OpenAPI coverage on framework endpoints"
       decision_source:
         capability_matrix: BE-11
+        spike_evidence: src/main/resources/openapi/work-order-api.yaml
         decisions: [DEC-022, DEC-023]
+
 
   - id: BE-12
     name: Testing & Build Validation
@@ -674,7 +692,8 @@ components:
     decisions: [ADR-007, ADR-008, DEC-013]
     dependencies: [BE-13]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -747,7 +766,8 @@ components:
     decisions: [ADR-002, ADR-003, ADR-007, ADR-008, ADR-009]
     dependencies: [BE-17]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: TemplateOnlyProvider
@@ -791,7 +811,8 @@ components:
     standards: [STD-14, STD-17]
     dependencies: [BE-10, BE-12, BE-13, BE-19]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -828,7 +849,8 @@ components:
     standards: [STD-01, STD-02, STD-03, STD-04, STD-05, STD-28]
     dependencies: [BE-18, BE-04]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -863,7 +885,8 @@ components:
     standards: [STD-10]
     dependencies: [BE-15, BE-02]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -903,7 +926,8 @@ components:
     decisions: [ADR-006]
     dependencies: [BE-16]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -946,7 +970,8 @@ components:
     decisions: [ADR-004, ADR-005, DEC-012, DEC-013, DEC-020]
     dependencies: [BE-02]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -985,7 +1010,8 @@ components:
     standards: [STD-17, STD-33]
     dependencies: [BE-18, BE-12]
     generation:
-      status: CONFIRMED
+      decision_status: CONFIRMED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -1030,7 +1056,8 @@ deferred_components:
     decisions: [DEC-015]
     dependencies: [BE-02, BE-13]
     generation:
-      status: DEFERRED
+      decision_status: DEFERRED
+      implementation_status: DEFERRED
       strategy: DEFERRED
       tool:
         name: pending-evaluation
@@ -1063,7 +1090,8 @@ deferred_components:
     decisions: [DEC-011]
     dependencies: [BE-15]
     generation:
-      status: DEFERRED
+      decision_status: DEFERRED
+      implementation_status: DEFERRED
       strategy: DEFERRED
       tool:
         name: pending-evaluation
@@ -1099,7 +1127,8 @@ deferred_components:
     decisions: [DEC-018]
     dependencies: [BE-06]
     generation:
-      status: DEFERRED
+      decision_status: DEFERRED
+      implementation_status: DEFERRED
       strategy: DEFERRED
       tool:
         name: pending-evaluation
@@ -1135,7 +1164,8 @@ deferred_components:
     decisions: [DEC-016]
     dependencies: [BE-06]
     generation:
-      status: DEFERRED
+      decision_status: DEFERRED
+      implementation_status: DEFERRED
       strategy: DEFERRED
       tool:
         name: pending-evaluation
@@ -1168,7 +1198,8 @@ deferred_components:
     decisions: [DEC-019]
     dependencies: [BE-02]
     generation:
-      status: DEFERRED
+      decision_status: DEFERRED
+      implementation_status: DEFERRED
       strategy: DEFERRED
       tool:
         name: pending-evaluation
@@ -1204,7 +1235,8 @@ deferred_components:
     decisions: [DEC-019]
     dependencies: [BE-04]
     generation:
-      status: DEFERRED
+      decision_status: DEFERRED
+      implementation_status: DEFERRED
       strategy: DEFERRED
       tool:
         name: pending-evaluation
@@ -1237,7 +1269,8 @@ deferred_components:
     decisions: [ADR-002, ADR-003]
     dependencies: [BE-13]
     generation:
-      status: DEFERRED
+      decision_status: DEFERRED
+      implementation_status: DEFERRED
       strategy: DEFERRED
       tool:
         name: pending-evaluation
