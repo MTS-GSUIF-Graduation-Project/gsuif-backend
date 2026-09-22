@@ -142,9 +142,7 @@
                     <include>V1__init_schema.sql</include>
                 </includes>
             </resource>
-            <resource>
-                <directory>src/test/resources</directory>
-            </resource>
+            
         </resources>
         <testResources>
             <testResource>

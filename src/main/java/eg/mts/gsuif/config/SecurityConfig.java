@@ -58,15 +58,15 @@ public class SecurityConfig {
                         .accessDeniedHandler(jwtAccessDeniedHandler)
                 )
                 .authorizeHttpRequests(authorize -> {
-                    authorize.requestMatchers("/api/auth/**").permitAll();
                     if (isDevMode) {
-                        authorize.requestMatchers("/api/hello", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll();
+                        authorize.anyRequest().permitAll();
                     } else {
-                        authorize.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").authenticated();
+                        authorize.requestMatchers("/api/auth/**", "/api/hello").permitAll();
+                        authorize.anyRequest().authenticated();
                     }
-                    authorize.anyRequest().authenticated();
                 })
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+
     }
 }

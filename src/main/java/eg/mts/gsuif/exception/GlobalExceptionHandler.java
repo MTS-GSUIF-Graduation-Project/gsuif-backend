@@ -279,10 +279,11 @@ public class GlobalExceptionHandler {
     // Branch 3: Authentication failures → 401
     @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuthenticationException(org.springframework.security.core.AuthenticationException ex) {
-        log.error("Authentication failed: {}", ex.getMessage(), ex);
+        log.warn("Authentication failed: {}", ex.getMessage());
         return ResponseEntity
                 .status(401)
-                .body(ApiResponse.error(401, ex.getMessage(), null));
+                .body(ApiResponse.error(401, "Invalid username or password", null));
+
     }
 
     // HTTP method / media type errors

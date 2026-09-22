@@ -33,10 +33,13 @@ public class AuthServiceImpl implements AuthService {
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        String token = jwtUtil.generateToken(authentication.getName(), authentication.getAuthorities());
         List<String> roles = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
+                .filter(role -> role.startsWith("ROLE_"))
                 .collect(Collectors.toList());
+
+        String token = jwtUtil.generateToken(authentication.getName(), authentication.getAuthorities());
+
 
         return new AuthResponse(token, authentication.getName(), roles);
     }
