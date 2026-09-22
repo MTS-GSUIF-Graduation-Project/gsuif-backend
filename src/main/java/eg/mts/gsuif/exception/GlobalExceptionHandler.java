@@ -218,6 +218,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiResponse<Void>> handleDuplicateResource(DuplicateResourceException ex) {
         log.error("Duplicate resource: {}", ex.getMessage(), ex);
+        Map<String, String> errors = null;
+        if (ex.getFieldName() != null) {
+            errors = new LinkedHashMap<>();
+            errors.put(ex.getFieldName(), ex.getMessage());
+        }
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(400, ex.getMessage(), errors));
+    }
+
+    /** Project deletion rejection when dependent pages exist → HTTP 400. */
+    @ExceptionHandler(ProjectDeletionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleProjectDeletion(ProjectDeletionException ex) {
+        log.error("Project deletion rejected: {}", ex.getMessage(), ex);
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.error(400, ex.getMessage(), null));
@@ -232,6 +246,14 @@ public class GlobalExceptionHandler {
         log.error("Data integrity violation: {}", ex.getMessage(), ex);
 
         if (isUniqueConstraintViolation(ex)) {
+            if (isProjectNameConstraintViolation(ex)) {
+                Map<String, String> errors = new LinkedHashMap<>();
+                errors.put("name", "Project with name already exists");
+                return ResponseEntity
+                        .badRequest()
+                        .body(ApiResponse.error(400, "Project with name already exists", errors));
+            }
+
             return ResponseEntity
                     .badRequest()
                     .body(ApiResponse.error(400, "Resource already exists or violates unique constraint", null));
@@ -239,6 +261,74 @@ public class GlobalExceptionHandler {
 
         return handleGeneral(ex);
     }
+
+    /**
+     * Returns {@code true} only when the cause chain identifies the exact project-name unique
+     * constraint by its structured identifier, not by searching free-form text.
+     *
+     * <p>Identification relies exclusively on
+     * {@link org.hibernate.exception.ConstraintViolationException#getConstraintName()}.
+     *
+     * <p>For PostgreSQL, Hibernate populates this from the pg error-field {@code constraint_name}.
+     * For H2 in PostgreSQL mode, Hibernate populates it with the full index descriptor, e.g.
+     * {@code PUBLIC.UK_GSUIF_PROJECT_NAME INDEX PUBLIC.UK_GSUIF_PROJECT_NAME_INDEX_E};
+     * {@link #matchesProjectNameConstraint(String)} normalises this form correctly.
+     *
+     * <p>Free-form SQL messages, SQL statement text, and user-supplied values are never searched,
+     * preventing a data value that happens to contain the constraint name from causing a false match.
+     *
+     * <p>PK violations ({@code pk_gsuif_project}), FK violations and all other constraint names do
+     * not match.
+     */
+    private boolean isProjectNameConstraintViolation(DataIntegrityViolationException ex) {
+        Throwable cause = ex;
+        while (cause != null) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+                String raw = cve.getConstraintName();
+                if (raw != null) {
+                    return matchesProjectNameConstraint(raw);
+                }
+                // getConstraintName() is null — cannot reliably identify the constraint.
+                return false;
+            }
+            cause = cause.getCause();
+        }
+        // No ConstraintViolationException found — cannot reliably identify the constraint.
+        return false;
+    }
+
+    /**
+     * Normalises a raw constraint/index identifier and checks for an exact case-insensitive match
+     * against {@code uk_gsuif_project_name}.
+     *
+     * <p>Normalisation steps (applied in order):
+     * <ol>
+     *   <li>Truncate at {@code " INDEX "}: Hibernate's H2 dialect populates
+     *       {@code getConstraintName()} with the full index descriptor, e.g.
+     *       {@code PUBLIC.UK_GSUIF_PROJECT_NAME INDEX PUBLIC.UK_GSUIF_PROJECT_NAME_INDEX_E}.
+     *       Only the leading constraint identifier (before the first {@code " INDEX "}) is relevant.
+     *   <li>Strip double-quotes.
+     *   <li>Strip schema/catalog prefix (everything up to and including the last {@code .}).
+     *   <li>Trim whitespace.
+     * </ol>
+     */
+    private boolean matchesProjectNameConstraint(String raw) {
+        // Step 1: drop the index-descriptor suffix that H2 appends.
+        String truncated = raw;
+        int indexSuffix = raw.indexOf(" INDEX ");
+        if (indexSuffix > 0) {
+            truncated = raw.substring(0, indexSuffix);
+        }
+        // Steps 2-4: strip quotes, schema prefix, whitespace.
+        String normalised = truncated
+                .replace("\"", "")
+                .replaceAll("^.*\\.", "")
+                .trim();
+        return normalised.equalsIgnoreCase("uk_gsuif_project_name");
+    }
+
+
+
 
     private boolean isUniqueConstraintViolation(DataIntegrityViolationException ex) {
         Throwable cause = ex;
