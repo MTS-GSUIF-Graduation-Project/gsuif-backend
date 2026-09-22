@@ -435,7 +435,7 @@ components:
     dependencies: [BE-18]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -476,7 +476,7 @@ components:
     dependencies: [BE-06]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -513,7 +513,7 @@ components:
     dependencies: [BE-18, BE-06]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -693,7 +693,7 @@ components:
     dependencies: [BE-13]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -767,7 +767,7 @@ components:
     dependencies: [BE-17]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: TemplateOnlyProvider
@@ -812,7 +812,7 @@ components:
     dependencies: [BE-10, BE-12, BE-13, BE-19]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -850,7 +850,7 @@ components:
     dependencies: [BE-18, BE-04]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -886,7 +886,7 @@ components:
     dependencies: [BE-15, BE-02]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -927,7 +927,7 @@ components:
     dependencies: [BE-16]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
@@ -1011,7 +1011,7 @@ components:
     dependencies: [BE-18, BE-12]
     generation:
       decision_status: CONFIRMED
-      implementation_status: CONFIRMED
+      implementation_status: PLANNED
       strategy: HAND_WRITTEN
       tool:
         name: hand-written
