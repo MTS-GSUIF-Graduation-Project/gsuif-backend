@@ -29,6 +29,7 @@ This document records confirmed project and architecture decisions.
 | DEC-021 | Jmix is REJECTED as a generation foundation / output tool for GSUIF. Spike (T-08) showed generated code depends on `io.jmix.*`, uses EclipseLink + Vaadin/FlowUI, and does not match the Standards Checklist (ApiResponse, package layout, Hibernate/JPA stack). Phase 1 generation stays TemplateOnlyProvider (FreeMarker). | T-08 / SCRUM-37 spike | CONFIRMED | M2 (Alaa) |
 | DEC-022 | OpenAPI Generator (`openapi-generator-maven-plugin:7.16.0`) is ACCEPTED WITH LIMITATIONS: used for contract-first REST interface scaffolding. Phase 2 TypeScript client SDK generation is an unverified candidate — not tested in the T-09 spike. It is not the Phase 1 generation engine. FreeMarker / TemplateOnlyProvider (ADR-003) remains the Phase 1 engine. STD-05 conformance requires a project-local `responseType.mustache` override (1 file, 62 bytes). STD-01 envelope construction remains the responsibility of the implementing `@RestController`. STD-27 and STD-28 are partial for generated scaffolding only — see `capability-matrix.md`. | Spike T-09 / SCRUM-38 | CONFIRMED | M3 (Esraa) |
 | DEC-023 | STD-28 defines a required semantic HTTP baseline rather than a closed status-code whitelist. The mappings defined in the Technical Document remain required. Standard protocol responses such as 405 Method Not Allowed and 415 Unsupported Media Type are permitted and must be used when applicable. Other standard HTTP codes may be used only when documented and semantically appropriate. Every error response must use the five-field ApiResponse envelope. | STD-28 clarification | CONFIRMED | Team |
+| DEC-024 | `GSUIF_METADATA_VERSION` stores both `project_id` and `page_id`. Database consistency is enforced by `UNIQUE(project_id, id)` on `GSUIF_PAGE` and a composite foreign key `(project_id, page_id)` referencing `GSUIF_PAGE(project_id, id)`, so a version cannot point at a page that belongs to a different project. T-13 `metadata-version.schema.json` is unchanged. | T-14 / SCRUM-21 | CONFIRMED | Team |
 
 
 ## Database Rules
@@ -56,6 +57,17 @@ This document records confirmed project and architecture decisions.
 **Deferred (do only if time allows):** GraphQL Generator, API Gateway, Advanced Authorization, Password Reset + Email/SMS integrations, Redis/Distributed Cache, AI Generation Provider, full Frontend/UI deliverables.
 
 **Not part of current scope:** Multi-tenancy, Oracle-specific implementation, WebLogic/JSESSIONID/WOMS legacy infrastructure.
+
+## DEC-024 — Metadata version project/page consistency (T-14 / SCRUM-21)
+
+`GSUIF_METADATA_VERSION` keeps both `project_id` and `page_id` so the stored envelope matches T-13 without changing `metadata-version.schema.json`.
+
+Relational integrity is not left to the application alone:
+
+- `GSUIF_PAGE` has `UNIQUE(project_id, id)` (`uk_gsuif_page_project_id_id`).
+- `GSUIF_METADATA_VERSION` has `FOREIGN KEY (project_id, page_id) REFERENCES gsuif_page (project_id, id)` (`fk_gsuif_metadata_version_project_id_page_id`).
+
+A metadata version therefore cannot reference a page whose `project_id` differs from the version's `project_id`.
 
 ## Adding a New Decision
 
