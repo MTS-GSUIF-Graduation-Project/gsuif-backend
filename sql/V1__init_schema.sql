@@ -129,3 +129,4 @@ CREATE INDEX idx_gsuif_user_role_role_id ON gsuif_user_role (role_id);
 CREATE INDEX idx_gsuif_generation_run_metadata_version_id ON gsuif_generation_run (metadata_version_id);
 CREATE INDEX idx_gsuif_generation_run_triggering_user_id ON gsuif_generation_run (triggering_user_id);
 CREATE INDEX idx_gsuif_generated_artifact_generation_run_id ON gsuif_generated_artifact (generation_run_id);
+

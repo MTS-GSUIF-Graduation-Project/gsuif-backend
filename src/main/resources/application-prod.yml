@@ -10,3 +10,6 @@ spring:
   h2:
     console:
       enabled: false
+gsuif:
+  security:
+    mode: prod

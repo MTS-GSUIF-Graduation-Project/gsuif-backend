@@ -9,3 +9,8 @@ spring:
       # TODO: Change ddl-auto to 'validate' once database migrations (Flyway/Liquibase) are integrated.
       # Hibernate schema mutation (update) is only for initial local development (STD-33/persistence direction).
       ddl-auto: update
+gsuif:
+  security:
+    mode: dev
+    jwt:
+      secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
