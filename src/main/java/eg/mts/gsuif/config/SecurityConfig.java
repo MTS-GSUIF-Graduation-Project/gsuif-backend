@@ -25,7 +25,7 @@ public class SecurityConfig {
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @Value("${gsuif.security.mode:dev}")
+    @Value("${gsuif.security.mode:prod}")
     private String securityMode;
 
     public SecurityConfig(JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
@@ -61,7 +61,7 @@ public class SecurityConfig {
                     if (isDevMode) {
                         authorize.anyRequest().permitAll();
                     } else {
-                        authorize.requestMatchers("/api/auth/**", "/api/hello").permitAll();
+                        authorize.requestMatchers("/api/auth/**").permitAll();
                         authorize.anyRequest().authenticated();
                     }
                 })

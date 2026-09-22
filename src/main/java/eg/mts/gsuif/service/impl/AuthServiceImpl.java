@@ -38,8 +38,11 @@ public class AuthServiceImpl implements AuthService {
                 .filter(role -> role.startsWith("ROLE_"))
                 .collect(Collectors.toList());
 
-        String token = jwtUtil.generateToken(authentication.getName(), authentication.getAuthorities());
+        List<org.springframework.security.core.authority.SimpleGrantedAuthority> roleAuthorities = roles.stream()
+                .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
+                .collect(Collectors.toList());
 
+        String token = jwtUtil.generateToken(authentication.getName(), roleAuthorities);
 
         return new AuthResponse(token, authentication.getName(), roles);
     }

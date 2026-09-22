@@ -78,6 +78,15 @@ class AuthIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.statusCode").value(401));
 
+        // Expired token test
+        JwtUtil expiredJwtUtil = new JwtUtil("404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970", -3600000);
+        String expiredToken = expiredJwtUtil.generateToken("admin", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+
+        mockMvc.perform(get("/api/v1/work-orders")
+                        .header("Authorization", "Bearer " + expiredToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.statusCode").value(401));
+
         // Incorrectly signed token
         JwtUtil wrongKeyJwtUtil = new JwtUtil("104E635266556A586E3272357538782F413F4428472B4B6250645367566B5970", 3600000);
         String tamperedToken = wrongKeyJwtUtil.generateToken("admin", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
