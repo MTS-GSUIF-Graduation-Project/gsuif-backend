@@ -237,21 +237,35 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(400, ex.getMessage(), null));
     }
 
+    /** Page deletion rejection when metadata versions exist → HTTP 400. */
+    @ExceptionHandler(PageDeletionException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePageDeletion(PageDeletionException ex) {
+        log.error("Page deletion rejected: {}", ex.getMessage(), ex);
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(400, ex.getMessage(), null));
+    }
+
     /**
      * Race-condition fallback when a unique DB constraint is hit despite the service pre-check.
      * Only unique violations map to HTTP 400; other integrity failures fall through to HTTP 500.
+     *
+     * <p>Constraint identification relies exclusively on
+     * {@link org.hibernate.exception.ConstraintViolationException#getConstraintName()}.
+     * SQL message text and user-supplied values are never inspected.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         log.error("Data integrity violation: {}", ex.getMessage(), ex);
 
         if (isUniqueConstraintViolation(ex)) {
-            if (isProjectNameConstraintViolation(ex)) {
+            ConstraintMatch match = resolveConstraintViolation(ex);
+            if (match != null) {
                 Map<String, String> errors = new LinkedHashMap<>();
-                errors.put("name", "Project with name already exists");
+                errors.put(match.field(), match.message());
                 return ResponseEntity
                         .badRequest()
-                        .body(ApiResponse.error(400, "Project with name already exists", errors));
+                        .body(ApiResponse.error(400, match.message(), errors));
             }
 
             return ResponseEntity
@@ -263,68 +277,69 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Returns {@code true} only when the cause chain identifies the exact project-name unique
-     * constraint by its structured identifier, not by searching free-form text.
+     * Resolves a known unique-constraint name to a structured {@link ConstraintMatch}.
      *
-     * <p>Identification relies exclusively on
-     * {@link org.hibernate.exception.ConstraintViolationException#getConstraintName()}.
-     *
-     * <p>For PostgreSQL, Hibernate populates this from the pg error-field {@code constraint_name}.
-     * For H2 in PostgreSQL mode, Hibernate populates it with the full index descriptor, e.g.
-     * {@code PUBLIC.UK_GSUIF_PROJECT_NAME INDEX PUBLIC.UK_GSUIF_PROJECT_NAME_INDEX_E};
-     * {@link #matchesProjectNameConstraint(String)} normalises this form correctly.
-     *
-     * <p>Free-form SQL messages, SQL statement text, and user-supplied values are never searched,
-     * preventing a data value that happens to contain the constraint name from causing a false match.
-     *
-     * <p>PK violations ({@code pk_gsuif_project}), FK violations and all other constraint names do
-     * not match.
+     * <p>Returns {@code null} when the constraint is unknown (falls through to generic 400).
+     * Identification is based solely on {@code getConstraintName()}; free-form SQL text and
+     * data values are never searched.
      */
-    private boolean isProjectNameConstraintViolation(DataIntegrityViolationException ex) {
+    private ConstraintMatch resolveConstraintViolation(DataIntegrityViolationException ex) {
         Throwable cause = ex;
         while (cause != null) {
             if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
                 String raw = cve.getConstraintName();
-                if (raw != null) {
-                    return matchesProjectNameConstraint(raw);
+                if (raw == null) {
+                    return null;
                 }
-                // getConstraintName() is null — cannot reliably identify the constraint.
-                return false;
+                String normalised = normaliseConstraintName(raw);
+                if (normalised.equalsIgnoreCase("uk_gsuif_project_name")) {
+                    return new ConstraintMatch("name", "Project with name already exists");
+                }
+                if (normalised.equalsIgnoreCase("uk_gsuif_page_project_id_name")) {
+                    return new ConstraintMatch("name", "Page with that name already exists in this project");
+                }
+                if (normalised.equalsIgnoreCase("uk_gsuif_page_project_id_route")) {
+                    return new ConstraintMatch("route", "Page with that route already exists in this project");
+                }
+                // Known Hibernate CVE found but constraint name does not match any known mapping.
+                return null;
             }
             cause = cause.getCause();
         }
-        // No ConstraintViolationException found — cannot reliably identify the constraint.
-        return false;
+        return null;
     }
 
     /**
-     * Normalises a raw constraint/index identifier and checks for an exact case-insensitive match
-     * against {@code uk_gsuif_project_name}.
+     * Carrier for a resolved constraint violation: the DTO field name and the safe client message.
+     */
+    private record ConstraintMatch(String field, String message) {}
+
+    /**
+     * Normalises a raw constraint/index identifier to a plain lowercase constraint name.
      *
      * <p>Normalisation steps (applied in order):
      * <ol>
      *   <li>Truncate at {@code " INDEX "}: Hibernate's H2 dialect populates
      *       {@code getConstraintName()} with the full index descriptor, e.g.
-     *       {@code PUBLIC.UK_GSUIF_PROJECT_NAME INDEX PUBLIC.UK_GSUIF_PROJECT_NAME_INDEX_E}.
+     *       {@code PUBLIC.UK_GSUIF_PAGE_PROJECT_ID_NAME INDEX PUBLIC.UK_GSUIF_PAGE_PROJECT_ID_NAME_INDEX_3}.
      *       Only the leading constraint identifier (before the first {@code " INDEX "}) is relevant.
      *   <li>Strip double-quotes.
      *   <li>Strip schema/catalog prefix (everything up to and including the last {@code .}).
      *   <li>Trim whitespace.
      * </ol>
+     *
+     * <p>The caller performs a case-insensitive comparison using {@code equalsIgnoreCase}.
      */
-    private boolean matchesProjectNameConstraint(String raw) {
-        // Step 1: drop the index-descriptor suffix that H2 appends.
+    private String normaliseConstraintName(String raw) {
         String truncated = raw;
         int indexSuffix = raw.indexOf(" INDEX ");
         if (indexSuffix > 0) {
             truncated = raw.substring(0, indexSuffix);
         }
-        // Steps 2-4: strip quotes, schema prefix, whitespace.
-        String normalised = truncated
+        return truncated
                 .replace("\"", "")
                 .replaceAll("^.*\\.", "")
                 .trim();
-        return normalised.equalsIgnoreCase("uk_gsuif_project_name");
     }
 
 
