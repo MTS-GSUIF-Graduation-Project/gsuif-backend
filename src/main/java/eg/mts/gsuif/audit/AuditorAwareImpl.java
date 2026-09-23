@@ -1,7 +1,6 @@
 package eg.mts.gsuif.audit;
 
 import org.springframework.data.domain.AuditorAware;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -9,16 +8,16 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * Resolves the current auditor username from the Spring Security context.
+ * Implementation of {@link AuditorAware} for Spring Data JPA Auditing.
  *
- * <p>Adheres to STD-23: resolves the current authenticated username from
- * {@link SecurityContextHolder}, falling back to {@code "system"} if unauthenticated
- * or anonymous.
+ * <p>Captures the username of the currently authenticated principal from
+ * {@link SecurityContextHolder}. Falls back to {@code "system"} when
+ * no authentication is present (e.g. startup, background tasks, or unauthenticated requests).
  */
 @Component("auditorAware")
 public class AuditorAwareImpl implements AuditorAware<String> {
 
-    public static final String DEFAULT_SYSTEM_AUDITOR = "system";
+    private static final String DEFAULT_AUDITOR = "system";
 
     @Override
     public Optional<String> getCurrentAuditor() {
@@ -26,13 +25,15 @@ public class AuditorAwareImpl implements AuditorAware<String> {
 
         if (authentication == null
                 || !authentication.isAuthenticated()
-                || authentication instanceof AnonymousAuthenticationToken
                 || "anonymousUser".equals(authentication.getPrincipal())) {
-            return Optional.of(DEFAULT_SYSTEM_AUDITOR);
+            return Optional.of(DEFAULT_AUDITOR);
         }
 
-        return Optional.ofNullable(authentication.getName())
-                .filter(name -> !name.isBlank())
-                .or(() -> Optional.of(DEFAULT_SYSTEM_AUDITOR));
+        String username = authentication.getName();
+        if (username == null || username.isBlank()) {
+            return Optional.of(DEFAULT_AUDITOR);
+        }
+
+        return Optional.of(username);
     }
 }

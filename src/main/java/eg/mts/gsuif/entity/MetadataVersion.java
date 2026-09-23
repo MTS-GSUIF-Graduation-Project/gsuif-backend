@@ -14,6 +14,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.Check;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.envers.Audited;
 import org.hibernate.type.SqlTypes;
 
 import java.util.UUID;
@@ -25,6 +26,7 @@ import java.util.UUID;
  * so a version cannot reference a page from a different project (DEC-024).
  */
 @Entity
+@Audited
 @Table(
         name = "gsuif_metadata_version",
         uniqueConstraints = @UniqueConstraint(
