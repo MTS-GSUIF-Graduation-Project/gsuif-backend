@@ -5,9 +5,12 @@ import eg.mts.gsuif.dto.UpdatePageRequest;
 import eg.mts.gsuif.entity.GsuifPage;
 import eg.mts.gsuif.entity.GsuifProject;
 import eg.mts.gsuif.entity.MetadataVersion;
+import eg.mts.gsuif.entity.WorkOrder;
+import eg.mts.gsuif.entity.WorkOrderStatus;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
+import eg.mts.gsuif.repository.WorkOrderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +22,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,11 +55,15 @@ class GsuifPageControllerIntegrationTest {
     @Autowired
     private MetadataVersionRepository metadataVersionRepository;
 
+    @Autowired
+    private WorkOrderRepository workOrderRepository;
+
     @BeforeEach
     void setUp() {
         metadataVersionRepository.deleteAll();
         pageRepository.deleteAll();
         projectRepository.deleteAll();
+        workOrderRepository.deleteAll();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -398,6 +406,27 @@ class GsuifPageControllerIntegrationTest {
                 .andExpect(jsonPath("$.statusCode").value(404));
     }
 
+    @Test
+    void update_withDuplicateRouteInSameProject_returns400WithErrorsRouteAndPageUnchanged() throws Exception {
+        GsuifProject project = savedProject("Route Dup Project");
+        savedPage(project, "Page One", "/route-one");
+        GsuifPage pageTwo = savedPage(project, "Page Two", "/route-two");
+
+        // Attempt to steal /route-one from page two
+        UpdatePageRequest request = new UpdatePageRequest("Page Two", "/route-one");
+
+        mockMvc.perform(put("/api/v1/projects/{projectId}/pages/{pageId}", project.getId(), pageTwo.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.errors.route").isNotEmpty());
+
+        // Page two's route must be unchanged in the DB
+        GsuifPage unchanged = pageRepository.findById(pageTwo.getId()).orElseThrow();
+        assertThat(unchanged.getRoute()).isEqualTo("/route-two");
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     // 5. DELETE
     // ══════════════════════════════════════════════════════════════════════════
@@ -532,70 +561,101 @@ class GsuifPageControllerIntegrationTest {
     }
 
     /**
-     * A DataIntegrityViolationException from an unrelated constraint must NOT produce
-     * page-specific errors and must use the generic sanitised 400 message.
+     * A DataIntegrityViolationException from a genuinely unknown structured constraint
+     * (WorkOrder order-number uniqueness — not in the handler's dispatch table) must
+     * produce the generic sanitised HTTP 400 with {@code errors: null} and no SQL or
+     * constraint-identifier text in the client message.
      */
     @Test
-    void dbConstraint_unrelatedConstraint_doesNotProducePageErrors() throws Exception {
-        // Trigger a project-name violation (unrelated to page constraints).
-        GsuifProject p1 = savedProject("Conflict Project");
-        GsuifProject p2 = new GsuifProject();
-        p2.setName("Conflict Project");
+    void dbConstraint_unknownStructuredConstraint_producesGenericSanitized400() throws Exception {
+        workOrderRepository.saveAndFlush(
+                new WorkOrder("WO-UNKNOWN-001", WorkOrderStatus.OPEN, LocalDate.now(), "user"));
 
         org.springframework.dao.DataIntegrityViolationException caught = null;
         try {
-            projectRepository.saveAndFlush(p2);
+            workOrderRepository.saveAndFlush(
+                    new WorkOrder("WO-UNKNOWN-001", WorkOrderStatus.OPEN, LocalDate.now(), "user"));
         } catch (org.springframework.dao.DataIntegrityViolationException ex) {
             caught = ex;
         }
-        assertThat(caught).isNotNull();
+        assertThat(caught).as("Expected DataIntegrityViolationException").isNotNull();
 
         eg.mts.gsuif.exception.GlobalExceptionHandler handler =
                 new eg.mts.gsuif.exception.GlobalExceptionHandler();
         var response = handler.handleDataIntegrityViolation(caught);
 
-        // Project-name constraint produces errors.name — must NOT contain errors.route
         assertThat(response.getStatusCode().value()).isEqualTo(400);
-        assertThat(response.getBody().errors()).doesNotContainKey("route");
+        assertThat(response.getBody().clientMessage())
+                .isEqualTo("Resource already exists or violates unique constraint");
+        assertThat(response.getBody().errors()).isNull();
+        assertThat(response.getBody().clientMessage()).doesNotContainIgnoringCase("sql");
     }
 
     /**
-     * Adversarial test: a page whose name IS the constraint identifier string.
-     * Identification must rely solely on getConstraintName(), never on message text or data values.
+     * Poison-value regression (name): a WorkOrder whose {@code orderNumber} is literally
+     * {@code "uk_gsuif_page_project_id_name"} causes a violation on the WorkOrder
+     * uniqueness constraint — NOT on the page-name constraint.  The handler must NOT
+     * produce {@code errors.name} because identification relies solely on
+     * {@code getConstraintName()}, never on the data value.
      */
     @Test
-    void dbConstraint_pageWithPoisonValue_doesNotProduceFalseMatch() throws Exception {
-        GsuifProject project = savedProject("Poison Project");
-        // Page name equals the constraint identifier — a poison value
-        savedPage(project, "uk_gsuif_page_project_id_name", null);
-
-        GsuifPage duplicate = new GsuifPage();
-        duplicate.setProject(project);
-        duplicate.setName("uk_gsuif_page_project_id_name");
+    void dbConstraint_workOrderWithPageNameConstraintPoisonValue_doesNotProduceErrorsName() throws Exception {
+        workOrderRepository.saveAndFlush(
+                new WorkOrder("uk_gsuif_page_project_id_name", WorkOrderStatus.OPEN, LocalDate.now(), "user"));
 
         org.springframework.dao.DataIntegrityViolationException caught = null;
         try {
-            pageRepository.saveAndFlush(duplicate);
+            workOrderRepository.saveAndFlush(
+                    new WorkOrder("uk_gsuif_page_project_id_name", WorkOrderStatus.OPEN, LocalDate.now(), "user"));
         } catch (org.springframework.dao.DataIntegrityViolationException ex) {
             caught = ex;
         }
         assertThat(caught)
-                .as("Expected DataIntegrityViolationException for the duplicate page name poison value")
+                .as("Expected DataIntegrityViolationException for poison-value WorkOrder")
                 .isNotNull();
 
         eg.mts.gsuif.exception.GlobalExceptionHandler handler =
                 new eg.mts.gsuif.exception.GlobalExceptionHandler();
         var response = handler.handleDataIntegrityViolation(caught);
 
-        // The constraint name IS uk_gsuif_page_project_id_name, so this should
-        // correctly resolve to the page-name mapping (not a false "generic" response).
-        // This test confirms the handler identifies by constraint metadata, not data values.
         assertThat(response.getStatusCode().value()).isEqualTo(400);
         assertThat(response.getBody().clientMessage())
-                .isEqualTo("Page with that name already exists in this project");
-        // The constraint name itself must NOT appear in the client response.
+                .isEqualTo("Resource already exists or violates unique constraint");
+        assertThat(response.getBody().errors()).isNull();
+        assertThat(response.getBody().clientMessage()).doesNotContain("uk_gsuif_page_project_id_name");
+    }
+
+    /**
+     * Poison-value regression (route): a WorkOrder whose {@code orderNumber} is literally
+     * {@code "uk_gsuif_page_project_id_route"} causes a violation on the WorkOrder
+     * uniqueness constraint — NOT on the page-route constraint.  The handler must NOT
+     * produce {@code errors.route}.
+     */
+    @Test
+    void dbConstraint_workOrderWithPageRouteConstraintPoisonValue_doesNotProduceErrorsRoute() throws Exception {
+        workOrderRepository.saveAndFlush(
+                new WorkOrder("uk_gsuif_page_project_id_route", WorkOrderStatus.OPEN, LocalDate.now(), "user"));
+
+        org.springframework.dao.DataIntegrityViolationException caught = null;
+        try {
+            workOrderRepository.saveAndFlush(
+                    new WorkOrder("uk_gsuif_page_project_id_route", WorkOrderStatus.OPEN, LocalDate.now(), "user"));
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            caught = ex;
+        }
+        assertThat(caught)
+                .as("Expected DataIntegrityViolationException for poison-value WorkOrder")
+                .isNotNull();
+
+        eg.mts.gsuif.exception.GlobalExceptionHandler handler =
+                new eg.mts.gsuif.exception.GlobalExceptionHandler();
+        var response = handler.handleDataIntegrityViolation(caught);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
         assertThat(response.getBody().clientMessage())
-                .doesNotContain("uk_gsuif_page_project_id_name");
+                .isEqualTo("Resource already exists or violates unique constraint");
+        assertThat(response.getBody().errors()).isNull();
+        assertThat(response.getBody().clientMessage()).doesNotContain("uk_gsuif_page_project_id_route");
     }
 
     // ══════════════════════════════════════════════════════════════════════════

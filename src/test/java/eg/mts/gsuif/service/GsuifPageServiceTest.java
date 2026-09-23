@@ -258,6 +258,23 @@ class GsuifPageServiceTest {
         verify(pageRepository, never()).save(any());
     }
 
+    @Test
+    void update_whenRouteDuplicate_throwsDuplicateResourceExceptionWithFieldRoute() {
+        when(projectRepository.existsById(projectId)).thenReturn(true);
+
+        GsuifProject project = new GsuifProject();
+        // Name is unchanged so the name check short-circuits; route is the contested field.
+        GsuifPage page = buildPage(pageId, project, "Page", "/old-route");
+        when(pageRepository.findByIdAndProjectId(pageId, projectId)).thenReturn(Optional.of(page));
+        when(pageRepository.existsByProjectIdAndRouteAndIdNot(projectId, "/taken-route", pageId)).thenReturn(true);
+
+        assertThatThrownBy(() -> pageService.update(projectId, pageId, new UpdatePageRequest("Page", "/taken-route")))
+                .isInstanceOf(DuplicateResourceException.class)
+                .extracting("fieldName").isEqualTo("route");
+
+        verify(pageRepository, never()).save(any());
+    }
+
     // ── delete ────────────────────────────────────────────────────────────────
 
     @Test
