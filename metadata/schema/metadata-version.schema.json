@@ -1,3 +1,4 @@
+
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "gsuif/metadata-version.schema.json",
@@ -42,7 +43,7 @@
     },
     "isCurrent": {
       "type": "boolean",
-      "description": "Atomically maintained latest-version flag (BE-17, T-12). Server-managed on save."
+      "description": "Derived dynamically by comparing this version's ID to the Page's current-version pointer (BE-17, T-12)."
     },
     "snapshot": {
       "type": "object",
