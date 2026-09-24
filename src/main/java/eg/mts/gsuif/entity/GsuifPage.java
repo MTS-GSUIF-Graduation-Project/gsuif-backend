@@ -52,6 +52,10 @@ public class GsuifPage extends AuditableEntity {
     @Column(name = "route", length = 255)
     private String route;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "current_metadata_version_id", length = 36)
+    private UUID currentMetadataVersionId;
+
     public UUID getId() {
         return id;
     }
@@ -82,6 +86,14 @@ public class GsuifPage extends AuditableEntity {
 
     public void setRoute(String route) {
         this.route = route;
+    }
+
+    public UUID getCurrentMetadataVersionId() {
+        return currentMetadataVersionId;
+    }
+
+    public void setCurrentMetadataVersionId(UUID currentMetadataVersionId) {
+        this.currentMetadataVersionId = currentMetadataVersionId;
     }
 
     @Override

@@ -52,7 +52,6 @@ class GsuifJpaMappingTest {
         version.setPage(pageWithRoute);
         version.setVersion(1);
         version.setSchemaVersion("1.0.0");
-        version.setCurrent(true);
         version.setSnapshot("{\"components\":[],\"apiBindings\":[]}");
         entityManager.persist(version);
 
@@ -148,7 +147,6 @@ class GsuifJpaMappingTest {
         version.setPage(page);
         version.setVersion(1);
         version.setSchemaVersion("1.0.0");
-        version.setCurrent(true);
         version.setSnapshot(longText);
         entityManager.persist(version);
 
@@ -238,16 +236,15 @@ class GsuifJpaMappingTest {
 
         assertThatThrownBy(() -> jdbcTemplate.update("""
                         INSERT INTO gsuif_metadata_version (
-                            id, project_id, page_id, version, schema_version, is_current, snapshot,
+                            id, project_id, page_id, version, schema_version, snapshot,
                             created_at, updated_at, created_by, last_modified_by
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)
                         """,
                 UUID.randomUUID().toString(),
                 firstProject.getId().toString(),
                 secondProjectPage.getId().toString(),
                 1,
                 "1.0.0",
-                false,
                 "{}",
                 "constraint-test",
                 "constraint-test"))
@@ -305,7 +302,6 @@ class GsuifJpaMappingTest {
         version.setPage(page);
         version.setVersion(versionNumber);
         version.setSchemaVersion("1.0.0");
-        version.setCurrent(false);
         version.setSnapshot("{}");
         entityManager.persist(version);
         return version;

@@ -47,6 +47,9 @@ class GsuifPageControllerIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private GsuifProjectRepository projectRepository;
 
     @Autowired
@@ -60,6 +63,7 @@ class GsuifPageControllerIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.execute("UPDATE gsuif_page SET current_metadata_version_id = NULL");
         metadataVersionRepository.deleteAll();
         pageRepository.deleteAll();
         projectRepository.deleteAll();
@@ -681,8 +685,10 @@ class GsuifPageControllerIntegrationTest {
         mv.setPage(page);
         mv.setVersion(1);
         mv.setSchemaVersion("1.0");
-        mv.setCurrent(true);
         mv.setSnapshot("{\"fields\":[]}");
-        return metadataVersionRepository.save(mv);
+        mv = metadataVersionRepository.save(mv);
+        page.setCurrentMetadataVersionId(mv.getId());
+        pageRepository.save(page);
+        return mv;
     }
 }
