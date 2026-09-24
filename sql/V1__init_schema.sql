@@ -26,6 +26,7 @@ CREATE TABLE gsuif_page (
     updated_at       TIMESTAMP WITH TIME ZONE  NOT NULL,
     created_by       VARCHAR(100)              NOT NULL,
     last_modified_by VARCHAR(100)              NOT NULL,
+    current_metadata_version_id CHAR(36)       NULL,
     CONSTRAINT pk_gsuif_page PRIMARY KEY (id),
     CONSTRAINT uk_gsuif_page_project_id_name UNIQUE (project_id, name),
     CONSTRAINT uk_gsuif_page_project_id_route UNIQUE (project_id, route),
@@ -39,13 +40,13 @@ CREATE TABLE gsuif_metadata_version (
     page_id          CHAR(36)                  NOT NULL,
     version          INTEGER                   NOT NULL,
     schema_version   VARCHAR(20)               NOT NULL,
-    is_current       BOOLEAN                   NOT NULL,
     snapshot         TEXT                      NOT NULL,
     created_at       TIMESTAMP WITH TIME ZONE  NOT NULL,
     updated_at       TIMESTAMP WITH TIME ZONE  NOT NULL,
     created_by       VARCHAR(100)              NOT NULL,
     last_modified_by VARCHAR(100)              NOT NULL,
     CONSTRAINT pk_gsuif_metadata_version PRIMARY KEY (id),
+    CONSTRAINT uk_gsuif_metadata_version_page_id_id UNIQUE (page_id, id),
     CONSTRAINT uk_gsuif_metadata_version_page_id_version UNIQUE (page_id, version),
     CONSTRAINT ck_gsuif_metadata_version_version CHECK (version >= 1),
     CONSTRAINT fk_gsuif_metadata_version_project_id_page_id
@@ -130,3 +131,7 @@ CREATE INDEX idx_gsuif_generation_run_metadata_version_id ON gsuif_generation_ru
 CREATE INDEX idx_gsuif_generation_run_triggering_user_id ON gsuif_generation_run (triggering_user_id);
 CREATE INDEX idx_gsuif_generated_artifact_generation_run_id ON gsuif_generated_artifact (generation_run_id);
 
+ALTER TABLE gsuif_page
+    ADD CONSTRAINT fk_gsuif_page_current_version
+    FOREIGN KEY (id, current_metadata_version_id)
+    REFERENCES gsuif_metadata_version (page_id, id);
