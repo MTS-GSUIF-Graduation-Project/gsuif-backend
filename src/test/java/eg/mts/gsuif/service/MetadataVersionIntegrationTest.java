@@ -21,11 +21,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -104,8 +104,17 @@ class MetadataVersionIntegrationTest {
             
             GsuifPage updatedPage = pageRepository.findById(page.getId()).orElseThrow();
             MetadataVersion highestVersion = metadataVersionRepository.findFirstByPageIdOrderByVersionDesc(page.getId()).orElseThrow();
-            
+
             assertThat(updatedPage.getCurrentMetadataVersionId()).isEqualTo(highestVersion.getId());
+
+            List<MetadataVersionDto> listedVersions = metadataVersionService
+                    .getAll(page.getId(), org.springframework.data.domain.Pageable.unpaged())
+                    .data();
+            List<MetadataVersionDto> currentVersions = listedVersions.stream()
+                    .filter(MetadataVersionDto::isCurrent)
+                    .toList();
+            assertThat(currentVersions).hasSize(1);
+            assertThat(currentVersions.getFirst().id()).isEqualTo(highestVersion.getId());
         } finally {
             executor.shutdownNow();
         }
@@ -117,30 +126,38 @@ class MetadataVersionIntegrationTest {
         GsuifPage page2 = savedPage("Page 2");
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch page1Locked = new CountDownLatch(1);
+        CountDownLatch releasePage1 = new CountDownLatch(1);
         try {
-            CountDownLatch readyLatch = new CountDownLatch(2);
-            CountDownLatch startLatch = new CountDownLatch(1);
-            
-            Callable<MetadataVersionDto> task1 = () -> {
-                readyLatch.countDown();
-                startLatch.await();
-                return metadataVersionService.create(page1.getId(), new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode()));
-            };
-            Callable<MetadataVersionDto> task2 = () -> {
-                readyLatch.countDown();
-                startLatch.await();
-                return metadataVersionService.create(page2.getId(), new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode()));
-            };
+            Future<?> heldPage1Lock = executor.submit(() -> {
+                TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+                txTemplate.executeWithoutResult(status -> {
+                    pageRepository.findByIdWithLock(page1.getId()).orElseThrow();
+                    page1Locked.countDown();
+                    try {
+                        if (!releasePage1.await(15, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Timed out waiting to release Page 1 lock");
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("Interrupted while holding Page 1 lock", e);
+                    }
+                });
+            });
 
-            Future<MetadataVersionDto> future1 = executor.submit(task1);
-            Future<MetadataVersionDto> future2 = executor.submit(task2);
-            
-            readyLatch.await();
-            startLatch.countDown();
-            
-            assertThat(future1.get().version()).isEqualTo(1);
-            assertThat(future2.get().version()).isEqualTo(1);
+            assertThat(page1Locked.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<MetadataVersionDto> page2Creation = executor.submit(() ->
+                    metadataVersionService.create(page2.getId(),
+                            new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode())));
+
+            MetadataVersionDto createdForPage2 = page2Creation.get(5, TimeUnit.SECONDS);
+            assertThat(createdForPage2.version()).isEqualTo(1);
+
+            releasePage1.countDown();
+            heldPage1Lock.get(5, TimeUnit.SECONDS);
         } finally {
+            releasePage1.countDown();
             executor.shutdownNow();
         }
     }
@@ -175,22 +192,29 @@ class MetadataVersionIntegrationTest {
     @Test
     void testTransactionRollback() {
         GsuifPage page = savedPage("Rollback Page");
-        
+        MetadataVersionDto original = metadataVersionService.create(
+                page.getId(),
+                new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode()));
+
         TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
         txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        
-        try {
-            txTemplate.execute(status -> {
-                metadataVersionService.create(page.getId(), new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode()));
-                throw new RuntimeException("Force rollback");
-            });
-        } catch (RuntimeException e) {
-            assertThat(e.getMessage()).isEqualTo("Force rollback");
-        }
-        
-        assertThat(metadataVersionRepository.findAllByPageId(page.getId(), org.springframework.data.domain.Pageable.unpaged())).isEmpty();
-        
+
+        RuntimeException failure = assertThrows(RuntimeException.class, () ->
+                txTemplate.execute(status -> {
+                    metadataVersionService.create(
+                            page.getId(),
+                            new CreateMetadataVersionRequest("2.0", JsonNodeFactory.instance.objectNode()));
+                    throw new RuntimeException("Force rollback");
+                }));
+        assertThat(failure.getMessage()).isEqualTo("Force rollback");
+
+        List<MetadataVersion> remainingVersions = metadataVersionRepository
+                .findAllByPageId(page.getId(), org.springframework.data.domain.Pageable.unpaged())
+                .getContent();
+        assertThat(remainingVersions).hasSize(1);
+        assertThat(remainingVersions.getFirst().getId()).isEqualTo(original.id());
+
         GsuifPage reloadedPage = pageRepository.findById(page.getId()).orElseThrow();
-        assertThat(reloadedPage.getCurrentMetadataVersionId()).isNull();
+        assertThat(reloadedPage.getCurrentMetadataVersionId()).isEqualTo(original.id());
     }
 }
