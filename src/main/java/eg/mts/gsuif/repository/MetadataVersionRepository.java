@@ -13,4 +13,10 @@ import java.util.UUID;
 public interface MetadataVersionRepository extends JpaRepository<MetadataVersion, UUID> {
 
     boolean existsByPageId(UUID pageId);
+
+    org.springframework.data.domain.Page<MetadataVersion> findAllByPageId(UUID pageId, org.springframework.data.domain.Pageable pageable);
+
+    java.util.Optional<MetadataVersion> findFirstByPageIdOrderByVersionDesc(UUID pageId);
+
+    java.util.Optional<MetadataVersion> findByIdAndPageId(UUID id, UUID pageId);
 }
