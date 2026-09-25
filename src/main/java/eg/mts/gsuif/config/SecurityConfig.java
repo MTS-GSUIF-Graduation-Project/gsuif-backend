@@ -61,7 +61,12 @@ public class SecurityConfig {
                     if (isDevMode) {
                         authorize.anyRequest().permitAll();
                     } else {
-                        authorize.requestMatchers("/api/auth/**").permitAll();
+                        authorize.requestMatchers(
+                                "/api/auth/**",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll();
                         authorize.anyRequest().authenticated();
                     }
                 })
