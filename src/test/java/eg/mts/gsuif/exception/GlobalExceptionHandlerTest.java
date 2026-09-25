@@ -327,6 +327,22 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void handleHttpMessageNotWritable_returns500() {
+        org.springframework.http.converter.HttpMessageNotWritableException ex =
+                new org.springframework.http.converter.HttpMessageNotWritableException("JSON serialization error");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleGeneral(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().statusCode()).isEqualTo(500);
+        assertThat(response.getBody().status()).isEqualTo("INTERNAL_SERVER_ERROR");
+        assertThat(response.getBody().clientMessage()).isEqualTo("An unexpected error occurred");
+        assertThat(response.getBody().body()).isNull();
+        assertThat(response.getBody().errors()).isNull();
+    }
+
+    @Test
     void handleMethodArgumentTypeMismatch_returns400WithoutMethodParameter() {
         MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
                 "invalid-uuid", UUID.class, "id", null, new IllegalArgumentException("Invalid UUID"));

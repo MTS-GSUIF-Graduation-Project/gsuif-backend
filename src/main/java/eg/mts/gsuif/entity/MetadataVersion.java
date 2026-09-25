@@ -25,6 +25,7 @@ import java.util.UUID;
  * <p>The composite FK {@code (project_id, page_id)} is mapped through {@link GsuifPage}
  * so a version cannot reference a page from a different project (DEC-024).
  */
+@org.hibernate.annotations.Immutable
 @Entity
 @Audited
 @Table(
@@ -58,9 +59,6 @@ public class MetadataVersion extends AuditableEntity {
 
     @Column(name = "schema_version", nullable = false, length = 20)
     private String schemaVersion;
-
-    @Column(name = "is_current", nullable = false)
-    private boolean current;
 
     @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "snapshot", nullable = false)
@@ -96,14 +94,6 @@ public class MetadataVersion extends AuditableEntity {
 
     public void setSchemaVersion(String schemaVersion) {
         this.schemaVersion = schemaVersion;
-    }
-
-    public boolean isCurrent() {
-        return current;
-    }
-
-    public void setCurrent(boolean current) {
-        this.current = current;
     }
 
     public String getSnapshot() {

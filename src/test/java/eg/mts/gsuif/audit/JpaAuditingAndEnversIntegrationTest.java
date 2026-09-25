@@ -2,7 +2,7 @@ package eg.mts.gsuif.audit;
 
 import eg.mts.gsuif.entity.GsuifPage;
 import eg.mts.gsuif.entity.GsuifProject;
-import eg.mts.gsuif.entity.MetadataVersion;
+// import eg.mts.gsuif.entity.MetadataVersion;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
+// import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -86,44 +86,36 @@ class JpaAuditingAndEnversIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "metadata_author")
-    void hibernateEnvers_metadataVersionRevisionHistoryIsQueryable() {
-        // Setup parent project & page
+    @WithMockUser(username = "page_author")
+    void hibernateEnvers_pageRevisionHistoryIsQueryable() {
+        // Setup parent project
         GsuifProject project = new GsuifProject();
-        project.setName("Metadata Project");
+        project.setName("Page Project");
         project.setDescription("Project Description");
         project = projectRepository.saveAndFlush(project);
 
+        // Revision 1: Create Page
         GsuifPage page = new GsuifPage();
         page.setProject(project);
         page.setName("Metadata Page");
         page.setRoute("/metadata-page");
         page = pageRepository.saveAndFlush(page);
 
-        // Revision 1: Create MetadataVersion
-        MetadataVersion version = new MetadataVersion();
-        version.setPage(page);
-        version.setVersion(1);
-        version.setSchemaVersion("1.0.0");
-        version.setCurrent(true);
-        version.setSnapshot("{\"title\": \"Version 1\"}");
-        version = metadataVersionRepository.saveAndFlush(version);
-
-        // Revision 2: Update MetadataVersion snapshot
-        version.setSnapshot("{\"title\": \"Version 1 Updated\"}");
-        version = metadataVersionRepository.saveAndFlush(version);
+        // Revision 2: Update Page
+        page.setName("Metadata Page Updated");
+        page = pageRepository.saveAndFlush(page);
 
         // Verify revision records via AuditService
-        List<Number> versionRevisions = auditService.getRevisions(MetadataVersion.class, version.getId());
+        List<Number> pageRevisions = auditService.getRevisions(GsuifPage.class, page.getId());
 
-        assertEquals(2, versionRevisions.size(), "MetadataVersion should have two revision records");
+        assertEquals(2, pageRevisions.size(), "GsuifPage should have two revision records");
 
-        MetadataVersion rev1Version = auditService.getEntityAtRevision(MetadataVersion.class, version.getId(), versionRevisions.get(0));
-        MetadataVersion rev2Version = auditService.getEntityAtRevision(MetadataVersion.class, version.getId(), versionRevisions.get(1));
+        GsuifPage rev1Page = auditService.getEntityAtRevision(GsuifPage.class, page.getId(), pageRevisions.get(0));
+        GsuifPage rev2Page = auditService.getEntityAtRevision(GsuifPage.class, page.getId(), pageRevisions.get(1));
 
-        assertEquals("{\"title\": \"Version 1\"}", rev1Version.getSnapshot());
-        assertEquals("{\"title\": \"Version 1 Updated\"}", rev2Version.getSnapshot());
-        assertEquals("metadata_author", rev1Version.getCreatedBy());
-        assertEquals("metadata_author", rev2Version.getLastModifiedBy());
+        assertEquals("Metadata Page", rev1Page.getName());
+        assertEquals("Metadata Page Updated", rev2Page.getName());
+        assertEquals("page_author", rev1Page.getCreatedBy());
+        assertEquals("page_author", rev2Page.getLastModifiedBy());
     }
 }

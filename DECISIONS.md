@@ -79,6 +79,17 @@ New confirmed decisions should be added using the following format:
 
 ---
 
+## DEC-025 — Page-pointer architecture (SCRUM-22)
+
+MetadataVersion records are immutable and append-only. Current-version selection is stored as mutable Page state through a nullable MetadataVersion reference.
+- `latest` refers to the highest sequential version number.
+- `current` refers to the version referenced by the Page pointer.
+- Creating a new version also automatically updates the Page pointer to that new version within the same atomic transaction.
+- Explicit rollbacks (to be implemented) only update the Page pointer without modifying or copying existing versions.
+- The `isCurrent` DTO field is derived dynamically by comparing a version's ID to the Page's pointer.
+
+---
+
 ## DEC-022 — OpenAPI Generator Evaluation Rationale (T-09 / SCRUM-38)
 
 **Spike:** T-09 · **Branch:** `feature/SCRUM-38-openapi-generator`

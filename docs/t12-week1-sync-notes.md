@@ -157,7 +157,7 @@ Page (1) ──< MetadataVersion (N, immutable snapshots)
 | `schemaVersion` | string | yes — contract version, e.g. `"1.0.0"` |
 | `createdAt` | datetime | yes |
 | `createdBy` | string | yes — username |
-| `isCurrent` | boolean | yes — latest version flag (BE-17) |
+| `isCurrent` | boolean | yes — derived from Page pointer (BE-17) |
 | `snapshot` | object | yes — immutable copy of `components` + `apiBindings` |
 
 **Rule:** no update or delete of existing `MetadataVersion` records. New save = new version.

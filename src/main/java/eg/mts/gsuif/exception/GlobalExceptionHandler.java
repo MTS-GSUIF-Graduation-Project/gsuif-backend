@@ -218,6 +218,29 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiResponse<Void>> handleDuplicateResource(DuplicateResourceException ex) {
         log.error("Duplicate resource: {}", ex.getMessage(), ex);
+        Map<String, String> errors = null;
+        if (ex.getFieldName() != null) {
+            errors = new LinkedHashMap<>();
+            errors.put(ex.getFieldName(), ex.getMessage());
+        }
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(400, ex.getMessage(), errors));
+    }
+
+    /** Project deletion rejection when dependent pages exist → HTTP 400. */
+    @ExceptionHandler(ProjectDeletionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleProjectDeletion(ProjectDeletionException ex) {
+        log.error("Project deletion rejected: {}", ex.getMessage(), ex);
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(400, ex.getMessage(), null));
+    }
+
+    /** Page deletion rejection when metadata versions exist → HTTP 400. */
+    @ExceptionHandler(PageDeletionException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePageDeletion(PageDeletionException ex) {
+        log.error("Page deletion rejected: {}", ex.getMessage(), ex);
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.error(400, ex.getMessage(), null));
@@ -226,12 +249,25 @@ public class GlobalExceptionHandler {
     /**
      * Race-condition fallback when a unique DB constraint is hit despite the service pre-check.
      * Only unique violations map to HTTP 400; other integrity failures fall through to HTTP 500.
+     *
+     * <p>Constraint identification relies exclusively on
+     * {@link org.hibernate.exception.ConstraintViolationException#getConstraintName()}.
+     * SQL message text and user-supplied values are never inspected.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         log.error("Data integrity violation: {}", ex.getMessage(), ex);
 
         if (isUniqueConstraintViolation(ex)) {
+            ConstraintMatch match = resolveConstraintViolation(ex);
+            if (match != null) {
+                Map<String, String> errors = new LinkedHashMap<>();
+                errors.put(match.field(), match.message());
+                return ResponseEntity
+                        .badRequest()
+                        .body(ApiResponse.error(400, match.message(), errors));
+            }
+
             return ResponseEntity
                     .badRequest()
                     .body(ApiResponse.error(400, "Resource already exists or violates unique constraint", null));
@@ -239,6 +275,75 @@ public class GlobalExceptionHandler {
 
         return handleGeneral(ex);
     }
+
+    /**
+     * Resolves a known unique-constraint name to a structured {@link ConstraintMatch}.
+     *
+     * <p>Returns {@code null} when the constraint is unknown (falls through to generic 400).
+     * Identification is based solely on {@code getConstraintName()}; free-form SQL text and
+     * data values are never searched.
+     */
+    private ConstraintMatch resolveConstraintViolation(DataIntegrityViolationException ex) {
+        Throwable cause = ex;
+        while (cause != null) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+                String raw = cve.getConstraintName();
+                if (raw == null) {
+                    return null;
+                }
+                String normalised = normaliseConstraintName(raw);
+                if (normalised.equalsIgnoreCase("uk_gsuif_project_name")) {
+                    return new ConstraintMatch("name", "Project with name already exists");
+                }
+                if (normalised.equalsIgnoreCase("uk_gsuif_page_project_id_name")) {
+                    return new ConstraintMatch("name", "Page with that name already exists in this project");
+                }
+                if (normalised.equalsIgnoreCase("uk_gsuif_page_project_id_route")) {
+                    return new ConstraintMatch("route", "Page with that route already exists in this project");
+                }
+                // Known Hibernate CVE found but constraint name does not match any known mapping.
+                return null;
+            }
+            cause = cause.getCause();
+        }
+        return null;
+    }
+
+    /**
+     * Carrier for a resolved constraint violation: the DTO field name and the safe client message.
+     */
+    private record ConstraintMatch(String field, String message) {}
+
+    /**
+     * Normalises a raw constraint/index identifier to a plain lowercase constraint name.
+     *
+     * <p>Normalisation steps (applied in order):
+     * <ol>
+     *   <li>Truncate at {@code " INDEX "}: Hibernate's H2 dialect populates
+     *       {@code getConstraintName()} with the full index descriptor, e.g.
+     *       {@code PUBLIC.UK_GSUIF_PAGE_PROJECT_ID_NAME INDEX PUBLIC.UK_GSUIF_PAGE_PROJECT_ID_NAME_INDEX_3}.
+     *       Only the leading constraint identifier (before the first {@code " INDEX "}) is relevant.
+     *   <li>Strip double-quotes.
+     *   <li>Strip schema/catalog prefix (everything up to and including the last {@code .}).
+     *   <li>Trim whitespace.
+     * </ol>
+     *
+     * <p>The caller performs a case-insensitive comparison using {@code equalsIgnoreCase}.
+     */
+    private String normaliseConstraintName(String raw) {
+        String truncated = raw;
+        int indexSuffix = raw.indexOf(" INDEX ");
+        if (indexSuffix > 0) {
+            truncated = raw.substring(0, indexSuffix);
+        }
+        return truncated
+                .replace("\"", "")
+                .replaceAll("^.*\\.", "")
+                .trim();
+    }
+
+
+
 
     private boolean isUniqueConstraintViolation(DataIntegrityViolationException ex) {
         Throwable cause = ex;
