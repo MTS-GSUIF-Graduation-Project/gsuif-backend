@@ -35,8 +35,12 @@ class JpaAuditingAndEnversIntegrationTest {
     @Autowired
     private AuditService auditService;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void setUp() {
+        jdbcTemplate.execute("UPDATE gsuif_page SET current_metadata_version_id = NULL");
         metadataVersionRepository.deleteAll();
         pageRepository.deleteAll();
         projectRepository.deleteAll();
