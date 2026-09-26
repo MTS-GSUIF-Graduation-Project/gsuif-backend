@@ -13,3 +13,8 @@ spring:
 gsuif:
   security:
     mode: prod
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

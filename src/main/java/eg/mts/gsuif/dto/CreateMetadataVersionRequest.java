@@ -5,6 +5,7 @@ import tools.jackson.databind.JsonNode;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Request DTO for creating a new {@link eg.mts.gsuif.entity.MetadataVersion}.
@@ -14,9 +15,13 @@ import jakarta.validation.constraints.Size;
 public record CreateMetadataVersionRequest(
         @NotBlank(message = "Schema version cannot be blank")
         @Size(max = 20, message = "Schema version cannot exceed 20 characters")
+        @Schema(minLength = 1, description = "Required; trimmed before validation and length checks. Must contain a non-whitespace character (Java Character.isWhitespace).", example = "1.0")
         String schemaVersion,
-        
+
         @NotNull(message = "Snapshot cannot be null")
+        @Schema(implementation = Object.class, types = {"object", "array", "string", "number", "boolean"},
+                description = "Any non-null JSON value. Objects and arrays may contain nested nulls; a top-level null is rejected.",
+                example = "{\"components\":[{\"type\":\"text\",\"label\":\"Order details\",\"value\":null}]}")
         JsonNode snapshot
 ) {
     @com.fasterxml.jackson.annotation.JsonCreator

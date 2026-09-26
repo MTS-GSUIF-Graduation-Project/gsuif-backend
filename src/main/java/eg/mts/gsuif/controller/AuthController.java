@@ -21,6 +21,12 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @io.swagger.v3.oas.annotations.Operation(operationId = "login")
+    @io.swagger.v3.oas.annotations.security.SecurityRequirements()
+    @ApiCommonWriteResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Login successful")
+    })
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse response = authService.login(loginRequest);
         return ApiResponse.success(response, "Authentication successful");
