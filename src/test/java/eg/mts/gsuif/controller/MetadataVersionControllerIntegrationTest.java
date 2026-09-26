@@ -103,7 +103,6 @@ class MetadataVersionControllerIntegrationTest {
     @Test
     void getLatest_whenVersionsExist_returnsHighestVersion() throws Exception {
         GsuifPage page = savedPage("Home");
-        
         savedMetadataVersion(page, 1, "1.0", false);
         savedMetadataVersion(page, 2, "1.1", true);
 
@@ -126,7 +125,6 @@ class MetadataVersionControllerIntegrationTest {
     void getById_whenBelongsToAnotherPage_returns404() throws Exception {
         GsuifPage p1 = savedPage("Page 1");
         GsuifPage p2 = savedPage("Page 2");
-        
         MetadataVersion mv1 = savedMetadataVersion(p1, 1, "1.0", true);
 
         mockMvc.perform(get("/api/v1/pages/{pageId}/metadata/{versionId}", p2.getId(), mv1.getId()))
@@ -196,7 +194,6 @@ class MetadataVersionControllerIntegrationTest {
     @Test
     void getAll_withPaginationParamsAndExceedsSize100_capsSizeTo100() throws Exception {
         GsuifPage page = savedPage("Cap Test Page");
-        
         // We just need to check the pagination metadata reflects the cap.
         mockMvc.perform(get("/api/v1/pages/{pageId}/metadata?page=1&size=200", page.getId()))
                 .andExpect(status().isOk())

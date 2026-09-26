@@ -54,3 +54,10 @@ Thumbs.db
 
 # Documentation
 doc/
+
+# Local-only agent / personal notes (never commit)
+NOTES.local.md
+*.local.md
+
+# hash password for admin user to be used when creating user manually
+../HashPassword.java
