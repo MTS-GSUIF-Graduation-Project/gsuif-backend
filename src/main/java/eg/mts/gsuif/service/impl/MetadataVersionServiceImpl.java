@@ -63,7 +63,6 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
         }
 
         newVersion = metadataVersionRepository.save(newVersion);
-        
         page.setCurrentMetadataVersionId(newVersion.getId());
         pageRepository.save(page);
 

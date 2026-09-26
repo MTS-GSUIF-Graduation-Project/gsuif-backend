@@ -15,7 +15,6 @@ public record CreateMetadataVersionRequest(
         @NotBlank(message = "Schema version cannot be blank")
         @Size(max = 20, message = "Schema version cannot exceed 20 characters")
         String schemaVersion,
-        
         @NotNull(message = "Snapshot cannot be null")
         JsonNode snapshot
 ) {
