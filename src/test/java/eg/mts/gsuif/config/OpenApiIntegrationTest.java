@@ -41,7 +41,7 @@ public class OpenApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         JsonNode baseDocs = objectMapper.readTree(baseDocsJson);
-        
+
         // Check global security components
         JsonNode securitySchemes = baseDocs.at("/components/securitySchemes/bearerAuth");
         assertFalse(securitySchemes.isMissingNode(), "bearerAuth scheme is missing");
@@ -58,7 +58,7 @@ public class OpenApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         JsonNode metadataDocs = objectMapper.readTree(metadataApiJson);
-        
+
         Set<String> expectedMetadataOps = Set.of(
             "GET /api/v1/projects", "POST /api/v1/projects",
             "GET /api/v1/projects/{id}", "PUT /api/v1/projects/{id}", "DELETE /api/v1/projects/{id}",
@@ -76,7 +76,7 @@ public class OpenApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         JsonNode referenceDocs = objectMapper.readTree(referenceApiJson);
-        
+
         Set<String> expectedReferenceOps = Set.of(
             "GET /api/v1/work-orders", "POST /api/v1/work-orders",
             "GET /api/v1/work-orders/{id}", "PUT /api/v1/work-orders/{id}", "DELETE /api/v1/work-orders/{id}"
@@ -89,10 +89,10 @@ public class OpenApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         JsonNode authDocs = objectMapper.readTree(authApiJson);
-        
+
         Set<String> expectedAuthOps = Set.of("POST /api/auth/login");
         assertEquals(expectedAuthOps, getOperations(authDocs), "Auth operations mismatch");
-        
+
         // Verify login operation is public
         JsonNode loginPost = authDocs.at("/paths/~1api~1auth~1login/post");
         JsonNode loginSecurity = loginPost.at("/security");
@@ -116,7 +116,7 @@ public class OpenApiIntegrationTest {
 
     private void assertAllOperationsProtected(JsonNode docs) {
         JsonNode rootSecurity = docs.at("/security");
-        
+
         JsonNode paths = docs.path("paths");
         Iterator<Map.Entry<String, JsonNode>> fields = paths.fields();
         while (fields.hasNext()) {
@@ -127,15 +127,15 @@ public class OpenApiIntegrationTest {
                 Map.Entry<String, JsonNode> opEntry = ops.next();
                 JsonNode opNode = opEntry.getValue();
                 JsonNode opSecurity = opNode.at("/security");
-                
+
                 JsonNode effectiveSecurity = !opSecurity.isMissingNode() ? opSecurity : rootSecurity;
-                
-                assertFalse(effectiveSecurity.isMissingNode() || effectiveSecurity.isEmpty(), 
+
+                assertFalse(effectiveSecurity.isMissingNode() || effectiveSecurity.isEmpty(),
                         "Operation " + opEntry.getKey() + " " + path + " has empty or missing security array (anonymous)");
-                
+
                 // Every alternative must require bearerAuth
                 for (JsonNode secObj : effectiveSecurity) {
-                    assertTrue(secObj.has("bearerAuth"), 
+                    assertTrue(secObj.has("bearerAuth"),
                             "Operation " + opEntry.getKey() + " " + path + " has a security alternative missing bearerAuth");
                 }
             }
