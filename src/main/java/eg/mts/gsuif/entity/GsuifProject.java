@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.envers.Audited;
 import org.hibernate.type.SqlTypes;
 
 import java.util.UUID;
@@ -16,6 +17,7 @@ import java.util.UUID;
  * JPA mapping for {@code gsuif_project}.
  */
 @Entity
+@Audited
 @Table(
         name = "gsuif_project",
         uniqueConstraints = @UniqueConstraint(name = "uk_gsuif_project_name", columnNames = "name")
