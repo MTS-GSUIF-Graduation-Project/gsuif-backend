@@ -39,12 +39,16 @@ public class MetadataVersionController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a new metadata version", description = "Creates a new metadata version for the specified page and returns HTTP 201")
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Metadata version created successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page not found")
+    @Operation(summary = "Create a new metadata version", description = "Creates a new metadata version for the specified page and returns HTTP 201", operationId = "createMetadataVersion",
+    responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Metadata version created successfully",
+            links = {
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetMetadataVersionById", operationId = "getMetadataVersionById", parameters = {@io.swagger.v3.oas.annotations.links.LinkParameter(name = "pageId", expression = "$response.body#/body/pageId"), @io.swagger.v3.oas.annotations.links.LinkParameter(name = "versionId", expression = "$response.body#/body/id")}),
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetLatestMetadataVersion", operationId = "getLatestMetadataVersion", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "pageId", expression = "$response.body#/body/pageId"))
+            }),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
+    @ApiCommonWriteResponses
     public ResponseEntity<ApiResponse<MetadataVersionDto>> create(
             @Parameter(description = "Page UUID", required = true)
             @PathVariable("pageId") UUID pageId,
@@ -56,11 +60,12 @@ public class MetadataVersionController {
     }
 
     @GetMapping
-    @Operation(summary = "List metadata versions", description = "Retrieves a paginated list of metadata versions for the specified page")
-    @ApiResponses({
+    @Operation(summary = "List metadata versions", description = "Retrieves a paginated list of metadata versions for the specified page", operationId = "getMetadataVersionsByPage",
+    responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Versions retrieved successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
+    @ApiCommonResponses
     public ResponseEntity<ApiResponse<PagedBody<MetadataVersionDto>>> getAll(
             @Parameter(description = "Page UUID", required = true)
             @PathVariable("pageId") UUID pageId,
@@ -70,11 +75,16 @@ public class MetadataVersionController {
     }
 
     @GetMapping("/latest")
-    @Operation(summary = "Get the latest metadata version", description = "Retrieves the highest sequential version for the page")
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Version retrieved successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page not found or no versions exist")
+    @Operation(summary = "Get the latest metadata version", description = "Retrieves the highest sequential version for the page", operationId = "getLatestMetadataVersion",
+    responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Version retrieved successfully",
+            links = {
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetMetadataVersionById", operationId = "getMetadataVersionById", parameters = {@io.swagger.v3.oas.annotations.links.LinkParameter(name = "pageId", expression = "$response.body#/body/pageId"), @io.swagger.v3.oas.annotations.links.LinkParameter(name = "versionId", expression = "$response.body#/body/id")}),
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetLatestMetadataVersion", operationId = "getLatestMetadataVersion", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "pageId", expression = "$response.body#/body/pageId"))
+            }),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page not found or no versions exist", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
+    @ApiCommonResponses
     public ResponseEntity<ApiResponse<MetadataVersionDto>> getLatest(
             @Parameter(description = "Page UUID", required = true)
             @PathVariable("pageId") UUID pageId) {
@@ -83,11 +93,16 @@ public class MetadataVersionController {
     }
 
     @GetMapping("/{versionId}")
-    @Operation(summary = "Get a metadata version by ID", description = "Retrieves a single metadata version by its UUID")
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Version retrieved successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page or version not found")
+    @Operation(summary = "Get a metadata version by ID", description = "Retrieves a single metadata version by its UUID", operationId = "getMetadataVersionById",
+    responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Version retrieved successfully",
+            links = {
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetMetadataVersionById", operationId = "getMetadataVersionById", parameters = {@io.swagger.v3.oas.annotations.links.LinkParameter(name = "pageId", expression = "$response.body#/body/pageId"), @io.swagger.v3.oas.annotations.links.LinkParameter(name = "versionId", expression = "$response.body#/body/id")}),
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetLatestMetadataVersion", operationId = "getLatestMetadataVersion", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "pageId", expression = "$response.body#/body/pageId"))
+            }),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page or version not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
+    @ApiCommonResponses
     public ResponseEntity<ApiResponse<MetadataVersionDto>> getById(
             @Parameter(description = "Page UUID", required = true)
             @PathVariable("pageId") UUID pageId,
