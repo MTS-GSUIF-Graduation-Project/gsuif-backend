@@ -7,6 +7,7 @@ public record ApiResponse<T>(
     String clientMessage,
     int statusCode,
     T body,
+    @io.swagger.v3.oas.annotations.media.Schema(nullable = true)
     Map<String, String> errors
 ) {
     public static <T> ApiResponse<T> success(T body, String clientMessage) {

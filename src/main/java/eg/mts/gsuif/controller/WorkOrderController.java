@@ -55,9 +55,9 @@ public class WorkOrderController {
 
     @PostMapping
     @Operation(summary = "Create a new work order", description = "Creates a new work order and returns the created record with HTTP 201")
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Work order created successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or duplicate order number")
+    @ApiCommonWriteResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Work order created successfully")
     })
     public ResponseEntity<ApiResponse<WorkOrderDto>> create(
             @Valid @RequestBody CreateWorkOrderRequest request) {
@@ -69,9 +69,10 @@ public class WorkOrderController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get a work order by ID", description = "Retrieves a single work order by its unique UUID identifier")
-    @ApiResponses({
+    @ApiCommonResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work order found"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
     public ResponseEntity<ApiResponse<WorkOrderDto>> getById(
             @Parameter(description = "Work order UUID", required = true)
@@ -82,7 +83,8 @@ public class WorkOrderController {
 
     @GetMapping
     @Operation(summary = "List work orders with pagination", description = "Retrieves a paginated list of work orders with optional status filtering")
-    @ApiResponses({
+    @ApiCommonResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work orders retrieved successfully")
     })
     public ResponseEntity<ApiResponse<PagedBody<WorkOrderDto>>> getAll(
@@ -95,10 +97,10 @@ public class WorkOrderController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Update an existing work order", description = "Updates mutable fields (status, dueDate, assignedTo) of an existing work order")
-    @ApiResponses({
+    @ApiCommonWriteResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work order updated successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
     public ResponseEntity<ApiResponse<WorkOrderDto>> update(
             @Parameter(description = "Work order UUID", required = true)
@@ -110,9 +112,10 @@ public class WorkOrderController {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete a work order", description = "Deletes a work order by its unique UUID identifier")
-    @ApiResponses({
+    @ApiCommonResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work order deleted successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
     public ResponseEntity<ApiResponse<Void>> delete(
             @Parameter(description = "Work order UUID", required = true)

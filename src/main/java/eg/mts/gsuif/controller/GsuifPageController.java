@@ -44,10 +44,10 @@ public class GsuifPageController {
 
     @PostMapping
     @Operation(summary = "Create a new page", description = "Creates a new page within the specified project and returns HTTP 201")
-    @ApiResponses({
+    @ApiCommonWriteResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Page created successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or duplicate name/route"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
     public ResponseEntity<ApiResponse<PageDto>> create(
             @Parameter(description = "Project UUID", required = true)
@@ -61,9 +61,10 @@ public class GsuifPageController {
 
     @GetMapping
     @Operation(summary = "List pages with pagination", description = "Retrieves a paginated list of pages for the specified project")
-    @ApiResponses({
+    @ApiCommonResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Pages retrieved successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
     public ResponseEntity<ApiResponse<PagedBody<PageDto>>> getAll(
             @Parameter(description = "Project UUID", required = true)
@@ -75,9 +76,10 @@ public class GsuifPageController {
 
     @GetMapping("/{pageId}")
     @Operation(summary = "Get a page by ID", description = "Retrieves a single page by its UUID, scoped to the specified project")
-    @ApiResponses({
+    @ApiCommonResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Page retrieved successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project or page not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project or page not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
     public ResponseEntity<ApiResponse<PageDto>> getById(
             @Parameter(description = "Project UUID", required = true)
@@ -90,10 +92,10 @@ public class GsuifPageController {
 
     @PutMapping("/{pageId}")
     @Operation(summary = "Update an existing page", description = "Updates name and route of an existing page within the specified project")
-    @ApiResponses({
+    @ApiCommonWriteResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Page updated successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or duplicate name/route"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project or page not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project or page not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
     public ResponseEntity<ApiResponse<PageDto>> update(
             @Parameter(description = "Project UUID", required = true)
@@ -107,10 +109,10 @@ public class GsuifPageController {
 
     @DeleteMapping("/{pageId}")
     @Operation(summary = "Delete a page", description = "Deletes a page within the specified project if it has no metadata versions")
-    @ApiResponses({
+    @ApiCommonResponses
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Page deleted successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Cannot delete page with existing metadata versions"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project or page not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Project or page not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
     public ResponseEntity<ApiResponse<Void>> delete(
             @Parameter(description = "Project UUID", required = true)
