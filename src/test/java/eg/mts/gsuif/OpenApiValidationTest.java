@@ -3,6 +3,9 @@ package eg.mts.gsuif;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import java.util.Map;
+import java.util.HashMap;
+import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -158,5 +161,239 @@ public class OpenApiValidationTest {
                 .andExpect(jsonPath("$.statusCode").value(405))
                 .andExpect(jsonPath("$.status").value("METHOD_NOT_ALLOWED"))
                 .andExpect(jsonPath("$.clientMessage").value("HTTP method not supported"));
+    }
+
+    @Test
+    public void testOperationIdsAndLinks() throws Exception {
+        Map<String, String> baseExpected = new HashMap<>();
+        baseExpected.put("post /api/auth/login", "login");
+        baseExpected.put("post /api/v1/projects", "createProject");
+        baseExpected.put("get /api/v1/projects/{id}", "getProjectById");
+        baseExpected.put("get /api/v1/projects", "getProjects");
+        baseExpected.put("put /api/v1/projects/{id}", "updateProject");
+        baseExpected.put("delete /api/v1/projects/{id}", "deleteProject");
+        baseExpected.put("post /api/v1/projects/{projectId}/pages", "createPage");
+        baseExpected.put("get /api/v1/projects/{projectId}/pages", "getPagesByProject");
+        baseExpected.put("get /api/v1/projects/{projectId}/pages/{pageId}", "getPageById");
+        baseExpected.put("put /api/v1/projects/{projectId}/pages/{pageId}", "updatePage");
+        baseExpected.put("delete /api/v1/projects/{projectId}/pages/{pageId}", "deletePage");
+        baseExpected.put("post /api/v1/pages/{pageId}/metadata", "createMetadataVersion");
+        baseExpected.put("get /api/v1/pages/{pageId}/metadata", "getMetadataVersionsByPage");
+        baseExpected.put("get /api/v1/pages/{pageId}/metadata/latest", "getLatestMetadataVersion");
+        baseExpected.put("get /api/v1/pages/{pageId}/metadata/{versionId}", "getMetadataVersionById");
+        baseExpected.put("post /api/v1/work-orders", "createWorkOrder");
+        baseExpected.put("get /api/v1/work-orders/{id}", "getWorkOrderById");
+        baseExpected.put("get /api/v1/work-orders", "getWorkOrders");
+        baseExpected.put("put /api/v1/work-orders/{id}", "updateWorkOrder");
+        baseExpected.put("delete /api/v1/work-orders/{id}", "deleteWorkOrder");
+
+        Map<String, String> authExpected = new HashMap<>();
+        authExpected.put("post /api/auth/login", "login");
+
+        Map<String, String> refExpected = new HashMap<>();
+        baseExpected.entrySet().stream().filter(e -> e.getKey().contains("/work-orders")).forEach(e -> refExpected.put(e.getKey(), e.getValue()));
+
+        Map<String, String> metaExpected = new HashMap<>();
+        baseExpected.entrySet().stream().filter(e -> e.getKey().contains("/projects") || e.getKey().contains("/pages")).forEach(e -> metaExpected.put(e.getKey(), e.getValue()));
+
+        Map<String, Map<String, String>> groupExpectations = new HashMap<>();
+        groupExpectations.put("/v3/api-docs", baseExpected);
+        groupExpectations.put("/v3/api-docs/metadata-api", metaExpected);
+        groupExpectations.put("/v3/api-docs/auth-api", authExpected);
+        groupExpectations.put("/v3/api-docs/reference-api", refExpected);
+
+        for (Map.Entry<String, Map<String, String>> entry : groupExpectations.entrySet()) {
+            String url = entry.getKey();
+            Map<String, String> expectedMap = entry.getValue();
+
+            String json = mockMvc.perform(get(url)).andReturn().getResponse().getContentAsString();
+            JsonNode root = new ObjectMapper().readTree(json);
+            JsonNode paths = root.path("paths");
+
+            Map<String, String> actualMap = new HashMap<>();
+            if (!paths.isMissingNode() && !paths.isEmpty()) {
+                paths.fields().forEachRemaining(path -> {
+                    path.getValue().fields().forEachRemaining(method -> {
+                        JsonNode op = method.getValue();
+                        assertTrue(op.has("operationId"), "operationId missing for " + method.getKey() + " " + path.getKey() + " in " + url);
+                        actualMap.put(method.getKey() + " " + path.getKey(), op.get("operationId").asText());
+                    });
+                });
+            }
+            assertEquals(expectedMap, actualMap, "Mapping mismatch in " + url);
+
+            if (url.equals("/v3/api-docs/auth-api")) {
+                if (!paths.isMissingNode() && !paths.isEmpty()) {
+                    paths.fields().forEachRemaining(path -> {
+                        path.getValue().fields().forEachRemaining(method -> {
+                            JsonNode responses = method.getValue().path("responses");
+                            if (!responses.isMissingNode()) {
+                                responses.fields().forEachRemaining(resp -> {
+                                    assertTrue(resp.getValue().path("links").isMissingNode() || resp.getValue().path("links").isEmpty(), "Auth should have no links");
+                                });
+                            }
+                        });
+                    });
+                }
+            } else if (url.equals("/v3/api-docs") || url.equals("/v3/api-docs/metadata-api") || url.equals("/v3/api-docs/reference-api")) {
+                validateExactLinks(url, paths);
+            }
+        }
+    }
+
+    private void validateExactLinks(String url, JsonNode paths) {
+        Map<String, JsonNode> actualLinks = new HashMap<>();
+        if (!paths.isMissingNode() && !paths.isEmpty()) {
+            paths.fields().forEachRemaining(path -> {
+                path.getValue().fields().forEachRemaining(method -> {
+                    JsonNode responses = method.getValue().path("responses");
+                    if (!responses.isMissingNode()) {
+                        responses.fields().forEachRemaining(resp -> {
+                            JsonNode links = resp.getValue().path("links");
+                            if (!links.isMissingNode() && !links.isEmpty()) {
+                                links.fields().forEachRemaining(link -> {
+                                    String key = method.getKey() + " " + path.getKey() + " " + resp.getKey() + " " + link.getKey();
+                                    actualLinks.put(key, link.getValue());
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        Map<String, Map<String, Object>> expectedLinks = new HashMap<>();
+
+        // Projects
+        addExpectedLink(expectedLinks, "post /api/v1/projects 201 GetProjectById", "getProjectById", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/projects 201 UpdateProject", "updateProject", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/projects 201 DeleteProject", "deleteProject", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/projects 201 GetPagesByProject", "getPagesByProject", Map.of("projectId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/projects 201 CreatePage", "createPage", Map.of("projectId", "$response.body#/body/id"));
+
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{id} 200 GetProjectById", "getProjectById", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{id} 200 UpdateProject", "updateProject", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{id} 200 DeleteProject", "deleteProject", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{id} 200 GetPagesByProject", "getPagesByProject", Map.of("projectId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{id} 200 CreatePage", "createPage", Map.of("projectId", "$response.body#/body/id"));
+
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{id} 200 GetProjectById", "getProjectById", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{id} 200 UpdateProject", "updateProject", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{id} 200 DeleteProject", "deleteProject", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{id} 200 GetPagesByProject", "getPagesByProject", Map.of("projectId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{id} 200 CreatePage", "createPage", Map.of("projectId", "$response.body#/body/id"));
+
+        // Pages
+        addExpectedLink(expectedLinks, "post /api/v1/projects/{projectId}/pages 201 GetPageById", "getPageById", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/projects/{projectId}/pages 201 UpdatePage", "updatePage", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/projects/{projectId}/pages 201 DeletePage", "deletePage", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/projects/{projectId}/pages 201 GetMetadataVersionsByPage", "getMetadataVersionsByPage", Map.of("pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/projects/{projectId}/pages 201 CreateMetadataVersion", "createMetadataVersion", Map.of("pageId", "$response.body#/body/id"));
+
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{projectId}/pages/{pageId} 200 GetPageById", "getPageById", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{projectId}/pages/{pageId} 200 UpdatePage", "updatePage", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{projectId}/pages/{pageId} 200 DeletePage", "deletePage", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{projectId}/pages/{pageId} 200 GetMetadataVersionsByPage", "getMetadataVersionsByPage", Map.of("pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/projects/{projectId}/pages/{pageId} 200 CreateMetadataVersion", "createMetadataVersion", Map.of("pageId", "$response.body#/body/id"));
+
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{projectId}/pages/{pageId} 200 GetPageById", "getPageById", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{projectId}/pages/{pageId} 200 UpdatePage", "updatePage", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{projectId}/pages/{pageId} 200 DeletePage", "deletePage", Map.of("projectId", "$response.body#/body/projectId", "pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{projectId}/pages/{pageId} 200 GetMetadataVersionsByPage", "getMetadataVersionsByPage", Map.of("pageId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/projects/{projectId}/pages/{pageId} 200 CreateMetadataVersion", "createMetadataVersion", Map.of("pageId", "$response.body#/body/id"));
+
+        // Metadata
+        addExpectedLink(expectedLinks, "post /api/v1/pages/{pageId}/metadata 201 GetMetadataVersionById", "getMetadataVersionById", Map.of("pageId", "$response.body#/body/pageId", "versionId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/pages/{pageId}/metadata 201 GetLatestMetadataVersion", "getLatestMetadataVersion", Map.of("pageId", "$response.body#/body/pageId"));
+
+        addExpectedLink(expectedLinks, "get /api/v1/pages/{pageId}/metadata/latest 200 GetMetadataVersionById", "getMetadataVersionById", Map.of("pageId", "$response.body#/body/pageId", "versionId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/pages/{pageId}/metadata/latest 200 GetLatestMetadataVersion", "getLatestMetadataVersion", Map.of("pageId", "$response.body#/body/pageId"));
+
+        addExpectedLink(expectedLinks, "get /api/v1/pages/{pageId}/metadata/{versionId} 200 GetMetadataVersionById", "getMetadataVersionById", Map.of("pageId", "$response.body#/body/pageId", "versionId", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/pages/{pageId}/metadata/{versionId} 200 GetLatestMetadataVersion", "getLatestMetadataVersion", Map.of("pageId", "$response.body#/body/pageId"));
+
+        // Work Orders
+        addExpectedLink(expectedLinks, "post /api/v1/work-orders 201 GetWorkOrderById", "getWorkOrderById", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/work-orders 201 UpdateWorkOrder", "updateWorkOrder", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "post /api/v1/work-orders 201 DeleteWorkOrder", "deleteWorkOrder", Map.of("id", "$response.body#/body/id"));
+
+        addExpectedLink(expectedLinks, "get /api/v1/work-orders/{id} 200 GetWorkOrderById", "getWorkOrderById", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/work-orders/{id} 200 UpdateWorkOrder", "updateWorkOrder", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "get /api/v1/work-orders/{id} 200 DeleteWorkOrder", "deleteWorkOrder", Map.of("id", "$response.body#/body/id"));
+
+        addExpectedLink(expectedLinks, "put /api/v1/work-orders/{id} 200 GetWorkOrderById", "getWorkOrderById", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/work-orders/{id} 200 UpdateWorkOrder", "updateWorkOrder", Map.of("id", "$response.body#/body/id"));
+        addExpectedLink(expectedLinks, "put /api/v1/work-orders/{id} 200 DeleteWorkOrder", "deleteWorkOrder", Map.of("id", "$response.body#/body/id"));
+
+        Map<String, Map<String, Object>> filteredExpectedLinks = new HashMap<>();
+        for (Map.Entry<String, Map<String, Object>> e : expectedLinks.entrySet()) {
+            if (url.equals("/v3/api-docs/metadata-api") && e.getKey().contains("work-order")) continue;
+            if (url.equals("/v3/api-docs/reference-api") && !e.getKey().contains("work-order")) continue;
+            filteredExpectedLinks.put(e.getKey(), e.getValue());
+        }
+
+        assertEquals(filteredExpectedLinks.keySet(), actualLinks.keySet(), "Link keys mismatch in " + url);
+
+        for (Map.Entry<String, JsonNode> entry : actualLinks.entrySet()) {
+            String key = entry.getKey();
+            JsonNode actualLink = entry.getValue();
+            Map<String, Object> exp = filteredExpectedLinks.get(key);
+
+            assertEquals(exp.get("operationId"), actualLink.path("operationId").asText(), "Target op mismatch for " + key);
+
+            @SuppressWarnings("unchecked")
+            Map<String, String> expParams = (Map<String, String>) exp.get("parameters");
+            JsonNode actualParams = actualLink.path("parameters");
+
+            if (expParams == null || expParams.isEmpty()) {
+                assertTrue(actualParams.isMissingNode() || actualParams.isEmpty());
+            } else {
+                assertEquals(expParams.size(), actualParams.size(), "Param count mismatch for " + key);
+                expParams.forEach((k, v) -> {
+                    assertEquals(v, actualParams.path(k).asText(), "Param mismatch for " + k + " in " + key);
+                });
+            }
+        }
+    }
+
+    private void addExpectedLink(Map<String, Map<String, Object>> map, String key, String opId, Map<String, String> params) {
+        Map<String, Object> details = new HashMap<>();
+        details.put("operationId", opId);
+        details.put("parameters", params);
+        map.put(key, details);
+    }
+
+    @Test
+    @WithMockUser
+    public void testLinkExpressionsAgainstRealResponse() throws Exception {
+        String createProjJson = mockMvc.perform(post("/api/v1/projects")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Link Proj\", \"description\":\"\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String projId = new ObjectMapper().readTree(createProjJson).path("body").path("id").asText();
+        String createPageJson = mockMvc.perform(post("/api/v1/projects/" + projId + "/pages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Link Page\", \"route\":\"/link\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String baseJson = mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString();
+        JsonNode paths = new ObjectMapper().readTree(baseJson).path("paths");
+        JsonNode link = paths.path("/api/v1/projects/{projectId}/pages").path("post").path("responses").path("201").path("links").path("GetPageById");
+
+        String projParamExp = link.path("parameters").path("projectId").asText();
+        String pageParamExp = link.path("parameters").path("pageId").asText();
+
+        JsonNode realRespNode = new ObjectMapper().readTree(createPageJson);
+        String evalProjId = realRespNode.at("/" + projParamExp.split("#/")[1]).asText();
+        String evalPageId = realRespNode.at("/" + pageParamExp.split("#/")[1]).asText();
+
+        assertEquals(projId, evalProjId);
+
+        mockMvc.perform(get("/api/v1/projects/" + evalProjId + "/pages/" + evalPageId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.name").value("Link Page"));
     }
 }

@@ -21,6 +21,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @io.swagger.v3.oas.annotations.Operation(operationId = "login")
     @io.swagger.v3.oas.annotations.security.SecurityRequirements()
     @ApiCommonWriteResponses
     @io.swagger.v3.oas.annotations.responses.ApiResponses({

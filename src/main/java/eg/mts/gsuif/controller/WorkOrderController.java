@@ -54,11 +54,16 @@ public class WorkOrderController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a new work order", description = "Creates a new work order and returns the created record with HTTP 201")
-    @ApiCommonWriteResponses
-    @io.swagger.v3.oas.annotations.responses.ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Work order created successfully")
+    @Operation(summary = "Create a new work order", description = "Creates a new work order and returns the created record with HTTP 201", operationId = "createWorkOrder",
+    responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Work order created successfully",
+            links = {
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetWorkOrderById", operationId = "getWorkOrderById", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id")),
+                @io.swagger.v3.oas.annotations.links.Link(name = "UpdateWorkOrder", operationId = "updateWorkOrder", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id")),
+                @io.swagger.v3.oas.annotations.links.Link(name = "DeleteWorkOrder", operationId = "deleteWorkOrder", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id"))
+            })
     })
+    @ApiCommonWriteResponses
     public ResponseEntity<ApiResponse<WorkOrderDto>> create(
             @Valid @RequestBody CreateWorkOrderRequest request) {
         WorkOrderDto created = workOrderService.create(request);
@@ -68,12 +73,17 @@ public class WorkOrderController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get a work order by ID", description = "Retrieves a single work order by its unique UUID identifier")
-    @ApiCommonResponses
-    @io.swagger.v3.oas.annotations.responses.ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work order found"),
+    @Operation(summary = "Get a work order by ID", description = "Retrieves a single work order by its unique UUID identifier", operationId = "getWorkOrderById",
+    responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work order found",
+            links = {
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetWorkOrderById", operationId = "getWorkOrderById", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id")),
+                @io.swagger.v3.oas.annotations.links.Link(name = "UpdateWorkOrder", operationId = "updateWorkOrder", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id")),
+                @io.swagger.v3.oas.annotations.links.Link(name = "DeleteWorkOrder", operationId = "deleteWorkOrder", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id"))
+            }),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
+    @ApiCommonResponses
     public ResponseEntity<ApiResponse<WorkOrderDto>> getById(
             @Parameter(description = "Work order UUID", required = true)
             @PathVariable("id") UUID id) {
@@ -82,11 +92,11 @@ public class WorkOrderController {
     }
 
     @GetMapping
-    @Operation(summary = "List work orders with pagination", description = "Retrieves a paginated list of work orders with optional status filtering")
-    @ApiCommonResponses
-    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+    @Operation(summary = "List work orders with pagination", description = "Retrieves a paginated list of work orders with optional status filtering", operationId = "getWorkOrders",
+    responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work orders retrieved successfully")
     })
+    @ApiCommonResponses
     public ResponseEntity<ApiResponse<PagedBody<WorkOrderDto>>> getAll(
             @Parameter(description = "Optional status filter")
             @RequestParam(name = "status", required = false) WorkOrderStatus status,
@@ -96,12 +106,17 @@ public class WorkOrderController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update an existing work order", description = "Updates mutable fields (status, dueDate, assignedTo) of an existing work order")
-    @ApiCommonWriteResponses
-    @io.swagger.v3.oas.annotations.responses.ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work order updated successfully"),
+    @Operation(summary = "Update an existing work order", description = "Updates mutable fields (status, dueDate, assignedTo) of an existing work order", operationId = "updateWorkOrder",
+    responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work order updated successfully",
+            links = {
+                @io.swagger.v3.oas.annotations.links.Link(name = "GetWorkOrderById", operationId = "getWorkOrderById", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id")),
+                @io.swagger.v3.oas.annotations.links.Link(name = "UpdateWorkOrder", operationId = "updateWorkOrder", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id")),
+                @io.swagger.v3.oas.annotations.links.Link(name = "DeleteWorkOrder", operationId = "deleteWorkOrder", parameters = @io.swagger.v3.oas.annotations.links.LinkParameter(name = "id", expression = "$response.body#/body/id"))
+            }),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
+    @ApiCommonWriteResponses
     public ResponseEntity<ApiResponse<WorkOrderDto>> update(
             @Parameter(description = "Work order UUID", required = true)
             @PathVariable("id") UUID id,
@@ -111,12 +126,12 @@ public class WorkOrderController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Delete a work order", description = "Deletes a work order by its unique UUID identifier")
-    @ApiCommonResponses
-    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+    @Operation(summary = "Delete a work order", description = "Deletes a work order by its unique UUID identifier", operationId = "deleteWorkOrder",
+    responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Work order deleted successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Work order not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
+    @ApiCommonResponses
     public ResponseEntity<ApiResponse<Void>> delete(
             @Parameter(description = "Work order UUID", required = true)
             @PathVariable("id") UUID id) {
