@@ -1,6 +1,7 @@
 package eg.mts.gsuif.audit;
 
 import org.springframework.data.domain.AuditorAware;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -25,6 +26,7 @@ public class AuditorAwareImpl implements AuditorAware<String> {
 
         if (authentication == null
                 || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken
                 || "anonymousUser".equals(authentication.getPrincipal())) {
             return Optional.of(DEFAULT_AUDITOR);
         }

@@ -3,7 +3,9 @@ package eg.mts.gsuif.audit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Collections;
@@ -29,6 +31,21 @@ class AuditorAwareImplTest {
 
     @Test
     void getCurrentAuditor_whenUnauthenticated_returnsSystem() {
+        Optional<String> auditor = auditorAware.getCurrentAuditor();
+
+        assertTrue(auditor.isPresent());
+        assertEquals("system", auditor.get());
+    }
+
+    @Test
+    void getCurrentAuditor_whenAnonymousAuthentication_returnsSystem() {
+        AnonymousAuthenticationToken anonymousToken = new AnonymousAuthenticationToken(
+                "key",
+                "anonymousUser",
+                AuthorityUtils.createAuthorityList("ROLE_ANONYMOUS")
+        );
+        SecurityContextHolder.getContext().setAuthentication(anonymousToken);
+
         Optional<String> auditor = auditorAware.getCurrentAuditor();
 
         assertTrue(auditor.isPresent());
