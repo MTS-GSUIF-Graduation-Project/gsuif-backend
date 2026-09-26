@@ -27,15 +27,13 @@ target/
 /nbdist/
 /.nb-gradle/
 
+temp_auto_push.bat
 # Build
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
 # VS Code
-.vscode/
-!.vscode/extensions.json
-!.vscode/settings.json
 
 # Node.js
 node_modules/
@@ -44,8 +42,6 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # Environment / secrets
-.env
-.env.*
 !.env.example
 
 # OS files
@@ -54,3 +50,13 @@ Thumbs.db
 
 # Documentation
 doc/
+
+# Local-only agent / personal notes (never commit)
+NOTES.local.md
+*.local.md
+
+# hash password for admin user to be used when creating user manually
+../HashPassword.java
+config.bat
+.gitignore
+branch_structure.json

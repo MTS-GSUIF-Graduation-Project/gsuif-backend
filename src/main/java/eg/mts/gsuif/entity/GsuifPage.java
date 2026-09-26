@@ -12,6 +12,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.envers.Audited;
 import org.hibernate.type.SqlTypes;
 
 import java.util.UUID;
@@ -22,6 +23,7 @@ import java.util.UUID;
  * <p>{@code route} is nullable; uniqueness is per project when a route is present.
  */
 @Entity
+@Audited
 @Table(
         name = "gsuif_page",
         uniqueConstraints = {
