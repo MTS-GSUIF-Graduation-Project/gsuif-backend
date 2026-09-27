@@ -174,17 +174,49 @@ class MetadataSchemaValidatorPropertiesTest {
     }
 
     @Property(tries = 30)
+    void independentStructuralErrorsArePreserved(@ForAll("snapshotsWithComponents") JsonNode baseSnapshot) {
+        assertThat(validator.validate("1.0.0", baseSnapshot)).isEmpty();
+        ObjectNode snapshot = baseSnapshot.deepCopy();
+        snapshot.remove("apiBindings");
+        ((ObjectNode) snapshot.withArray("components").get(0)).remove("label");
+
+        assertThat(validator.validate("1.0.0", snapshot))
+                .extracting(ValidationError::path)
+                .containsExactlyInAnyOrder("$.snapshot.apiBindings", "$.snapshot.components[0].label");
+    }
+
+    @Property(tries = 30)
+    void missingSnapshotFieldsProduceErrors(@ForAll("validSnapshots") JsonNode baseSnapshot) {
+        assertThat(validator.validate("1.0.0", baseSnapshot)).isEmpty();
+        for (String field : List.of("components", "apiBindings")) {
+            ObjectNode snapshot = baseSnapshot.deepCopy();
+            snapshot.remove(field);
+
+            assertThat(validator.validate("1.0.0", snapshot)).anyMatch(e ->
+                    e.path().equals("$.snapshot." + field)
+                            && e.message().contains("required property '" + field + "'"));
+        }
+    }
+
+    @Property(tries = 30)
+    void missingApiBindingFieldProducesError(@ForAll("validSnapshots") JsonNode baseSnapshot) {
+        ObjectNode snapshot = baseSnapshot.deepCopy();
+        ObjectNode binding = validBinding();
+        snapshot.withArray("apiBindings").add(binding);
+        assertThat(validator.validate("1.0.0", snapshot)).isEmpty();
+
+        binding.remove("endpointUrl");
+        assertThat(validator.validate("1.0.0", snapshot)).anyMatch(e ->
+                e.path().equals("$.snapshot.apiBindings[0].endpointUrl")
+                        && e.message().contains("required property 'endpointUrl'"));
+    }
+
+    @Property(tries = 30)
     void invalidApiBindingHttpMethodProducesError(@ForAll("validSnapshots") JsonNode baseSnapshot,
                                                  @ForAll("invalidHttpMethods") String badMethod) {
         // Build a snapshot with a valid apiBinding first
         ObjectNode snapshot = baseSnapshot.deepCopy();
-        ObjectNode binding = JsonNodeFactory.instance.objectNode();
-        binding.put("id", "123e4567-e89b-12d3-a456-426614174000");
-        binding.put("httpMethod", "GET"); // valid method
-        binding.put("endpointUrl", "/test");
-        binding.putObject("headers");
-        binding.putObject("requestMapping");
-        binding.putObject("responseMapping");
+        ObjectNode binding = validBinding();
         ArrayNode apiBindings = JsonNodeFactory.instance.arrayNode();
         apiBindings.add(binding);
         snapshot.set("apiBindings", apiBindings);
@@ -212,6 +244,17 @@ class MetadataSchemaValidatorPropertiesTest {
         component.with("size").put("width", 1);
         List<ValidationError> errorsOne = validator.validate("1.0.0", snapshot);
         assertThat(errorsOne).isEmpty();
+    }
+
+    private ObjectNode validBinding() {
+        ObjectNode binding = JsonNodeFactory.instance.objectNode();
+        binding.put("id", "123e4567-e89b-12d3-a456-426614174000");
+        binding.put("httpMethod", "GET");
+        binding.put("endpointUrl", "/test");
+        binding.putObject("headers");
+        binding.putObject("requestMapping");
+        binding.putObject("responseMapping");
+        return binding;
     }
 
     @Provide
