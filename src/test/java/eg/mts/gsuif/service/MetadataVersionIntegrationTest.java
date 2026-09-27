@@ -37,6 +37,8 @@ class MetadataVersionIntegrationTest {
     @Autowired
     private MetadataVersionService metadataVersionService;
 
+
+
     @Autowired
     private MetadataVersionRepository metadataVersionRepository;
 
@@ -71,6 +73,30 @@ class MetadataVersionIntegrationTest {
         return pageRepository.save(page);
     }
 
+    private tools.jackson.databind.JsonNode validSnapshot(String label) {
+        String json = """
+            {
+                "components": [
+                    {
+                        "id": "123e4567-e89b-12d3-a456-426614174000",
+                        "type": "text-field",
+                        "label": "%s",
+                        "position": { "row": 0, "col": 0 },
+                        "size": { "width": 6, "height": 1 },
+                        "visibility": true,
+                        "disabled": false
+                    }
+                ],
+                "apiBindings": []
+            }
+        """.formatted(label);
+        try {
+            return new tools.jackson.databind.ObjectMapper().readTree(json);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @Test
     void testSamePageConcurrency() throws Exception {
         GsuifPage page = savedPage("Concurrent Page");
@@ -86,7 +112,7 @@ class MetadataVersionIntegrationTest {
                 futures.add(executor.submit(() -> {
                     readyLatch.countDown();
                     startLatch.await();
-                    CreateMetadataVersionRequest request = new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode());
+                    CreateMetadataVersionRequest request = new CreateMetadataVersionRequest("1.0.0", validSnapshot("test"));
                     return metadataVersionService.create(page.getId(), request);
                 }));
             }
@@ -149,7 +175,7 @@ class MetadataVersionIntegrationTest {
 
             Future<MetadataVersionDto> page2Creation = executor.submit(() ->
                     metadataVersionService.create(page2.getId(),
-                            new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode())));
+                            new CreateMetadataVersionRequest("1.0.0", validSnapshot("test2"))));
 
             MetadataVersionDto createdForPage2 = page2Creation.get(5, TimeUnit.SECONDS);
             assertThat(createdForPage2.version()).isEqualTo(1);
@@ -167,7 +193,7 @@ class MetadataVersionIntegrationTest {
         GsuifPage page1 = savedPage("Page 1");
         GsuifPage page2 = savedPage("Page 2");
 
-        MetadataVersionDto mv1 = metadataVersionService.create(page1.getId(), new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode()));
+        MetadataVersionDto mv1 = metadataVersionService.create(page1.getId(), new CreateMetadataVersionRequest("1.0.0", validSnapshot("test")));
 
         page2.setCurrentMetadataVersionId(mv1.id());
         
@@ -179,7 +205,7 @@ class MetadataVersionIntegrationTest {
     @Test
     void testPageDeletion_failsWhenMetadataVersionsExist() {
         GsuifPage page = savedPage("Page To Delete");
-        metadataVersionService.create(page.getId(), new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode()));
+        metadataVersionService.create(page.getId(), new CreateMetadataVersionRequest("1.0.0", validSnapshot("test")));
         
         assertThat(metadataVersionRepository.findAll()).hasSize(1);
         
@@ -194,7 +220,7 @@ class MetadataVersionIntegrationTest {
         GsuifPage page = savedPage("Rollback Page");
         MetadataVersionDto original = metadataVersionService.create(
                 page.getId(),
-                new CreateMetadataVersionRequest("1.0", JsonNodeFactory.instance.objectNode()));
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("test1")));
 
         TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
         txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -203,7 +229,7 @@ class MetadataVersionIntegrationTest {
                 txTemplate.execute(status -> {
                     metadataVersionService.create(
                             page.getId(),
-                            new CreateMetadataVersionRequest("2.0", JsonNodeFactory.instance.objectNode()));
+                            new CreateMetadataVersionRequest("1.0.0", validSnapshot("test2")));
                     throw new RuntimeException("Force rollback");
                 }));
         assertThat(failure.getMessage()).isEqualTo("Force rollback");
@@ -214,6 +240,30 @@ class MetadataVersionIntegrationTest {
         assertThat(remainingVersions).hasSize(1);
         assertThat(remainingVersions.getFirst().getId()).isEqualTo(original.id());
 
+        GsuifPage reloadedPage = pageRepository.findById(page.getId()).orElseThrow();
+        assertThat(reloadedPage.getCurrentMetadataVersionId()).isEqualTo(original.id());
+    }
+
+    @Test
+    void testInvalidSnapshotRejection_createsNoVersionAndPreservesPointer() {
+        GsuifPage page = savedPage("Rejection Page");
+        MetadataVersionDto original = metadataVersionService.create(
+                page.getId(),
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("original")));
+
+        // Try to create invalid version
+        CreateMetadataVersionRequest invalidRequest = new CreateMetadataVersionRequest("1.0.0", tools.jackson.databind.node.JsonNodeFactory.instance.objectNode());
+        assertThrows(eg.mts.gsuif.exception.MetadataValidationException.class, () ->
+                metadataVersionService.create(page.getId(), invalidRequest));
+
+        // Verify no new version created
+        List<MetadataVersion> versions = metadataVersionRepository
+                .findAllByPageId(page.getId(), org.springframework.data.domain.Pageable.unpaged())
+                .getContent();
+        assertThat(versions).hasSize(1);
+        assertThat(versions.getFirst().getId()).isEqualTo(original.id());
+
+        // Verify pointer is preserved
         GsuifPage reloadedPage = pageRepository.findById(page.getId()).orElseThrow();
         assertThat(reloadedPage.getCurrentMetadataVersionId()).isEqualTo(original.id());
     }

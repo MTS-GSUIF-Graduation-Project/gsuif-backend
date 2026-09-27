@@ -36,6 +36,9 @@ class MetadataVersionControllerIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private tools.jackson.databind.ObjectMapper objectMapper;
+
+    @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -63,7 +66,18 @@ class MetadataVersionControllerIntegrationTest {
                 {
                     "schemaVersion": "  1.0.0  ",
                     "snapshot": {
-                        "elements": []
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "type": "text-field",
+                                "label": "Test",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
                     }
                 }
                 """;
@@ -76,7 +90,7 @@ class MetadataVersionControllerIntegrationTest {
                 .andExpect(jsonPath("$.body.version").value(1))
                 .andExpect(jsonPath("$.body.isCurrent").value(true))
                 .andExpect(jsonPath("$.body.schemaVersion").value("1.0.0"))
-                .andExpect(jsonPath("$.body.snapshot.elements").isArray());
+                .andExpect(jsonPath("$.body.snapshot.components").isArray());
     }
 
     @Test
@@ -85,8 +99,21 @@ class MetadataVersionControllerIntegrationTest {
 
         String payload = """
                 {
-                    "schemaVersion": "1.0",
-                    "snapshot": {},
+                    "schemaVersion": "1.0.0",
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "type": "text-field",
+                                "label": "Test",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    },
                     "version": 99,
                     "isCurrent": false
                 }
@@ -161,8 +188,21 @@ class MetadataVersionControllerIntegrationTest {
     void create_whenPageIsMissing_returns404() throws Exception {
         String payload = """
                 {
-                    "schemaVersion": "1.0",
-                    "snapshot": {}
+                    "schemaVersion": "1.0.0",
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "type": "text-field",
+                                "label": "Test",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    }
                 }
                 """;
 
@@ -225,8 +265,21 @@ class MetadataVersionControllerIntegrationTest {
         // Create first version via API to ensure proper setup
         String payload1 = """
                 {
-                    "schemaVersion": "1.0",
-                    "snapshot": {"v":1}
+                    "schemaVersion": "1.0.0",
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174001",
+                                "type": "text-field",
+                                "label": "Test1",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    }
                 }
                 """;
         mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
@@ -249,8 +302,21 @@ class MetadataVersionControllerIntegrationTest {
         // Create second version
         String payload2 = """
                 {
-                    "schemaVersion": "2.0",
-                    "snapshot": {"v":2}
+                    "schemaVersion": "1.0.0",
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174002",
+                                "type": "text-field",
+                                "label": "Test2",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    }
                 }
                 """;
         mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
@@ -293,7 +359,20 @@ class MetadataVersionControllerIntegrationTest {
         String payload = """
                 {
                     "schemaVersion": "  123456789012345678901  ",
-                    "snapshot": {}
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "type": "text-field",
+                                "label": "Test",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    }
                 }
                 """;
 
@@ -306,22 +385,35 @@ class MetadataVersionControllerIntegrationTest {
     }
     
     @Test
-    void create_withSchemaVersionLength20AfterTrimming_returns201() throws Exception {
+    void create_withSchemaVersionLength20AfterTrimming_passesDtoValidationAndReturns400FromMetadataValidator() throws Exception {
         GsuifPage page = savedPage("Length Test");
 
         String payload = """
                 {
                     "schemaVersion": "  12345678901234567890  ",
-                    "snapshot": {}
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "type": "text-field",
+                                "label": "Test",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    }
                 }
                 """;
 
         mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.statusCode").value(201))
-                .andExpect(jsonPath("$.body.schemaVersion").value("12345678901234567890"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.errors['$.schemaVersion']").exists());
     }
 
     @Test
@@ -359,6 +451,154 @@ class MetadataVersionControllerIntegrationTest {
                         .content(payload))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.statusCode").value(400));
+    }
+    @Test
+    void create_withInvalidSnapshot_returns400_createsNoVersion_preservesPointer() throws Exception {
+        GsuifPage page = savedPage("Schema Rejection Page");
+
+        // 1. Create valid first version
+        String payload1 = """
+                {
+                    "schemaVersion": "1.0.0",
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174001",
+                                "type": "text-field",
+                                "label": "Valid",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    }
+                }
+                """;
+        mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload1))
+                .andExpect(status().isCreated());
+
+        MetadataVersion firstVersion = metadataVersionRepository.findAll().get(0);
+
+        // 2. Try to create second version but it's structurally invalid (missing components)
+        String payload2 = """
+                {
+                    "schemaVersion": "unsupported",
+                    "snapshot": {
+                        "apiBindings": [{
+                            "id": "123e4567-e89b-12d3-a456-426614174000",
+                            "httpMethod": 999,
+                            "endpointUrl": "/api/v1/work-orders",
+                            "headers": {}, "requestMapping": {}, "responseMapping": {}
+                        }]
+                    }
+                }
+                """;
+        String rejectedBody = mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload2))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.errors['$.snapshot.components']").exists())
+                .andExpect(jsonPath("$.errors['$.schemaVersion']").value("schemaVersion must be a constant value '1.0.0'"))
+                .andExpect(jsonPath("$.errors['$.snapshot.apiBindings[0].httpMethod']").value(
+                        "$.apiBindings[0].httpMethod: does not have a value in the enumeration [\"GET\", \"POST\", \"PUT\", \"DELETE\"]; "
+                                + "$.apiBindings[0].httpMethod: integer found, string expected"))
+                .andReturn().getResponse().getContentAsString();
+        com.fasterxml.jackson.databind.JsonNode envelope = new com.fasterxml.jackson.databind.ObjectMapper().readTree(rejectedBody);
+        java.util.Set<String> fields = new java.util.HashSet<>();
+        envelope.fieldNames().forEachRemaining(fields::add);
+        assertThat(fields).containsExactlyInAnyOrder("status", "clientMessage", "statusCode", "body", "errors");
+        assertThat(envelope.get("body").isNull()).isTrue();
+        assertThat(envelope.get("status").asText()).isEqualTo("BAD_REQUEST");
+        assertThat(envelope.get("clientMessage").asText()).isEqualTo("Request validation failed");
+        assertThat(envelope.get("errors").size()).isEqualTo(3);
+
+        // 3. Verify no new version created
+        assertThat(metadataVersionRepository.findAll()).hasSize(1);
+
+        // 4. Verify pointer not moved
+        GsuifPage updatedPage = pageRepository.findById(page.getId()).orElseThrow();
+        assertThat(updatedPage.getCurrentMetadataVersionId()).isEqualTo(firstVersion.getId());
+    }
+    @Test
+    void create_withHighPrecisionDecimal_failsSchemaValidationAndDoesNotPersist() throws Exception {
+        GsuifPage page = savedPage("Decimal Rejection Page");
+
+        // 1. Create valid first version
+        String payload1 = """
+                {
+                    "schemaVersion": "1.0.0",
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "type": "text-field",
+                                "label": "Test",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 6, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    }
+                }
+                """;
+
+        String responseBody = mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload1))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        eg.mts.gsuif.dto.MetadataVersionDto firstVersion = new tools.jackson.databind.ObjectMapper()
+                .readValue(responseBody, new tools.jackson.core.type.TypeReference<eg.mts.gsuif.dto.ApiResponse<eg.mts.gsuif.dto.MetadataVersionDto>>() {})
+                .body();
+
+        // 2. Try to create version with high precision decimal (width is supposed to be integer)
+        String invalidPayload = """
+                {
+                    "schemaVersion": "1.0.0",
+                    "snapshot": {
+                        "components": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174001",
+                                "type": "text-field",
+                                "label": "Test",
+                                "position": { "row": 0, "col": 0 },
+                                "size": { "width": 0.9999999999999999999999999999, "height": 1 },
+                                "visibility": true,
+                                "disabled": false
+                            }
+                        ],
+                        "apiBindings": []
+                    }
+                }
+                """;
+
+        CreateMetadataVersionRequest parsed = objectMapper.readValue(invalidPayload, CreateMetadataVersionRequest.class);
+        assertThat(parsed.snapshot().at("/components/0/size/width").decimalValue())
+                .isEqualByComparingTo("0.9999999999999999999999999999");
+
+        mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidPayload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.statusCode").value(400))
+                .andExpect(jsonPath("$.errors['$.snapshot.components[0].size.width']").value(
+                        "$.components[0].size.width: must have a minimum value of 1; "
+                                + "$.components[0].size.width: number found, integer expected"));
+
+        // 3. Verify no new version created
+        assertThat(metadataVersionRepository.findAll()).hasSize(1);
+
+        // 4. Verify pointer not moved
+        GsuifPage updatedPage = pageRepository.findById(page.getId()).orElseThrow();
+        assertThat(updatedPage.getCurrentMetadataVersionId()).isEqualTo(firstVersion.id());
     }
 
     private MetadataVersion savedMetadataVersion(GsuifPage page, int version, String schemaVersion, boolean isCurrent) {

@@ -58,12 +58,7 @@ class OpenApiDtoContractTest {
             if (metadata) {
                 for (String dto : List.of("CreateMetadataVersionRequest", "MetadataVersionDto")) {
                     JsonNode snapshot = schemas.path(dto).path("properties").path("snapshot");
-                    assertEquals(Set.of("object", "array", "string", "number", "boolean"), types(snapshot), dto);
-                    for (String restriction : List.of("$ref", "properties", "items", "allOf", "oneOf", "anyOf")) {
-                        assertFalse(snapshot.has(restriction), dto + " must allow arbitrary nested JSON");
-                    }
-                    assertFalse(snapshot.path("additionalProperties").isBoolean()
-                            && !snapshot.path("additionalProperties").asBoolean());
+                    assertEquals(Set.of("object"), types(snapshot), dto);
                 }
                 assertTrue(strings(schemas.path("CreateMetadataVersionRequest").path("required")).contains("snapshot"));
                 for (String dto : List.of("CreateProjectRequest", "UpdateProjectRequest", "ProjectDto",
@@ -103,17 +98,25 @@ class OpenApiDtoContractTest {
         }
     }
 
+    @Test
+    void documentedMetadataExampleRoundTripsThroughRealValidation() throws Exception {
+        ObjectNode payload = example(docs("").path("components").path("schemas"), "CreateMetadataVersionRequest");
+        String path = "/api/v1/pages/" + fixtures().pageId() + "/metadata";
+        JsonNode created = send("POST", path, payload, 201);
+        assertEquals(payload.path("snapshot"), created.at("/body/snapshot"));
+        assertEquals(payload.path("snapshot"), read(path + "/" + created.at("/body/id").asText()).at("/body/snapshot"));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"{\"nested\":[null,1,true]}", "[1,\"a\",null]", "\"text\"", "42", "1.25", "true", "false",
             "{}", "[]", "\"\"", "-2"})
-    void snapshotsRoundTripAsJsonValues(String json) throws Exception {
+    void structurallyInvalidSnapshotsAreRejected(String json) throws Exception {
         String pageId = fixtures().pageId();
-        ObjectNode payload = mapper.createObjectNode().put("schemaVersion", "1.0");
+        ObjectNode payload = mapper.createObjectNode().put("schemaVersion", "1.0.0");
         payload.set("snapshot", mapper.readTree(json));
-        JsonNode created = send("POST", "/api/v1/pages/" + pageId + "/metadata", payload, 201);
-        assertEquals(mapper.readTree(json), created.at("/body/snapshot"));
-        JsonNode fetched = read("/api/v1/pages/" + pageId + "/metadata/" + created.at("/body/id").asText());
-        assertEquals(mapper.readTree(json), fetched.at("/body/snapshot"));
+        JsonNode rejected = send("POST", "/api/v1/pages/" + pageId + "/metadata", payload, 400);
+        assertTrue(rejected.path("body").isNull());
+        assertFalse(rejected.path("errors").isEmpty());
     }
 
     @Test

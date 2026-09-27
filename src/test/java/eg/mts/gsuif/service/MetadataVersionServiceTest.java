@@ -43,6 +43,8 @@ class MetadataVersionServiceTest {
     private GsuifPageRepository pageRepository;
     @Mock
     private ObjectMapper objectMapper;
+    @Mock
+    private eg.mts.gsuif.validator.MetadataSchemaValidator schemaValidator;
 
     private MetadataVersionServiceImpl metadataVersionService;
 
@@ -52,7 +54,7 @@ class MetadataVersionServiceTest {
 
     @BeforeEach
     void setUp() {
-        metadataVersionService = new MetadataVersionServiceImpl(metadataVersionRepository, pageRepository, objectMapper);
+        metadataVersionService = new MetadataVersionServiceImpl(metadataVersionRepository, pageRepository, objectMapper, schemaValidator);
 
         GsuifProject project = new GsuifProject();
         org.springframework.test.util.ReflectionTestUtils.setField(project, "id", projectId);
@@ -171,5 +173,65 @@ class MetadataVersionServiceTest {
 
         PagedBody<MetadataVersionDto> result = metadataVersionService.getAll(pageId, PageRequest.of(0, 20));
         assertThat(result.totalElements()).isZero();
+    }
+
+    @Test
+    void create_preservesIncomingJsonValueDuringJackson2Conversion() {
+        when(pageRepository.findByIdWithLock(pageId)).thenReturn(Optional.of(page));
+        when(metadataVersionRepository.findFirstByPageIdOrderByVersionDesc(pageId)).thenReturn(Optional.empty());
+
+        MetadataVersion savedVersion = new MetadataVersion();
+        savedVersion.setPage(page);
+        org.springframework.test.util.ReflectionTestUtils.setField(savedVersion, "id", UUID.randomUUID());
+        when(metadataVersionRepository.save(any())).thenReturn(savedVersion);
+
+        tools.jackson.databind.node.ObjectNode incomingSnapshot = JsonNodeFactory.instance.objectNode();
+        incomingSnapshot.put("width", new java.math.BigDecimal("0.9999999999999999999999999999"));
+
+        try {
+            when(objectMapper.writeValueAsString(incomingSnapshot)).thenReturn(incomingSnapshot.toString());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        CreateMetadataVersionRequest request = new CreateMetadataVersionRequest("1.0.0", incomingSnapshot);
+
+        metadataVersionService.create(pageId, request);
+
+        ArgumentCaptor<com.fasterxml.jackson.databind.JsonNode> captor = ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
+        verify(schemaValidator).validate(any(), captor.capture());
+
+        com.fasterxml.jackson.databind.JsonNode convertedNode = captor.getValue();
+        assertThat(convertedNode.get("width").decimalValue()).isEqualByComparingTo("0.9999999999999999999999999999");
+        assertThat(convertedNode.toString()).isEqualTo(incomingSnapshot.toString());
+    }
+
+    @Test
+    void create_whenJacksonConversionFails_throwsIllegalStateExceptionRetainingCause() {
+        tools.jackson.databind.JsonNode badNode = org.mockito.Mockito.mock(tools.jackson.databind.JsonNode.class);
+        RuntimeException cause = new RuntimeException("Simulated conversion failure");
+        try {
+            when(objectMapper.writeValueAsString(badNode)).thenThrow(cause);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        CreateMetadataVersionRequest request = new CreateMetadataVersionRequest("1.0.0", badNode);
+
+        assertThatThrownBy(() -> metadataVersionService.create(pageId, request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Failed to convert snapshot node")
+                .hasCause(cause);
+    }
+
+    @Test
+    void create_whenValidatorReturnsNull_failsBeforeRepositoryAccess() {
+        when(schemaValidator.validate("1.0.0", null)).thenReturn(null);
+
+        assertThatThrownBy(() -> metadataVersionService.create(pageId,
+                new CreateMetadataVersionRequest("1.0.0", null)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Validator unexpectedly returned null");
+        org.mockito.Mockito.verifyNoInteractions(metadataVersionRepository, pageRepository);
     }
 }

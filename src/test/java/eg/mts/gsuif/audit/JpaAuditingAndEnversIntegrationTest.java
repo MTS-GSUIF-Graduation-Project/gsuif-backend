@@ -45,6 +45,8 @@ class JpaAuditingAndEnversIntegrationTest {
     @Autowired
     private MetadataVersionService metadataVersionService;
 
+
+
     @Autowired
     private AuditService auditService;
 
@@ -142,6 +144,30 @@ class JpaAuditingAndEnversIntegrationTest {
         assertEquals("page_author", rev2Page.getLastModifiedBy());
     }
 
+    private tools.jackson.databind.JsonNode validSnapshot(String label) {
+        String json = """
+            {
+                "components": [
+                    {
+                        "id": "123e4567-e89b-12d3-a456-426614174000",
+                        "type": "text-field",
+                        "label": "%s",
+                        "position": { "row": 0, "col": 0 },
+                        "size": { "width": 6, "height": 1 },
+                        "visibility": true,
+                        "disabled": false
+                    }
+                ],
+                "apiBindings": []
+            }
+        """.formatted(label);
+        try {
+            return new tools.jackson.databind.ObjectMapper().readTree(json);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @Test
     @WithMockUser(username = "version_author")
     void hibernateEnvers_creatingTwoMetadataVersions_recordsAddRevisionsAndPageCurrentPointerHistory() {
@@ -158,12 +184,12 @@ class JpaAuditingAndEnversIntegrationTest {
         UUID pageId = page.getId();
 
         CreateMetadataVersionRequest firstRequest = new CreateMetadataVersionRequest(
-                "1.0",
-                JsonNodeFactory.instance.objectNode().put("label", "first")
+                "1.0.0",
+                validSnapshot("first")
         );
         CreateMetadataVersionRequest secondRequest = new CreateMetadataVersionRequest(
-                "1.0",
-                JsonNodeFactory.instance.objectNode().put("label", "second")
+                "1.0.0",
+                validSnapshot("second")
         );
 
         MetadataVersionDto version1 = metadataVersionService.create(pageId, firstRequest);

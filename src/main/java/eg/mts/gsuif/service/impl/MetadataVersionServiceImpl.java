@@ -12,6 +12,10 @@ import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.service.MetadataVersionService;
+import eg.mts.gsuif.exception.MetadataValidationException;
+import eg.mts.gsuif.validator.MetadataSchemaValidator;
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -21,10 +25,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 
 @Service
 @Transactional(readOnly = true)
 public class MetadataVersionServiceImpl implements MetadataVersionService {
+
+    // NetworkNT's JsonSchema uses Jackson 2.x (com.fasterxml.jackson), while this project uses Jackson 3.x (tools.jackson).
+    // This separate mapper safely converts the Jackson 3 JsonNode structure into a Jackson 2 JsonNode structure
+    // by serializing and deserializing the raw JSON string, preserving the exact incoming value and shape for validation.
+    private static final com.fasterxml.jackson.databind.ObjectMapper STANDARD_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper()
+            .enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .setNodeFactory(com.fasterxml.jackson.databind.node.JsonNodeFactory.withExactBigDecimals(true));
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
@@ -32,19 +44,43 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     private final MetadataVersionRepository metadataVersionRepository;
     private final GsuifPageRepository pageRepository;
     private final ObjectMapper objectMapper;
+    private final MetadataSchemaValidator schemaValidator;
 
     public MetadataVersionServiceImpl(MetadataVersionRepository metadataVersionRepository,
                                       GsuifPageRepository pageRepository,
-                                      ObjectMapper objectMapper) {
+                                      ObjectMapper objectMapper,
+                                      MetadataSchemaValidator schemaValidator) {
         this.metadataVersionRepository = metadataVersionRepository;
         this.pageRepository = pageRepository;
         this.objectMapper = objectMapper;
+        this.schemaValidator = schemaValidator;
     }
 
     @Override
     @Transactional
     @Loggable
     public MetadataVersionDto create(UUID pageId, CreateMetadataVersionRequest request) {
+        com.fasterxml.jackson.databind.JsonNode standardSnapshot = null;
+        if (request.snapshot() != null) {
+            try {
+                String serializedForValidation = objectMapper.writeValueAsString(request.snapshot());
+                standardSnapshot = STANDARD_MAPPER.readTree(serializedForValidation);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to convert snapshot node", e);
+            }
+        }
+        List<eg.mts.gsuif.validator.MetadataSchemaValidator.ValidationError> validationErrors = schemaValidator.validate(request.schemaVersion(), standardSnapshot);
+        if (validationErrors == null) {
+            throw new IllegalStateException("Validator unexpectedly returned null");
+        }
+        if (!validationErrors.isEmpty()) {
+            Map<String, String> groupedErrors = new java.util.LinkedHashMap<>();
+            for (eg.mts.gsuif.validator.MetadataSchemaValidator.ValidationError error : validationErrors) {
+                groupedErrors.merge(error.path(), error.message(), (oldMsg, newMsg) -> oldMsg + "; " + newMsg);
+            }
+            throw new eg.mts.gsuif.exception.MetadataValidationException("Metadata validation failed", groupedErrors);
+        }
+
         GsuifPage page = pageRepository.findByIdWithLock(pageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Page not found with id: " + pageId));
 
