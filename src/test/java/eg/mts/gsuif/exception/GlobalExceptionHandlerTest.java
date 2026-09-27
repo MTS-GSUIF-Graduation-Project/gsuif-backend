@@ -160,6 +160,29 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void handleMetadataValidationException_returns400WithCombinedFieldErrors() {
+        Map<String, String> errors = new java.util.LinkedHashMap<>();
+        errors.put("$.snapshot.components", "missing required property 'id'; missing required property 'type'");
+        errors.put("$.schemaVersion", "does not match required pattern");
+
+        MetadataValidationException ex = new MetadataValidationException("Validation failed", errors);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleMetadataValidationException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().statusCode()).isEqualTo(400);
+        assertThat(response.getBody().status()).isEqualTo("BAD_REQUEST");
+        assertThat(response.getBody().clientMessage()).isEqualTo("Request validation failed");
+        assertThat(response.getBody().body()).isNull();
+
+        Map<String, String> responseErrors = response.getBody().errors();
+        assertThat(responseErrors).hasSize(2);
+        assertThat(responseErrors).containsEntry("$.snapshot.components", "missing required property 'id'; missing required property 'type'");
+        assertThat(responseErrors).containsEntry("$.schemaVersion", "does not match required pattern");
+    }
+
+    @Test
     void handleHandlerMethodValidationException_whenReturnValueValidation_returnsSanitized500() {
         HandlerMethodValidationException ex = mock(HandlerMethodValidationException.class);
         when(ex.isForReturnValue()).thenReturn(true);

@@ -18,8 +18,8 @@ public record MetadataVersionDto(
         String schemaVersion,
         @JsonProperty("isCurrent")
         boolean isCurrent,
-        @Schema(implementation = Object.class, types = {"object", "array", "string", "number", "boolean"},
-                description = "The stored non-null JSON value, returned unchanged in shape. Nested nulls are allowed.")
+        @Schema(implementation = Object.class, types = {"object"},
+                description = "The stored non-null JSON object, returned unchanged in shape. Nested nulls are allowed.")
         JsonNode snapshot,
         Instant createdAt,
         Instant updatedAt,

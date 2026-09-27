@@ -61,3 +61,6 @@ NOTES.local.md
 
 # hash password for admin user to be used when creating user manually
 ../HashPassword.java
+
+# jqwik database
+.jqwik-database

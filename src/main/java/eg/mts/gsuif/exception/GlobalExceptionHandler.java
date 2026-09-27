@@ -408,6 +408,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(415, "Unsupported media type", null));
     }
 
+    @ExceptionHandler(MetadataValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMetadataValidationException(MetadataValidationException ex) {
+        log.warn("Metadata validation failed: {}", ex.getMessage(), ex);
+        return ResponseEntity
+                .status(400)
+                .body(ApiResponse.error(400, "Request validation failed", ex.getErrors()));
+    }
+
     // Branch 5: catch-all → 500
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception ex) {
