@@ -410,7 +410,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MetadataValidationException.class)
     public ResponseEntity<ApiResponse<Void>> handleMetadataValidationException(MetadataValidationException ex) {
-        log.warn("Metadata validation failed: {}", ex.getMessage());
+        log.warn("Metadata validation failed: {}", ex.getMessage(), ex);
         return ResponseEntity
                 .status(400)
                 .body(ApiResponse.error(400, "Request validation failed", ex.getErrors()));
