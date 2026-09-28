@@ -112,7 +112,7 @@ components:
         number: { type: integer, format: int32 }
     AssetTicketDtoResponse:
       type: object
-      required: [status, clientMessage, statusCode, body]
+      required: [status, clientMessage, statusCode, body, errors]
       properties:
         status: { type: string, example: OK }
         clientMessage: { type: string }
@@ -124,7 +124,7 @@ components:
           additionalProperties: { type: string }
     AssetTicketPageResponse:
       type: object
-      required: [status, clientMessage, statusCode, body]
+      required: [status, clientMessage, statusCode, body, errors]
       properties:
         status: { type: string, example: OK }
         clientMessage: { type: string }
@@ -136,12 +136,12 @@ components:
           additionalProperties: { type: string }
     AssetTicketVoidResponse:
       type: object
-      required: [status, clientMessage, statusCode]
+      required: [status, clientMessage, statusCode, body, errors]
       properties:
         status: { type: string, example: OK }
         clientMessage: { type: string }
         statusCode: { type: integer, format: int32 }
-        body: { nullable: true }
+        body: { type: object, nullable: true }
         errors:
           type: object
           nullable: true

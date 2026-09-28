@@ -12,6 +12,8 @@
 <#list project.basePackage?split(".") as segment><#if javaReserved?seq_contains(segment)><#stop "entity.ftl: project.basePackage: contains Java reserved segment"></#if></#list>
 <#list entity.auditBasePackage?split(".") as segment><#if javaReserved?seq_contains(segment)><#stop "entity.ftl: entity.auditBasePackage: contains Java reserved segment"></#if></#list>
 <#assign supportedTypes=["String", "UUID", "LocalDate", "LocalDateTime", "Integer", "Long", "BigDecimal", "Boolean"]>
+<#assign importedNames=["Column", "Entity", "GeneratedValue", "GenerationType", "Id", "Table", "AuditableEntity", "UUID", "EnumType", "Enumerated", "Audited", "LocalDate", "LocalDateTime", "BigDecimal"]>
+<#if supportedTypes?seq_contains(entity.className) || importedNames?seq_contains(entity.className)><#stop "entity.ftl: entity.className: collides with a supported or imported Java type"></#if>
 <#assign seenNames=["id", "createdAt", "updatedAt", "createdBy", "lastModifiedBy"]>
 <#assign seenColumns=["id", "created_at", "updated_at", "created_by", "last_modified_by"]>
 <#list entity.fields as f>
@@ -20,7 +22,7 @@
   <#if !(f.columnName??) || !f.columnName?is_string || !f.columnName?matches("[a-z][a-z0-9_]*") || seenColumns?seq_contains(f.columnName)><#stop "entity.ftl: entity.fields[${f_index?c}].columnName: expected unique snake_case name"></#if>
   <#if !(f.javaType??) || !f.javaType?is_string || !(supportedTypes?seq_contains(f.javaType) || (f.enumType?? && f.javaType == f.enumType && f.javaType?matches("[A-Z][A-Za-z0-9]*")))><#stop "entity.ftl: entity.fields[${f_index?c}].javaType: unsupported Java type"></#if>
   <#if !(f.nullable??) || !f.nullable?is_boolean><#stop "entity.ftl: entity.fields[${f_index?c}].nullable: expected Boolean"></#if>
-  <#if f.enumType?? && (!f.enumType?is_string || !f.enumType?matches("[A-Z][A-Za-z0-9]*") || f.enumType != f.javaType || supportedTypes?seq_contains(f.enumType))><#stop "entity.ftl: entity.fields[${f_index?c}].enumType: expected matching non-scalar enum type"></#if>
+  <#if f.enumType?? && (!f.enumType?is_string || !f.enumType?matches("[A-Z][A-Za-z0-9]*") || f.enumType != f.javaType || supportedTypes?seq_contains(f.enumType) || importedNames?seq_contains(f.enumType) || f.enumType == entity.className)><#stop "entity.ftl: entity.fields[${f_index?c}].enumType: expected matching non-scalar enum type"></#if>
   <#if f.columnLength?? && (!f.columnLength?is_number || f.columnLength?floor != f.columnLength || f.columnLength < 1 || f.columnLength > 2147483647 || !(f.javaType == "String" || f.enumType??))><#stop "entity.ftl: entity.fields[${f_index?c}].columnLength: expected positive textual column length"></#if>
   <#assign seenNames=seenNames + [f.name]>
   <#assign seenColumns=seenColumns + [f.columnName]>

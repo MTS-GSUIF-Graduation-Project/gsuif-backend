@@ -5,7 +5,6 @@
 <#if !(api??) || !api?is_hash><#stop "controller-crud.ftl: api: expected map"></#if>
 <#if !(project.basePackage??) || !project.basePackage?is_string || !project.basePackage?matches("[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+")><#stop "controller-crud.ftl: project.basePackage: expected Java package"></#if>
 <#if !(entity.className??) || !entity.className?is_string || !entity.className?matches("[A-Z][A-Za-z0-9]*")><#stop "controller-crud.ftl: entity.className: expected PascalCase Java identifier"></#if>
-<#if !(api.basePath??) || !api.basePath?is_string || (api.basePath != "/" && !api.basePath?matches("/[a-z0-9][a-z0-9_-]*(/[a-z0-9][a-z0-9_-]*)*"))><#stop "controller-crud.ftl: api.basePath: expected single-leading-slash relative URL path without empty segments"></#if>
 <#assign javaReserved=["abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null", "var", "yield", "record", "sealed", "permits"]>
 <#list project.basePackage?split(".") as segment><#if javaReserved?seq_contains(segment)><#stop "controller-crud.ftl: project.basePackage: contains Java reserved segment"></#if></#list>
 <#if javaReserved?seq_contains(entity.className)><#stop "controller-crud.ftl: entity.className: Java reserved identifier"></#if>
@@ -13,13 +12,19 @@
   <#if !(api[key]??) || !api[key]?is_string || !api[key]?matches("[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+")><#stop "controller-crud.ftl: api.${key}: expected Java package"></#if>
   <#list api[key]?split(".") as segment><#if javaReserved?seq_contains(segment)><#stop "controller-crud.ftl: api.${key}: contains Java reserved segment"></#if></#list>
 </#list>
+<#assign seenClassNames=[entity.className + "Controller", "ApiResponse", "ResponseEntity", "HttpStatus", "RestController", "UUID"]>
 <#list ["dtoClass", "pageDtoClass", "createRequestClass", "updateRequestClass", "statusEnumClass", "serviceInterface", "interfaceClass"] as key>
   <#if !(api[key]??) || !api[key]?is_string || !api[key]?matches("[A-Z][A-Za-z0-9]*")><#stop "controller-crud.ftl: api.${key}: expected Java class identifier"></#if>
   <#if javaReserved?seq_contains(api[key])><#stop "controller-crud.ftl: api.${key}: Java reserved identifier"></#if>
+  <#if seenClassNames?seq_contains(api[key])><#stop "controller-crud.ftl: api.${key}: collides with an imported or generated Java type"></#if>
+  <#assign seenClassNames=seenClassNames + [api[key]]>
 </#list>
+<#assign seenMethodNames=[]>
 <#list ["createMethod", "getMethod", "listMethod", "updateMethod", "deleteMethod"] as key>
   <#if !(api[key]??) || !api[key]?is_string || !api[key]?matches("[a-z][A-Za-z0-9]*")><#stop "controller-crud.ftl: api.${key}: expected Java method identifier"></#if>
   <#if javaReserved?seq_contains(api[key])><#stop "controller-crud.ftl: api.${key}: Java reserved identifier"></#if>
+  <#if seenMethodNames?seq_contains(api[key])><#stop "controller-crud.ftl: api.${key}: duplicate Java method name"></#if>
+  <#assign seenMethodNames=seenMethodNames + [api[key]]>
 </#list>
 package ${project.basePackage}.controller;
 

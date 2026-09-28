@@ -1,8 +1,7 @@
 # SCRUM-44 to SCRUM-28 handoff
 
-This document records the agreed narrow direction for BE-05. The original handoff
-file named in the request was absent from this checkout, so this version records
-the decisions supplied in the ticket discussion and the verified AssetTicket fixture.
+This document records the agreed narrow direction for BE-05, the decisions
+supplied during the handoff, and the verified AssetTicket fixture.
 
 ## Decisions
 
@@ -21,16 +20,19 @@ the decisions supplied in the ticket discussion and the verified AssetTicket fix
 ## Verified SCRUM-44 slice
 
 `src/main/resources/openapi/asset-ticket-api.yaml` has five deterministic
-AssetTicket operations with five-field success-envelope schemas. The opt-in `openapi-fixture` Maven profile uses
+AssetTicket operations with all five success-envelope properties required;
+`errors` may be null, and the DELETE `body` may be null. The opt-in `openapi-fixture` Maven profile uses
 the same Spring Generator options and `responseType.mustache` override as the
 existing OpenAPI spike. An operation-level `x-gsuif-payload-java-type` tells the
 override the inner payload type so Java does not double-wrap `ApiResponse`;
 operations without the extension retain the old override behavior.
 `TemplateFoundationTest` renders `controller-crud.ftl`,
 checks the generated interface's method names, parameters, DTO packages,
-generic return types, and verb/path mappings, and compiles the implementation
+generic return types, required published response fields, and verb/path mappings,
+and compiles the implementation
 with the generated interface and DTOs. It also checks Spring's inherited mapping
-lookup on the compiled controller. The entity fixture checks a 1000-character
+lookup on the compiled controller. The controller has no separate base-path input;
+routes come from the generated interface. The entity fixture checks a 1000-character
 column length, invalid descriptors (including scalar-as-enum and reserved Java
 identifiers), and conditional Envers. Run:
 
@@ -38,7 +40,7 @@ identifiers), and conditional Envers. Run:
 ./mvnw -B -Popenapi-fixture -DopenapiFixtureRequired=true -Dtest=TemplateFoundationTest test
 ```
 
-Local result on 2026-09-28: 13 tests, 0 failures, 0 errors, 0 skipped.
+Local result on 2026-09-28: 8 tests, 0 failures, 0 errors, 0 skipped.
 The existing `openapi-spike` profile also compiled from a clean target with its
 prior return-type behavior.
 The fixture uses existing backend `ApiResponse` and `AuditableEntity` classes

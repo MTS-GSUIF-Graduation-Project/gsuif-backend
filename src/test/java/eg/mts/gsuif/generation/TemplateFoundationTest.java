@@ -5,8 +5,6 @@ import freemarker.template.TemplateExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.yaml.snakeyaml.Yaml;
 
 import javax.tools.Diagnostic;
@@ -24,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.lang.reflect.Method;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -35,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Narrow SCRUM-44 fixture: explicit inputs, rendered source, and Java 21 compilation. */
 class TemplateFoundationTest {
+    private static final String ASSET_TICKET_ROUTE = "/api/v1/asset-tickets";
     @TempDir Path temporaryDirectory;
 
     private final Configuration configuration = new Configuration(Configuration.VERSION_2_3_34);
@@ -61,7 +61,6 @@ class TemplateFoundationTest {
         entity.put("fields", fields);
 
         Map<String, Object> api = new LinkedHashMap<>();
-        api.put("basePath", "/api/v1/asset-tickets");
         api.put("dtoPackage", "com.example.fixture.dto");
         api.put("responsePackage", "eg.mts.gsuif.dto");
         api.put("dtoClass", "AssetTicketDto");
@@ -107,11 +106,11 @@ class TemplateFoundationTest {
         Class<?> status = Class.forName("com.example.fixture.dto.AssetTicketStatus");
         Class<?> createRequest = Class.forName("com.example.fixture.dto.CreateAssetTicketRequest");
         Class<?> updateRequest = Class.forName("com.example.fixture.dto.UpdateAssetTicketRequest");
-        assertMapping(apiInterface, "createAssetTicket", RequestMethod.POST, api.get("basePath").toString(), createRequest);
-        assertMapping(apiInterface, "listAssetTickets", RequestMethod.GET, api.get("basePath").toString(), status);
-        assertMapping(apiInterface, "getAssetTicketById", RequestMethod.GET, api.get("basePath") + "/{id}", java.util.UUID.class);
-        assertMapping(apiInterface, "updateAssetTicket", RequestMethod.PUT, api.get("basePath") + "/{id}", java.util.UUID.class, updateRequest);
-        assertMapping(apiInterface, "deleteAssetTicket", RequestMethod.DELETE, api.get("basePath") + "/{id}", java.util.UUID.class);
+        assertMapping(apiInterface, "createAssetTicket", RequestMethod.POST, ASSET_TICKET_ROUTE, createRequest);
+        assertMapping(apiInterface, "listAssetTickets", RequestMethod.GET, ASSET_TICKET_ROUTE, status);
+        assertMapping(apiInterface, "getAssetTicketById", RequestMethod.GET, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class);
+        assertMapping(apiInterface, "updateAssetTicket", RequestMethod.PUT, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class, updateRequest);
+        assertMapping(apiInterface, "deleteAssetTicket", RequestMethod.DELETE, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class);
         assertReturn(apiInterface.getMethod("createAssetTicket", createRequest), dto);
         assertReturn(apiInterface.getMethod("listAssetTickets", status), page);
         assertReturn(apiInterface.getMethod("getAssetTicketById", java.util.UUID.class), dto);
@@ -200,6 +199,12 @@ class TemplateFoundationTest {
         Exception error = assertThrows(Exception.class, () -> render(entityPath(),
                 Map.of("project", Map.of("basePackage", "com.example.fixture"), "entity", entity)));
         assertTrue(error.getMessage().contains("entity.fields[0].enumType"), error::getMessage);
+
+        entity.put("className", "UUID");
+        entity.put("fields", List.of());
+        Exception collision = assertThrows(Exception.class, () -> render(entityPath(),
+                Map.of("project", Map.of("basePackage", "com.example.fixture"), "entity", entity)));
+        assertTrue(collision.getMessage().contains("entity.className"), collision::getMessage);
     }
 
     @Test
@@ -220,17 +225,18 @@ class TemplateFoundationTest {
         Exception badMethod = assertThrows(Exception.class, () -> render(controllerPath(),
                 Map.of("project", Map.of("basePackage", "com.example.fixture"), "entity", entity, "api", api)));
         assertTrue(badMethod.getMessage().contains("api.createMethod"), badMethod::getMessage);
-    }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"//host", "/api//asset-tickets", "/api/v1/", "/api/../asset-tickets", "https://host/api"})
-    void malformedControllerBasePathsFailBeforeRendering(String path) throws Exception {
-        Map<String, Object> model = Map.of(
-                "project", Map.of("basePackage", "com.example.fixture"),
-                "entity", Map.of("className", "AssetTicket"),
-                "api", Map.of("basePath", path));
-        Exception error = assertThrows(Exception.class, () -> render(controllerPath(), model));
-        assertTrue(error.getMessage().contains("api.basePath"), error::getMessage);
+        api.put("createMethod", "createAssetTicket");
+        api.put("getMethod", "createAssetTicket");
+        Exception duplicateMethod = assertThrows(Exception.class, () -> render(controllerPath(),
+                Map.of("project", Map.of("basePackage", "com.example.fixture"), "entity", entity, "api", api)));
+        assertTrue(duplicateMethod.getMessage().contains("api.getMethod"), duplicateMethod::getMessage);
+
+        api.put("getMethod", "getAssetTicketById");
+        api.put("dtoClass", "AssetTicketController");
+        Exception classCollision = assertThrows(Exception.class, () -> render(controllerPath(),
+                Map.of("project", Map.of("basePackage", "com.example.fixture"), "entity", entity, "api", api)));
+        assertTrue(classCollision.getMessage().contains("api.dtoClass"), classCollision::getMessage);
     }
 
     @Test
@@ -308,7 +314,6 @@ class TemplateFoundationTest {
 
     private Map<String, Object> fixtureApi() {
         Map<String, Object> api = new LinkedHashMap<>();
-        api.put("basePath", "/api/v1/asset-tickets");
         api.put("dtoPackage", "com.example.fixture.dto");
         api.put("responsePackage", "eg.mts.gsuif.dto");
         api.put("dtoClass", "AssetTicketDto");
@@ -341,6 +346,46 @@ class TemplateFoundationTest {
         assertNotNull(schema.getMethod("getBody"));
         assertNotNull(schema.getMethod("getErrors"));
         if (bodyClass != null) assertEquals(bodyClass, schema.getMethod("getBody").getReturnType());
+
+        try (InputStream stream = getClass().getResourceAsStream("/openapi/asset-ticket-api.yaml")) {
+            assertNotNull(stream, "The published OpenAPI fixture must be on the classpath");
+            Map<?, ?> spec = new Yaml().load(stream);
+            Map<?, ?> schemas = (Map<?, ?>) ((Map<?, ?>) spec.get("components")).get("schemas");
+            Map<?, ?> envelope = (Map<?, ?>) schemas.get(schemaClassName);
+            assertNotNull(envelope, schemaClassName);
+            Set<String> expectedFields = Set.of("status", "clientMessage", "statusCode", "body", "errors");
+            assertEquals(expectedFields, Set.copyOf((List<?>) envelope.get("required")));
+            Map<?, ?> properties = (Map<?, ?>) envelope.get("properties");
+            assertEquals(expectedFields, properties.keySet());
+            assertEquals(Boolean.TRUE, ((Map<?, ?>) properties.get("errors")).get("nullable"));
+            Map<?, ?> body = (Map<?, ?>) properties.get("body");
+            if (bodyClass == null) {
+                assertEquals("object", body.get("type"));
+                assertEquals(Boolean.TRUE, body.get("nullable"));
+            } else {
+                assertEquals("#/components/schemas/" + bodyClass.getSimpleName(), body.get("$ref"));
+            }
+
+            Map<?, ?> paths = (Map<?, ?>) spec.get("paths");
+            Map<?, ?> sourceOperation = null;
+            for (Object pathItem : paths.values()) {
+                for (Object candidate : ((Map<?, ?>) pathItem).values()) {
+                    if (candidate instanceof Map<?, ?> operationMap
+                            && method.getName().equals(operationMap.get("operationId"))) {
+                        sourceOperation = operationMap;
+                    }
+                }
+            }
+            assertNotNull(sourceOperation, method.getName());
+            assertEquals(bodyClass == null ? Void.class.getName() : bodyClass.getName(),
+                    sourceOperation.get("x-gsuif-payload-java-type"));
+            Map<?, ?> responses = (Map<?, ?>) sourceOperation.get("responses");
+            Map<?, ?> sourceResponse = (Map<?, ?>) responses.get(operation.responses()[0].responseCode());
+            Map<?, ?> content = (Map<?, ?>) sourceResponse.get("content");
+            Map<?, ?> media = (Map<?, ?>) content.get("application/json");
+            assertEquals("#/components/schemas/" + schemaClassName,
+                    ((Map<?, ?>) media.get("schema")).get("$ref"));
+        }
     }
 
     private Path write(String relative, String source) throws Exception {

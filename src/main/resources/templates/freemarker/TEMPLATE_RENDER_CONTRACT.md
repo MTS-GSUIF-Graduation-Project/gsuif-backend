@@ -1,7 +1,7 @@
 # GSUIF FreeMarker Template Render Contract v0.1
 <!-- SCRUM-44 / T-40 · Part 1: Template Foundation & Catalog Support -->
 <!-- Owner: M3 — Esraa Abdelrazek | Reviewer: M1 — Sondos Hashem, M4 — Nancy -->
-<!-- Status: DRAFT — awaiting M1 / M3 review before commit -->
+<!-- Status: PROVISIONAL — fixture verified; production integration remains planned -->
 
 > **This document is provisional and SCRUM-44 remains in progress.** The `.ftl` files
 > render narrow, explicit fixtures. They do not implement GenerationContext or the
@@ -168,16 +168,14 @@ their explicit generation-specification source.
 Source: `metadata/schema/api-binding.schema.json` fields. Only populated for `T-CONTROLLER`.
 `T-ENTITY` must not reference `api`.
 
-> **S28-04 — Controller base path and operation signatures are unresolved generation inputs.**
+> **S28-04 — General operation signatures remain SCRUM-28 work.**
 > `api-binding.schema.json` records individual bindings (httpMethod, endpointUrl,
-> requestMapping, responseMapping). A `@RequestMapping` base path shared across bindings, the
-> method names, and the parameter types for each operation are not declared in the schema and
-> cannot be mechanically derived from schema fields alone. They are generation inputs to be
-> resolved in SCRUM-28. The variables below are proposed names.
+> requestMapping, responseMapping). The selected OpenAPI interface owns HTTP routes and
+> operation signatures. SCRUM-28 must decide how bindings produce that contract and the
+> validated implementation inputs; the fixed fixture makes no route derivation claim.
 
 | Variable | Type | Req? | Description | Example |
 |---|---|---|---|---|
-| `api.basePath` | String | R | Proposed shared operation path; the fixed fixture validates it but gets mappings from the OpenAPI interface. Derivation remains S28-04. | `"/api/v1/work-orders"` |
 | `api.bindings` | List | Proposed for SCRUM-28 | One entry per `APIBinding` (Section 3.5.1). The fixed fixture does not read or validate it and always emits five methods, even when bindings are absent or empty. | — |
 
 #### 3.5.1 Proposed `BindingDescriptor` items (`api.bindings[n]`)
@@ -202,14 +200,14 @@ model are not consumed by these fixtures.
 |---|---|---|
 | Entity | `project.basePackage` | Required Java package for generated source |
 | Entity | `entity.auditBasePackage` | Required Java package supplying `AuditableEntity` on the consumer compile classpath; emitted as an explicit import |
-| Entity | `entity.className`, `entity.tableName`, `entity.fields` | Required class, table and list of field maps |
+| Entity | `entity.className`, `entity.tableName`, `entity.fields` | Required class, table and list of field maps; class name cannot shadow supported or imported Java types |
 | Entity | `entity.fields[n].name`, `.columnName`, `.javaType`, `.nullable` | Required identifiers, supported type and Boolean. Supported scalar names: `String`, `UUID`, `LocalDate`, `LocalDateTime`, `Integer`, `Long`, `BigDecimal`, `Boolean`; an enum may use a matching simple `enumType` in the generated `.entity` package. |
-| Entity | `entity.fields[n].columnLength`, `.enumType` | Optional positive integer/string enum; enum class must be in the `.entity` package and cannot name a supported scalar Java type |
+| Entity | `entity.fields[n].columnLength`, `.enumType` | Optional positive integer/string enum; enum class must be in the `.entity` package and cannot shadow a scalar, imported type, or the generated entity |
 | Entity | `entity.enversAudited` | Optional Boolean; explicit `true` adds class-level `@Audited`; absent means false in this fixture |
-| Controller | `project.basePackage`, `entity.className`, `api.basePath` | Required package, class and single-leading-slash relative URL path; rejects empty segments and protocol-relative `//host` |
-| Controller | `api.dtoPackage`, `.dtoClass`, `.pageDtoClass`, `.createRequestClass`, `.updateRequestClass` | Required package and names for OpenAPI-generated business DTOs and the fixture page DTO |
+| Controller | `project.basePackage`, `entity.className` | Required package and class; routes come only from the selected OpenAPI interface |
+| Controller | `api.dtoPackage`, `.dtoClass`, `.pageDtoClass`, `.createRequestClass`, `.updateRequestClass` | Required package and distinct names for OpenAPI-generated business DTOs and the fixture page DTO; names cannot collide with controller imports |
 | Controller | `api.interfacePackage`, `.interfaceClass` | Required package/name of the OpenAPI-generated Spring interface |
-| Controller | `api.createMethod`, `.getMethod`, `.listMethod`, `.updateMethod`, `.deleteMethod` | Required Java method names matching the selected OpenAPI operation IDs; all five methods are emitted |
+| Controller | `api.createMethod`, `.getMethod`, `.listMethod`, `.updateMethod`, `.deleteMethod` | Required distinct Java method names matching the selected OpenAPI operation IDs; all five methods are emitted |
 | Controller | `api.responsePackage` | Required package supplying the shared `ApiResponse` support type on the consumer compile classpath |
 | Controller | `api.statusEnumPackage`, `.statusEnumClass` | Required enum package and type for the fixed status filter |
 | Controller | `api.servicePackage`, `.serviceInterface` | Required service package/type |
@@ -356,7 +354,6 @@ Illustrative failure messages:
 | `project.basePackage` | null or blank | `"Required render variable 'project.basePackage' is null or blank"` |
 | `entity.className` | null or blank | `"Required render variable 'entity.className' is null or blank"` |
 | `entity.fields` | null | `"Required render variable 'entity.fields' is null"` |
-| `api.basePath` (T-CONTROLLER) | null or blank | `"Required render variable 'api.basePath' is null or blank"` |
 | `entity.fields[n].nullable` | null (when boxed) | `"Required render variable 'entity.fields[n].nullable' is null"` |
 
 ---
@@ -444,7 +441,7 @@ Update this section as decisions are agreed. Human review and CI remain ticket c
 | S28-01 | Review bare-map proposal and adapt GenerationContext to it in SCRUM-28. | 3.2 | No assumed Java context getters. |
 | S28-02 | `project.basePackage` source: project-config table, generation-request field, or GenerationContext field? | 3.3 | Affects what the engine reads before populating the model. |
 | S28-03 | Define the explicit generation-specification schema and adapt its entity name, fields and table name. | 3.4, 3.4.1 | Prevent inference from UI component metadata. |
-| S28-04 | Controller base path and operation signature source: derivation rule from APIBinding fields or separate input? | 3.5 | Entire `api` sub-tree is provisional until resolved. |
+| S28-04 | Convert APIBinding fields into a selected OpenAPI contract and validated implementation inputs. | 3.5 | General routes and signatures are not inferred by this fixture. |
 | S28-05 | Export and version `ApiResponse`, `PagedBody`, and audit support source in consumer packages; reconcile the Mustache override's hardcoded response package. | 4.2 | Consumer code needs actual support source and its dependencies. |
 | S28-06 | `@PreAuthorize` mechanism: role expression source, render variable, fixed convention, or developer responsibility? STD-20 is MANDATORY. | 4.2 | T-CONTROLLER cannot be declared STD-20-compliant without this. |
 | S28-07 | Which generated entity types require explicit `@Audited` (Mechanism B, Section 4.1)? Signalled how? | 4.2 | Determines whether T-ENTITY emits `@Audited` conditionally or never. |
@@ -474,12 +471,12 @@ interface operation names, Java parameter types, generic response types, HTTP
 verbs and URL mappings, including Spring's inherited mapping lookup on the
 compiled controller. The interface owns `@RequestMapping`; the implementation
 owns `@RestController` and overrides those signatures. The test also checks the
-page DTO properties, a four-digit entity column length, conditional Envers,
-malformed paths including `//host`, invalid nested fields, scalar-as-enum
-rejection, and Java reserved-word rejection. It relies on
+published response schemas and required envelope keys, page DTO properties,
+a four-digit entity column length, conditional Envers, invalid nested fields,
+scalar-as-enum rejection, and Java reserved-word rejection. It relies on
 this repository's `ApiResponse` and `AuditableEntity` classes for compilation.
 
-Local result on 2026-09-28: 13 tests, 0 failures, 0 errors, 0 skipped;
+Local result on 2026-09-28: 8 tests, 0 failures, 0 errors, 0 skipped;
 BUILD SUCCESS with the profile and explicit test flag. This is a fixture-level
 compatibility result, not a generated consumer project build or deployment.
 The existing `openapi-spike` profile also compiled from a clean target with its
