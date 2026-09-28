@@ -1,0 +1,148 @@
+# SCRUM-44 fixed integration fixture, separate from the WorkOrder capability spike.
+openapi: 3.0.3
+info:
+  title: AssetTicket fixture API
+  version: 1.0.0
+paths:
+  /api/v1/asset-tickets:
+    get:
+      tags: [AssetTicket]
+      operationId: listAssetTickets
+      x-gsuif-payload-java-type: com.example.fixture.dto.AssetTicketPage
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/AssetTicketStatus' }
+      responses:
+        '200':
+          description: Asset tickets listed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetTicketPageResponse' }
+    post:
+      tags: [AssetTicket]
+      operationId: createAssetTicket
+      x-gsuif-payload-java-type: com.example.fixture.dto.AssetTicketDto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAssetTicketRequest' }
+      responses:
+        '201':
+          description: Asset ticket created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetTicketDtoResponse' }
+  /api/v1/asset-tickets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [AssetTicket]
+      operationId: getAssetTicketById
+      x-gsuif-payload-java-type: com.example.fixture.dto.AssetTicketDto
+      responses:
+        '200':
+          description: Asset ticket retrieved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetTicketDtoResponse' }
+    put:
+      tags: [AssetTicket]
+      operationId: updateAssetTicket
+      x-gsuif-payload-java-type: com.example.fixture.dto.AssetTicketDto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAssetTicketRequest' }
+      responses:
+        '200':
+          description: Asset ticket updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetTicketDtoResponse' }
+    delete:
+      tags: [AssetTicket]
+      operationId: deleteAssetTicket
+      x-gsuif-payload-java-type: java.lang.Void
+      responses:
+        '200':
+          description: Asset ticket deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetTicketVoidResponse' }
+components:
+  schemas:
+    AssetTicketStatus:
+      type: string
+      enum: [OPEN, CLOSED]
+    AssetTicketDto:
+      type: object
+      required: [id, title, status]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/AssetTicketStatus' }
+    CreateAssetTicketRequest:
+      type: object
+      required: [title, status]
+      properties:
+        title: { type: string }
+        status: { $ref: '#/components/schemas/AssetTicketStatus' }
+    UpdateAssetTicketRequest:
+      type: object
+      properties:
+        title: { type: string }
+        status: { $ref: '#/components/schemas/AssetTicketStatus' }
+    AssetTicketPage:
+      type: object
+      required: [data, totalPages, totalElements, size, number]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AssetTicketDto' }
+        totalPages: { type: integer, format: int32 }
+        totalElements: { type: integer, format: int64 }
+        size: { type: integer, format: int32 }
+        number: { type: integer, format: int32 }
+    AssetTicketDtoResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { $ref: '#/components/schemas/AssetTicketDto' }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    AssetTicketPageResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { $ref: '#/components/schemas/AssetTicketPage' }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    AssetTicketVoidResponse:
+      type: object
+      required: [status, clientMessage, statusCode]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { nullable: true }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }

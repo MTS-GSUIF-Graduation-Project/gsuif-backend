@@ -1,0 +1,73 @@
+<#ftl strip_whitespace=true encoding="UTF-8">
+<#-- SCRUM-44 fixed AssetTicket integration fixture. OpenAPI owns mappings and signatures. -->
+<#if !(project??) || !project?is_hash><#stop "controller-crud.ftl: project: expected map"></#if>
+<#if !(entity??) || !entity?is_hash><#stop "controller-crud.ftl: entity: expected map"></#if>
+<#if !(api??) || !api?is_hash><#stop "controller-crud.ftl: api: expected map"></#if>
+<#if !(project.basePackage??) || !project.basePackage?is_string || !project.basePackage?matches("[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+")><#stop "controller-crud.ftl: project.basePackage: expected Java package"></#if>
+<#if !(entity.className??) || !entity.className?is_string || !entity.className?matches("[A-Z][A-Za-z0-9]*")><#stop "controller-crud.ftl: entity.className: expected PascalCase Java identifier"></#if>
+<#if !(api.basePath??) || !api.basePath?is_string || (api.basePath != "/" && !api.basePath?matches("/[a-z0-9][a-z0-9_-]*(/[a-z0-9][a-z0-9_-]*)*"))><#stop "controller-crud.ftl: api.basePath: expected single-leading-slash relative URL path without empty segments"></#if>
+<#assign javaReserved=["abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null", "var", "yield", "record", "sealed", "permits"]>
+<#list project.basePackage?split(".") as segment><#if javaReserved?seq_contains(segment)><#stop "controller-crud.ftl: project.basePackage: contains Java reserved segment"></#if></#list>
+<#if javaReserved?seq_contains(entity.className)><#stop "controller-crud.ftl: entity.className: Java reserved identifier"></#if>
+<#list ["dtoPackage", "responsePackage", "statusEnumPackage", "servicePackage", "interfacePackage"] as key>
+  <#if !(api[key]??) || !api[key]?is_string || !api[key]?matches("[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+")><#stop "controller-crud.ftl: api.${key}: expected Java package"></#if>
+  <#list api[key]?split(".") as segment><#if javaReserved?seq_contains(segment)><#stop "controller-crud.ftl: api.${key}: contains Java reserved segment"></#if></#list>
+</#list>
+<#list ["dtoClass", "pageDtoClass", "createRequestClass", "updateRequestClass", "statusEnumClass", "serviceInterface", "interfaceClass"] as key>
+  <#if !(api[key]??) || !api[key]?is_string || !api[key]?matches("[A-Z][A-Za-z0-9]*")><#stop "controller-crud.ftl: api.${key}: expected Java class identifier"></#if>
+  <#if javaReserved?seq_contains(api[key])><#stop "controller-crud.ftl: api.${key}: Java reserved identifier"></#if>
+</#list>
+<#list ["createMethod", "getMethod", "listMethod", "updateMethod", "deleteMethod"] as key>
+  <#if !(api[key]??) || !api[key]?is_string || !api[key]?matches("[a-z][A-Za-z0-9]*")><#stop "controller-crud.ftl: api.${key}: expected Java method identifier"></#if>
+  <#if javaReserved?seq_contains(api[key])><#stop "controller-crud.ftl: api.${key}: Java reserved identifier"></#if>
+</#list>
+package ${project.basePackage}.controller;
+
+import ${api.interfacePackage}.${api.interfaceClass};
+import ${api.responsePackage}.ApiResponse;
+import ${api.dtoPackage}.${api.dtoClass};
+import ${api.dtoPackage}.${api.pageDtoClass};
+import ${api.dtoPackage}.${api.createRequestClass};
+import ${api.dtoPackage}.${api.updateRequestClass};
+import ${api.statusEnumPackage}.${api.statusEnumClass};
+import ${api.servicePackage}.${api.serviceInterface};
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
+import java.util.UUID;
+
+@RestController
+public class ${entity.className}Controller implements ${api.interfaceClass} {
+    private final ${api.serviceInterface} service;
+
+    public ${entity.className}Controller(${api.serviceInterface} service) {
+        this.service = service;
+    }
+
+    @Override
+    public ResponseEntity<ApiResponse<${api.dtoClass}>> ${api.createMethod}(${api.createRequestClass} request) {
+        ${api.dtoClass} created = service.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created, "Created successfully", 201));
+    }
+
+    @Override
+    public ResponseEntity<ApiResponse<${api.dtoClass}>> ${api.getMethod}(UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(service.getById(id), "Retrieved successfully"));
+    }
+
+    @Override
+    public ResponseEntity<ApiResponse<${api.pageDtoClass}>> ${api.listMethod}(${api.statusEnumClass} status) {
+        return ResponseEntity.ok(ApiResponse.success(service.list(status), "Retrieved successfully"));
+    }
+
+    @Override
+    public ResponseEntity<ApiResponse<${api.dtoClass}>> ${api.updateMethod}(UUID id, ${api.updateRequestClass} request) {
+        return ResponseEntity.ok(ApiResponse.success(service.update(id, request), "Updated successfully"));
+    }
+
+    @Override
+    public ResponseEntity<ApiResponse<Void>> ${api.deleteMethod}(UUID id) {
+        service.delete(id);
+        return ResponseEntity.ok(ApiResponse.success(null, "Deleted successfully"));
+    }
+}

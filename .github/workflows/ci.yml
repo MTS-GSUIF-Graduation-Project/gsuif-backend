@@ -23,3 +23,6 @@ jobs:
 
       - name: Run Maven verify
         run: ./mvnw -B verify -Dspring.profiles.active=test
+
+      - name: Verify generated interface and controller fixture
+        run: ./mvnw -B -Popenapi-fixture -DopenapiFixtureRequired=true -Dtest=TemplateFoundationTest test
