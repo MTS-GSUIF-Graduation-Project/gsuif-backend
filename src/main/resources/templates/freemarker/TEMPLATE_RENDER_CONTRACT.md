@@ -64,8 +64,9 @@ position. Loader and catalog parsing implementation belongs to SCRUM-28.
 
 > **Phase 1 Angular output.** `components.yaml §phase_1_includes` records "Minimal Angular
 > component and Spring REST controller template outputs required by SCRUM-28/T-28." A third
-> template for Angular is in scope but its variable contract is entirely unresolved. It will be
-> documented in a follow-up after the TS/HTML output contract is agreed (S28-11).
+> template for Angular is in scope but its variable contract is entirely unresolved. SCRUM-28
+> owns the minimal TS/HTML output contract and template; this SCRUM-44 fixture does not verify
+> Angular generation (S28-11). The full Angular application remains Phase 2 work.
 
 ---
 
@@ -240,6 +241,12 @@ alone do not deliver support classes.
 > exists anywhere in the current codebase. The role expression and its source are **entirely
 > unresolved**. No authority or role variable is proposed. Alignment item S28-06.
 
+`components.yaml` assigns basic RBAC infrastructure to BE-07 and AOP logging to BE-10;
+their generated-artifact standards still apply when BE-05 output is integrated. SCRUM-28
+must establish which generated endpoints are restricted, their approved role expressions,
+and when `@Loggable` applies before emitting either annotation. The fixed fixture has no
+such policy inputs and makes no authorization or logging conformance claim.
+
 ---
 
 ## 4. Annotation Rules by Template
@@ -272,6 +279,11 @@ Evidence:
 - `GsuifPage` — explicit `@Audited` → Envers-audited.
 - `MetadataVersion` — explicit `@Audited` → Envers-audited.
 - `WorkOrder` — no `@Audited` → **not** Envers-audited; JPA audit fields only.
+
+**Entity identity convention.** The generated entity follows the WorkOrder reference:
+transient instances are equal only to themselves; persisted instances with the same
+non-null UUID compare equal; `hashCode()` uses the entity class constant so it remains
+stable when JPA assigns an ID. The AssetTicket fixture compiles and tests this behavior.
 
 ### 4.2 Annotation Rule Table
 
@@ -476,11 +488,15 @@ a four-digit entity column length, conditional Envers, invalid nested fields,
 scalar-as-enum rejection, and Java reserved-word rejection. It relies on
 this repository's `ApiResponse` and `AuditableEntity` classes for compilation.
 
-Local result on 2026-09-28: 8 tests, 0 failures, 0 errors, 0 skipped;
+Local result on 2026-09-30: 8 tests, 0 failures, 0 errors, 0 skipped;
 BUILD SUCCESS with the profile and explicit test flag. This is a fixture-level
 compatibility result, not a generated consumer project build or deployment.
-The existing `openapi-spike` profile also compiled from a clean target with its
-unchanged `ApiResponse<WorkOrderDto>` return behavior.
+The separate `OpenApiSpikeFallbackTest`, run with `-Popenapi-spike` and
+`-DopenapiSpikeRequired=true`, checks the shared Mustache override's fallback for
+all five generated WorkOrder methods, including the list payload. CI runs that
+test from a clean target; local result on 2026-09-30: 1 test, 0 failures,
+0 errors, 0 skipped. The WorkOrder spike remains an evaluation contract,
+not the canonical consumer CRUD contract.
 
 ## 10. Handoff limit
 

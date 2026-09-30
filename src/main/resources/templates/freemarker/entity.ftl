@@ -83,4 +83,15 @@ import java.util.UUID;
         this.${f.name} = ${f.name};
     }
 
-</#list>}
+</#list>    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ${entity.className} that)) return false;
+        return id != null && id.equals(that.getId());
+    }
+
+    @Override
+    public int hashCode() {
+        return ${entity.className}.class.hashCode();
+    }
+}
