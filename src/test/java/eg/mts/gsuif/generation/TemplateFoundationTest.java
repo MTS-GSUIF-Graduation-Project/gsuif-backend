@@ -88,6 +88,7 @@ class TemplateFoundationTest {
         assertTrue(entitySource.contains("length = 1000"), "Numeric Java literals must not use locale separators");
         assertFalse(entitySource.contains("length = 1,000"));
         assertFalse(entitySource.contains("import org.hibernate.envers.Audited;"));
+        assertTrue(entitySource.contains("return AssetTicket.class.hashCode();"));
         assertTrue(controllerSource.contains("public class AssetTicketController"));
         assertTrue(controllerSource.contains("implements AssetTicketApi"));
         assertFalse(controllerSource.contains("@RequestMapping"), "Mappings belong to the generated interface");
@@ -139,6 +140,19 @@ class TemplateFoundationTest {
         compile(sources);
         try (URLClassLoader loader = new URLClassLoader(
                 new java.net.URL[]{temporaryDirectory.toUri().toURL()}, getClass().getClassLoader())) {
+            Class<?> generatedEntity = loader.loadClass("com.example.fixture.entity.AssetTicket");
+            Object first = generatedEntity.getConstructor().newInstance();
+            Object second = generatedEntity.getConstructor().newInstance();
+            assertEquals(first, first);
+            assertNotEquals(first, second, "Transient entities must not compare equal");
+            var setId = generatedEntity.getDeclaredMethod("setId", java.util.UUID.class);
+            setId.setAccessible(true);
+            java.util.UUID sharedId = java.util.UUID.randomUUID();
+            setId.invoke(first, sharedId);
+            setId.invoke(second, sharedId);
+            assertEquals(first, second, "Entities with the same persisted ID must compare equal");
+            assertEquals(first.hashCode(), second.hashCode());
+            assertEquals(generatedEntity.hashCode(), first.hashCode());
             Class<?> controller = loader.loadClass("com.example.fixture.controller.AssetTicketController");
             assertTrue(apiInterface.isAssignableFrom(controller));
             assertInheritedMapping(controller, "createAssetTicket", RequestMethod.POST,
