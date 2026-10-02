@@ -77,3 +77,9 @@ jobs:
             target/surefire-reports/**
             target/*.dump*
           if-no-files-found: warn
+
+      - name: Verify generated interface and controller fixture
+        run: ./mvnw -B -Popenapi-fixture -DopenapiFixtureRequired=true -Dtest=TemplateFoundationTest test
+
+      - name: Verify OpenAPI spike return-type fallback
+        run: ./mvnw -B clean -Popenapi-spike -DopenapiSpikeRequired=true -Dtest=OpenApiSpikeFallbackTest test
