@@ -58,6 +58,7 @@ jobs:
               sleep 5
               kill -KILL -- "-$maven_pid" 2>/dev/null || true
               wait "$maven_pid" || true
+              tail -n 80 "$log" || true
               exit 124
             fi
           done
@@ -65,6 +66,9 @@ jobs:
           wait "$maven_pid"
           result=$?
           echo "Maven exited with status $result; complete output is in $log."
+          if (( result != 0 )); then
+            tail -n 80 "$log" || true
+          fi
           exit "$result"
 
       - name: Upload Maven diagnostics and Surefire reports

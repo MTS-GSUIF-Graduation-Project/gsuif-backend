@@ -12,7 +12,13 @@ Java 21 and the Spring test profile:
 ./mvnw -B -Dspring.profiles.active=test -Dtest=MetadataBusinessFixtureTest,MetadataBusinessValidatorPropertiesTest,MetadataBusinessMutationEngineTest test
 ```
 
-On Windows, use `.\mvnw.cmd` in place of `./mvnw`. The property methods in
+In Windows PowerShell, keep each `-D` property as one quoted argument:
+
+```powershell
+& ".\mvnw.cmd" -B "-Dspring.profiles.active=test" "-Dtest=MetadataBusinessFixtureTest,MetadataBusinessValidatorPropertiesTest,MetadataBusinessMutationEngineTest" test
+```
+
+The property methods in
 `MetadataBusinessValidatorPropertiesTest` declare seeds 51001–51005. The
 mutation-engine test reruns each targeted property with the same seed and compares
 the recorded failing samples; its concise output names the property, seed, mutant,
