@@ -16,6 +16,10 @@ public interface MetadataVersionService {
 
     MetadataVersionDto getLatest(UUID pageId);
 
+    MetadataVersionDto getCurrent(UUID pageId);
+
+    MetadataVersionDto selectCurrent(UUID pageId, UUID versionId);
+
     MetadataVersionDto getById(UUID pageId, UUID versionId);
 
     PagedBody<MetadataVersionDto> getAll(UUID pageId, Pageable pageable);

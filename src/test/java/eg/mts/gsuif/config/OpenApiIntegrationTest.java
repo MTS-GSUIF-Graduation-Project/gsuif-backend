@@ -66,6 +66,7 @@ public class OpenApiIntegrationTest {
             "GET /api/v1/projects/{projectId}/pages/{pageId}", "PUT /api/v1/projects/{projectId}/pages/{pageId}", "DELETE /api/v1/projects/{projectId}/pages/{pageId}",
             "GET /api/v1/pages/{pageId}/metadata", "POST /api/v1/pages/{pageId}/metadata",
             "GET /api/v1/pages/{pageId}/metadata/latest",
+            "GET /api/v1/pages/{pageId}/metadata/current", "PUT /api/v1/pages/{pageId}/metadata/current",
             "GET /api/v1/pages/{pageId}/metadata/{versionId}"
         );
         assertEquals(expectedMetadataOps, getOperations(metadataDocs), "Metadata operations mismatch");
