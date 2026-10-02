@@ -33,23 +33,21 @@ This document records confirmed project and architecture decisions.
 
 ## SCRUM-51 review alignment
 
-The SCRUM-51 planning run `20261001-015312-658281` records the intended
-contract. Sondos Hashem explicitly approved DEC-026, DEC-027 and DEC-029 in
-the SCRUM-51 conversation on 2026-10-02. The earlier saved approval for
-DEC-028 remains in force. These decisions are recorded here for review; Jira
-has not been updated.
+The team approved DEC-026 through DEC-029 during PR #29 review. These entries
+record the agreed SCRUM-51 behavior in the repository. Jira AC2, AC3, AC4 and
+AC9 were updated on 2026-10-02 to match the wording below.
 
 | ID | Decision | Source | Status | Approved by |
 |----|----------|--------|--------|-------------|
-| DEC-026 | Accept GET, POST, PUT and DELETE; reject PATCH. Replace Jira AC3's five-method wording. | Explicit approval by Sondos Hashem in the SCRUM-51 conversation, 2026-10-02; consistent with `api-binding.schema.json`. | CONFIRMED | Sondos Hashem |
-| DEC-027 | Keep sequential numeric immutable versions and do not add `versionName`; retire only duplicate-version-name rejection from Jira AC2. Route and component-ID uniqueness remain required. | Explicit approval by Sondos Hashem in the SCRUM-51 conversation, 2026-10-02; consistent with ADR-006, DEC-025 and `metadata-version.schema.json`. | CONFIRMED | Sondos Hashem |
-| DEC-028 | The inclusive size limit is 5,000,000 UTF-8 bytes of the exact snapshot JSON string persisted. Serialize once, measure and persist that same string; exclude request/version envelopes and transport formatting. | SCRUM-51 planning run `20261001-015312-658281/approved-decisions-2.json`, recorded 2026-10-01 with `approvedBy: Sondos Hashem` and this exact answer. | CONFIRMED | Sondos Hashem |
-| DEC-029 | Unsupported binding-method values reach structural schema enum validation first at the API boundary, returning HTTP 400 with the existing `enum` field error. The `SupportedHttpMethod` business rule is tested directly without that structural gate; its name appears in direct business-rule findings, not the structural API error. | Explicit approval by Sondos Hashem in the SCRUM-51 conversation, 2026-10-02; behavior covered by `MetadataBusinessControllerIntegrationTest`. | CONFIRMED | Sondos Hashem |
+| DEC-026 | Accept GET, POST, PUT and DELETE; reject PATCH. Jira AC3's five-method wording was replaced. | PR #29 team review; consistent with `api-binding.schema.json`. | CONFIRMED | Team |
+| DEC-027 | Keep sequential numeric immutable versions and do not add `versionName`; retire only duplicate-version-name rejection from Jira AC2. Route and component-ID uniqueness remain required. | PR #29 team review; consistent with ADR-006, DEC-025 and `metadata-version.schema.json`. | CONFIRMED | Team |
+| DEC-028 | The inclusive size limit is 5,000,000 UTF-8 bytes of the exact snapshot JSON string persisted. Serialize once, measure and persist that same string; exclude request/version envelopes and transport formatting. | PR #29 team review; verified by exact-size persistence tests. | CONFIRMED | Team |
+| DEC-029 | Unsupported binding-method values reach structural schema enum validation first at the API boundary, returning HTTP 400 with the existing `enum` field error. The `SupportedHttpMethod` business rule is tested directly without that structural gate; its name appears in direct business-rule findings, not the structural API error. | PR #29 team review; behavior covered by `MetadataBusinessControllerIntegrationTest`. | CONFIRMED | Team |
 
 ### Jira acceptance-criterion wording for SCRUM-51
 
-Replace only AC2, AC3, AC4 and AC9 with the following text when a Jira update
-is separately authorized. All other acceptance criteria remain unchanged.
+Jira AC2, AC3, AC4 and AC9 were updated on 2026-10-02 with the following text.
+All other acceptance criteria remained unchanged.
 
 - **AC2:** Generated duplicate routes within a project and duplicate component
   IDs within a page are rejected by their named business rules. Duplicate-version-name
