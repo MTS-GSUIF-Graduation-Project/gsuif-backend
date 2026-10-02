@@ -13,6 +13,9 @@ import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.service.GsuifPageService;
+import eg.mts.gsuif.exception.MetadataValidationException;
+import eg.mts.gsuif.validator.MetadataBusinessValidator;
+import eg.mts.gsuif.validator.MetadataValidationContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -35,13 +38,16 @@ public class GsuifPageServiceImpl implements GsuifPageService {
     private final GsuifProjectRepository projectRepository;
     private final GsuifPageRepository pageRepository;
     private final MetadataVersionRepository metadataVersionRepository;
+    private final MetadataBusinessValidator businessValidator;
 
     public GsuifPageServiceImpl(GsuifProjectRepository projectRepository,
                                 GsuifPageRepository pageRepository,
-                                MetadataVersionRepository metadataVersionRepository) {
+                                MetadataVersionRepository metadataVersionRepository,
+                                MetadataBusinessValidator businessValidator) {
         this.projectRepository = projectRepository;
         this.pageRepository = pageRepository;
         this.metadataVersionRepository = metadataVersionRepository;
+        this.businessValidator = businessValidator;
     }
 
     @Override
@@ -55,10 +61,7 @@ public class GsuifPageServiceImpl implements GsuifPageService {
                     "Page with name '" + request.name() + "' already exists in project '" + projectId + "'");
         }
 
-        if (request.route() != null && pageRepository.existsByProjectIdAndRoute(projectId, request.route())) {
-            throw new DuplicateResourceException("route",
-                    "Page with route '" + request.route() + "' already exists in project '" + projectId + "'");
-        }
+        validateBusinessRules(projectId, null, request.route());
 
         GsuifPage page = new GsuifPage();
         page.setProject(projectRepository.getReferenceById(projectId));
@@ -112,11 +115,7 @@ public class GsuifPageServiceImpl implements GsuifPageService {
                     "Page with name '" + request.name() + "' already exists in project '" + projectId + "'");
         }
 
-        if (request.route() != null
-                && pageRepository.existsByProjectIdAndRouteAndIdNot(projectId, request.route(), pageId)) {
-            throw new DuplicateResourceException("route",
-                    "Page with route '" + request.route() + "' already exists in project '" + projectId + "'");
-        }
+        validateBusinessRules(projectId, pageId, request.route());
 
         page.setName(request.name());
         page.setRoute(request.route());
@@ -143,6 +142,17 @@ public class GsuifPageServiceImpl implements GsuifPageService {
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private void validateBusinessRules(UUID projectId, UUID pageId, String route) {
+        var errors = businessValidator.validate(MetadataValidationContext.page(projectId, pageId, route));
+        if (errors.isEmpty()) return;
+        var grouped = MetadataBusinessValidator.groupErrors(errors);
+        // Preserve the existing route-conflict exception contract for page callers.
+        if (grouped.size() == 1 && grouped.containsKey("route")) {
+            throw new DuplicateResourceException("route", grouped.get("route"));
+        }
+        throw new MetadataValidationException("Metadata validation failed", grouped);
+    }
 
     private void verifyProjectExists(UUID projectId) {
         if (!projectRepository.existsById(projectId)) {

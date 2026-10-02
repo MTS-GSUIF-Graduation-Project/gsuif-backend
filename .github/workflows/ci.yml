@@ -21,8 +21,66 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Run Maven verify
-        run: ./mvnw -B verify -Dspring.profiles.active=test
+      - name: Run Maven verify with diagnostics
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p ci-diagnostics
+          log=ci-diagnostics/maven.log
+          setsid ./mvnw -B verify -Dspring.profiles.active=test >"$log" 2>&1 &
+          maven_pid=$!
+          started=$SECONDS
+
+          while kill -0 "$maven_pid" 2>/dev/null; do
+            sleep 30
+            if ! kill -0 "$maven_pid" 2>/dev/null; then break; fi
+            elapsed=$((SECONDS - started))
+            current_class=$(awk '
+              /^\[INFO\] Running / { current=$3; active=1 }
+              /^\[INFO\] Tests run: .* -- in / { active=0 }
+              END {
+                if (active) print current
+                else if (current) print "between tests (last " current ")"
+                else print "tests not started"
+              }
+            ' "$log")
+            echo "Maven elapsed=${elapsed}s current_test=${current_class} log_bytes=$(wc -c <"$log")"
+
+            if (( elapsed >= 600 )); then
+              echo "Maven exceeded 10 minutes; collecting Java thread dumps before termination." | tee ci-diagnostics/timeout.txt
+              timeout 15s jcmd -l > ci-diagnostics/jcmd-list.txt 2>&1 || true
+              while read -r java_pid _; do
+                if [[ "$java_pid" =~ ^[0-9]+$ ]]; then
+                  timeout 15s jcmd "$java_pid" Thread.print -l > "ci-diagnostics/thread-${java_pid}.txt" 2>&1 || true
+                fi
+              done < ci-diagnostics/jcmd-list.txt
+              kill -TERM -- "-$maven_pid" 2>/dev/null || true
+              sleep 5
+              kill -KILL -- "-$maven_pid" 2>/dev/null || true
+              wait "$maven_pid" || true
+              tail -n 80 "$log" || true
+              exit 124
+            fi
+          done
+
+          wait "$maven_pid"
+          result=$?
+          echo "Maven exited with status $result; complete output is in $log."
+          if (( result != 0 )); then
+            tail -n 80 "$log" || true
+          fi
+          exit "$result"
+
+      - name: Upload Maven diagnostics and Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-diagnostics/**
+            target/surefire-reports/**
+            target/*.dump*
+          if-no-files-found: warn
 
       - name: Verify generated interface and controller fixture
         run: ./mvnw -B -Popenapi-fixture -DopenapiFixtureRequired=true -Dtest=TemplateFoundationTest test

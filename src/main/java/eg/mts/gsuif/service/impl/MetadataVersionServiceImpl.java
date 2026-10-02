@@ -14,6 +14,8 @@ import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.service.MetadataVersionService;
 import eg.mts.gsuif.exception.MetadataValidationException;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
+import eg.mts.gsuif.validator.MetadataBusinessValidator;
+import eg.mts.gsuif.validator.MetadataValidationContext;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
@@ -45,15 +47,18 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     private final GsuifPageRepository pageRepository;
     private final ObjectMapper objectMapper;
     private final MetadataSchemaValidator schemaValidator;
+    private final MetadataBusinessValidator businessValidator;
 
     public MetadataVersionServiceImpl(MetadataVersionRepository metadataVersionRepository,
                                       GsuifPageRepository pageRepository,
                                       ObjectMapper objectMapper,
-                                      MetadataSchemaValidator schemaValidator) {
+                                      MetadataSchemaValidator schemaValidator,
+                                      MetadataBusinessValidator businessValidator) {
         this.metadataVersionRepository = metadataVersionRepository;
         this.pageRepository = pageRepository;
         this.objectMapper = objectMapper;
         this.schemaValidator = schemaValidator;
+        this.businessValidator = businessValidator;
     }
 
     @Override
@@ -61,10 +66,11 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     @Loggable
     public MetadataVersionDto create(UUID pageId, CreateMetadataVersionRequest request) {
         com.fasterxml.jackson.databind.JsonNode standardSnapshot = null;
+        String serializedSnapshot = null;
         if (request.snapshot() != null) {
             try {
-                String serializedForValidation = objectMapper.writeValueAsString(request.snapshot());
-                standardSnapshot = STANDARD_MAPPER.readTree(serializedForValidation);
+                serializedSnapshot = objectMapper.writeValueAsString(request.snapshot());
+                standardSnapshot = STANDARD_MAPPER.readTree(serializedSnapshot);
             } catch (Exception e) {
                 throw new IllegalStateException("Failed to convert snapshot node", e);
             }
@@ -81,6 +87,13 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
             throw new eg.mts.gsuif.exception.MetadataValidationException("Metadata validation failed", groupedErrors);
         }
 
+        var businessErrors = businessValidator.validate(
+                MetadataValidationContext.snapshot(standardSnapshot, serializedSnapshot));
+        if (!businessErrors.isEmpty()) {
+            throw new MetadataValidationException("Metadata validation failed",
+                    MetadataBusinessValidator.groupErrors(businessErrors));
+        }
+
         GsuifPage page = pageRepository.findByIdWithLock(pageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Page not found with id: " + pageId));
 
@@ -92,11 +105,7 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
         newVersion.setPage(page);
         newVersion.setVersion(nextVersion);
         newVersion.setSchemaVersion(request.schemaVersion());
-        try {
-            newVersion.setSnapshot(objectMapper.writeValueAsString(request.snapshot()));
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to serialize snapshot", e);
-        }
+        newVersion.setSnapshot(serializedSnapshot);
 
         newVersion = metadataVersionRepository.save(newVersion);
         page.setCurrentMetadataVersionId(newVersion.getId());

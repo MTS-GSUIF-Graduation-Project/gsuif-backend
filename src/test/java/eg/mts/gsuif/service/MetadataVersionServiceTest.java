@@ -54,7 +54,11 @@ class MetadataVersionServiceTest {
 
     @BeforeEach
     void setUp() {
-        metadataVersionService = new MetadataVersionServiceImpl(metadataVersionRepository, pageRepository, objectMapper, schemaValidator);
+        metadataVersionService = new MetadataVersionServiceImpl(metadataVersionRepository, pageRepository, objectMapper, schemaValidator,
+                new eg.mts.gsuif.validator.MetadataBusinessValidator(List.of(
+                        new eg.mts.gsuif.validator.ComponentIdUniquenessRule(),
+                        new eg.mts.gsuif.validator.SupportedHttpMethodRule(),
+                        new eg.mts.gsuif.validator.SnapshotSizeRule())));
 
         GsuifProject project = new GsuifProject();
         org.springframework.test.util.ReflectionTestUtils.setField(project, "id", projectId);

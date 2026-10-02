@@ -31,6 +31,38 @@ This document records confirmed project and architecture decisions.
 | DEC-023 | STD-28 defines a required semantic HTTP baseline rather than a closed status-code whitelist. The mappings defined in the Technical Document remain required. Standard protocol responses such as 405 Method Not Allowed and 415 Unsupported Media Type are permitted and must be used when applicable. Other standard HTTP codes may be used only when documented and semantically appropriate. Every error response must use the five-field ApiResponse envelope. | STD-28 clarification | CONFIRMED | Team |
 | DEC-024 | `GSUIF_METADATA_VERSION` stores both `project_id` and `page_id`. Database consistency is enforced by `UNIQUE(project_id, id)` on `GSUIF_PAGE` and a composite foreign key `(project_id, page_id)` referencing `GSUIF_PAGE(project_id, id)`, so a version cannot point at a page that belongs to a different project. T-13 `metadata-version.schema.json` is unchanged. | T-14 / SCRUM-21 | CONFIRMED | Team |
 
+## SCRUM-51 review alignment
+
+The team approved DEC-026 through DEC-029 during PR #29 review. These entries
+record the agreed SCRUM-51 behavior in the repository. Jira AC2, AC3, AC4 and
+AC9 were updated on 2026-10-02 to match the wording below.
+
+| ID | Decision | Source | Status | Approved by |
+|----|----------|--------|--------|-------------|
+| DEC-026 | Accept GET, POST, PUT and DELETE; reject PATCH. Jira AC3's five-method wording was replaced. | PR #29 team review; consistent with `api-binding.schema.json`. | CONFIRMED | Team |
+| DEC-027 | Keep sequential numeric immutable versions and do not add `versionName`; retire only duplicate-version-name rejection from Jira AC2. Route and component-ID uniqueness remain required. | PR #29 team review; consistent with ADR-006, DEC-025 and `metadata-version.schema.json`. | CONFIRMED | Team |
+| DEC-028 | The inclusive size limit is 5,000,000 UTF-8 bytes of the exact snapshot JSON string persisted. Serialize once, measure and persist that same string; exclude request/version envelopes and transport formatting. | PR #29 team review; verified by exact-size persistence tests. | CONFIRMED | Team |
+| DEC-029 | Unsupported binding-method values reach structural schema enum validation first at the API boundary, returning HTTP 400 with the existing `enum` field error. The `SupportedHttpMethod` business rule is tested directly without that structural gate; its name appears in direct business-rule findings, not the structural API error. | PR #29 team review; behavior covered by `MetadataBusinessControllerIntegrationTest`. | CONFIRMED | Team |
+
+### Jira acceptance-criterion wording for SCRUM-51
+
+Jira AC2, AC3, AC4 and AC9 were updated on 2026-10-02 with the following text.
+All other acceptance criteria remained unchanged.
+
+- **AC2:** Generated duplicate routes within a project and duplicate component
+  IDs within a page are rejected by their named business rules. Duplicate-version-name
+  validation is retired; versions remain numeric and immutable.
+- **AC3:** Generated unsupported HTTP methods, including PATCH, are rejected.
+  GET, POST, PUT and DELETE remain accepted. Direct property tests exercise the
+  `SupportedHttpMethod` business rule independently of structural validation.
+- **AC4:** Otherwise-valid snapshot JSON strings of 4,999,999 and 5,000,000
+  UTF-8 bytes are accepted; 5,000,001 bytes is rejected. Measure the exact JSON
+  string persisted, excluding request/version envelopes and transport formatting;
+  serialize once, measure and persist that same string.
+- **AC9:** Business-rule violations return HTTP 400 with errors naming the rule.
+  Unsupported method values rejected first by structural schema validation
+  retain the existing `enum` error in the HTTP 400 response.
+
 
 ## Database Rules
 

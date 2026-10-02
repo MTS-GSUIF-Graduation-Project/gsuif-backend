@@ -52,7 +52,9 @@ class GsuifPageServiceTest {
 
     @BeforeEach
     void setUp() {
-        pageService = new GsuifPageServiceImpl(projectRepository, pageRepository, metadataVersionRepository);
+        pageService = new GsuifPageServiceImpl(projectRepository, pageRepository, metadataVersionRepository,
+                new eg.mts.gsuif.validator.MetadataBusinessValidator(List.of(
+                        new eg.mts.gsuif.validator.RouteUniquenessRule(pageRepository))));
         projectId = UUID.randomUUID();
         pageId = UUID.randomUUID();
     }
