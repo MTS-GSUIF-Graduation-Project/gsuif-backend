@@ -299,7 +299,7 @@ public class GlobalExceptionHandler {
                     return new ConstraintMatch("name", "Page with that name already exists in this project");
                 }
                 if (normalised.equalsIgnoreCase("uk_gsuif_page_project_id_route")) {
-                    return new ConstraintMatch("route", "Page with that route already exists in this project");
+                    return new ConstraintMatch("route", "RouteUniqueness: Page with that route already exists in this project");
                 }
                 // Known Hibernate CVE found but constraint name does not match any known mapping.
                 return null;

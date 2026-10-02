@@ -558,9 +558,9 @@ class GsuifPageControllerIntegrationTest {
         assertThat(response.getStatusCode().value()).isEqualTo(400);
         assertThat(response.getBody().status()).isEqualTo("BAD_REQUEST");
         assertThat(response.getBody().clientMessage())
-                .isEqualTo("Page with that route already exists in this project");
+                .isEqualTo("RouteUniqueness: Page with that route already exists in this project");
         assertThat(response.getBody().errors()).containsEntry("route",
-                "Page with that route already exists in this project");
+                "RouteUniqueness: Page with that route already exists in this project");
         assertThat(response.getBody().clientMessage()).doesNotContain("uk_gsuif_page_project_id_route");
     }
 
