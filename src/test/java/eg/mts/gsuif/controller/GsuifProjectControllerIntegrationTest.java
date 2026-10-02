@@ -8,6 +8,7 @@ import eg.mts.gsuif.entity.WorkOrder;
 import eg.mts.gsuif.entity.WorkOrderStatus;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
+import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.repository.WorkOrderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -53,10 +55,18 @@ class GsuifProjectControllerIntegrationTest {
     private GsuifPageRepository pageRepository;
 
     @Autowired
+    private MetadataVersionRepository metadataVersionRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private WorkOrderRepository workOrderRepository;
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.execute("UPDATE gsuif_page SET current_metadata_version_id = NULL");
+        metadataVersionRepository.deleteAll();
         pageRepository.deleteAll();
         projectRepository.deleteAll();
         workOrderRepository.deleteAll();
