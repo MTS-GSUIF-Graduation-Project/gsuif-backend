@@ -74,6 +74,13 @@
         </dependency>
 
         <!-- Tests -->
+        <!-- SCRUM-44 fixture tests render and compile Java; the runtime engine belongs to SCRUM-28. -->
+        <dependency>
+            <groupId>org.freemarker</groupId>
+            <artifactId>freemarker</artifactId>
+            <version>2.3.34</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa-test</artifactId>
@@ -171,6 +178,12 @@
         </resources>
         <testResources>
             <testResource>
+                <directory>${project.basedir}</directory>
+                <includes>
+                    <include>components.yaml</include>
+                </includes>
+            </testResource>
+            <testResource>
                 <directory>src/test/resources</directory>
             </testResource>
             <testResource>
@@ -193,6 +206,40 @@
 
 
     <profiles>
+        <!-- SCRUM-44 integration fixture: opt-in so example sources never enter normal builds. -->
+        <profile>
+            <id>openapi-fixture</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.openapitools</groupId>
+                        <artifactId>openapi-generator-maven-plugin</artifactId>
+                        <version>7.16.0</version>
+                        <executions>
+                            <execution>
+                                <id>generate-asset-ticket-fixture</id>
+                                <goals><goal>generate</goal></goals>
+                                <configuration>
+                                    <inputSpec>${project.basedir}/src/main/resources/openapi/asset-ticket-api.yaml</inputSpec>
+                                    <generatorName>spring</generatorName>
+                                    <templateDirectory>${project.basedir}/src/main/resources/templates/openapi/spring</templateDirectory>
+                                    <output>${project.build.directory}/generated-sources/openapi-fixture</output>
+                                    <apiPackage>com.example.fixture.api</apiPackage>
+                                    <modelPackage>com.example.fixture.dto</modelPackage>
+                                    <configOptions>
+                                        <useSpringBoot4>true</useSpringBoot4>
+                                        <useJakartaEe>true</useJakartaEe>
+                                        <interfaceOnly>true</interfaceOnly>
+                                        <skipDefaultInterface>true</skipDefaultInterface>
+                                        <useTags>true</useTags>
+                                    </configOptions>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <profile>
             <id>openapi-spike</id>
             <build>
