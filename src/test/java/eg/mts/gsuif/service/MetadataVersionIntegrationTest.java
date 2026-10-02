@@ -26,6 +26,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -184,6 +185,148 @@ class MetadataVersionIntegrationTest {
             heldPage1Lock.get(5, TimeUnit.SECONDS);
         } finally {
             releasePage1.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void selectionWaitsForPageLockWhileOtherPageCanBeSelected() throws Exception {
+        GsuifPage page1 = savedPage("Locked selection page");
+        GsuifPage page2 = savedPage("Independent selection page");
+        MetadataVersionDto first = metadataVersionService.create(page1.getId(),
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("first")));
+        metadataVersionService.create(page1.getId(),
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("second")));
+        MetadataVersionDto other = metadataVersionService.create(page2.getId(),
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("other")));
+
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch selectionStarted = new CountDownLatch(1);
+        try {
+            Future<?> lockHolder = executor.submit(() -> {
+                new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                    pageRepository.findByIdWithLock(page1.getId()).orElseThrow();
+                    locked.countDown();
+                    try {
+                        if (!release.await(10, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Timed out holding selection lock");
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                });
+            });
+            assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<MetadataVersionDto> selected = executor.submit(() -> {
+                selectionStarted.countDown();
+                return metadataVersionService.selectCurrent(page1.getId(), first.id());
+            });
+            assertThat(selectionStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThrows(TimeoutException.class, () -> selected.get(200, TimeUnit.MILLISECONDS));
+            Future<MetadataVersionDto> independent = executor.submit(() ->
+                    metadataVersionService.selectCurrent(page2.getId(), other.id()));
+            assertThat(independent.get(5, TimeUnit.SECONDS).id()).isEqualTo(other.id());
+            release.countDown();
+            lockHolder.get(5, TimeUnit.SECONDS);
+            assertThat(selected.get(5, TimeUnit.SECONDS).id()).isEqualTo(first.id());
+            assertThat(pageRepository.findById(page1.getId()).orElseThrow().getCurrentMetadataVersionId())
+                    .isEqualTo(first.id());
+            assertThat(metadataVersionRepository.findAllByPageId(page1.getId(),
+                    org.springframework.data.domain.Pageable.unpaged()).getContent()).hasSize(2);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentSelectionsCommitInPageLockOrder() throws Exception {
+        GsuifPage page = savedPage("Concurrent selections");
+        MetadataVersionDto first = metadataVersionService.create(page.getId(),
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("first")));
+        MetadataVersionDto second = metadataVersionService.create(page.getId(),
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("second")));
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch firstSelected = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch secondStarted = new CountDownLatch(1);
+        try {
+            Future<?> firstTransaction = executor.submit(() ->
+                    new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                        metadataVersionService.selectCurrent(page.getId(), first.id());
+                        firstSelected.countDown();
+                        try {
+                            if (!releaseFirst.await(10, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("Timed out holding first selection");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                    }));
+            assertThat(firstSelected.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<MetadataVersionDto> secondSelection = executor.submit(() -> {
+                secondStarted.countDown();
+                return metadataVersionService.selectCurrent(page.getId(), second.id());
+            });
+            assertThat(secondStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThrows(TimeoutException.class, () -> secondSelection.get(200, TimeUnit.MILLISECONDS));
+            releaseFirst.countDown();
+            firstTransaction.get(5, TimeUnit.SECONDS);
+            assertThat(secondSelection.get(5, TimeUnit.SECONDS).id()).isEqualTo(second.id());
+            assertThat(metadataVersionService.getCurrent(page.getId()).id()).isEqualTo(second.id());
+            assertThat(metadataVersionRepository.findById(first.id()).orElseThrow().getVersion()).isEqualTo(1);
+        } finally {
+            releaseFirst.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void saveWaitsForSelectionTransactionAndThenSelectsNewVersion() throws Exception {
+        GsuifPage page = savedPage("Selection versus save");
+        MetadataVersionDto first = metadataVersionService.create(page.getId(),
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("first")));
+        metadataVersionService.create(page.getId(),
+                new CreateMetadataVersionRequest("1.0.0", validSnapshot("second")));
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch selected = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch saveStarted = new CountDownLatch(1);
+        try {
+            Future<?> selection = executor.submit(() ->
+                    new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                        metadataVersionService.selectCurrent(page.getId(), first.id());
+                        selected.countDown();
+                        try {
+                            if (!release.await(10, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("Timed out holding selection transaction");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                    }));
+            assertThat(selected.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<MetadataVersionDto> saved = executor.submit(() -> {
+                saveStarted.countDown();
+                return metadataVersionService.create(page.getId(),
+                        new CreateMetadataVersionRequest("1.0.0", validSnapshot("third")));
+            });
+            assertThat(saveStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThrows(TimeoutException.class, () -> saved.get(200, TimeUnit.MILLISECONDS));
+            release.countDown();
+            selection.get(5, TimeUnit.SECONDS);
+            MetadataVersionDto third = saved.get(5, TimeUnit.SECONDS);
+            assertThat(third.version()).isEqualTo(3);
+            assertThat(metadataVersionService.getCurrent(page.getId()).id()).isEqualTo(third.id());
+            assertThat(metadataVersionService.getLatest(page.getId()).id()).isEqualTo(third.id());
+            assertThat(metadataVersionRepository.findById(first.id()).orElseThrow().getVersion()).isEqualTo(1);
+        } finally {
+            release.countDown();
             executor.shutdownNow();
         }
     }

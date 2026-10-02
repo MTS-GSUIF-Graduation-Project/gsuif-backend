@@ -125,6 +125,36 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
 
     @Override
     @Loggable
+    public MetadataVersionDto getCurrent(UUID pageId) {
+        GsuifPage page = pageRepository.findById(pageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Page not found with id: " + pageId));
+        UUID currentId = page.getCurrentMetadataVersionId();
+        if (currentId == null) {
+            throw new ResourceNotFoundException("No current metadata version for page id: " + pageId);
+        }
+        return metadataVersionRepository.findByIdAndPageId(currentId, pageId)
+                .map(this::toDto)
+                .orElseThrow(() -> new ResourceNotFoundException("Current metadata version not found for page id: " + pageId));
+    }
+
+    @Override
+    @Transactional
+    @Loggable
+    public MetadataVersionDto selectCurrent(UUID pageId, UUID versionId) {
+        GsuifPage page = pageRepository.findByIdWithLock(pageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Page not found with id: " + pageId));
+        MetadataVersion version = metadataVersionRepository.findByIdAndPageId(versionId, pageId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Metadata version not found with id: " + versionId + " for page: " + pageId));
+        if (!versionId.equals(page.getCurrentMetadataVersionId())) {
+            page.setCurrentMetadataVersionId(versionId);
+            pageRepository.save(page);
+        }
+        return toDto(version);
+    }
+
+    @Override
+    @Loggable
     public MetadataVersionDto getById(UUID pageId, UUID versionId) {
         verifyPageExists(pageId);
         return metadataVersionRepository.findByIdAndPageId(versionId, pageId)

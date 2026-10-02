@@ -180,6 +180,8 @@ public class OpenApiValidationTest {
         baseExpected.put("post /api/v1/pages/{pageId}/metadata", "createMetadataVersion");
         baseExpected.put("get /api/v1/pages/{pageId}/metadata", "getMetadataVersionsByPage");
         baseExpected.put("get /api/v1/pages/{pageId}/metadata/latest", "getLatestMetadataVersion");
+        baseExpected.put("get /api/v1/pages/{pageId}/metadata/current", "getCurrentMetadataVersion");
+        baseExpected.put("put /api/v1/pages/{pageId}/metadata/current", "selectCurrentMetadataVersion");
         baseExpected.put("get /api/v1/pages/{pageId}/metadata/{versionId}", "getMetadataVersionById");
         baseExpected.put("post /api/v1/work-orders", "createWorkOrder");
         baseExpected.put("get /api/v1/work-orders/{id}", "getWorkOrderById");
