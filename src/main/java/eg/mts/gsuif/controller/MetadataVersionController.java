@@ -4,6 +4,7 @@ import eg.mts.gsuif.dto.ApiResponse;
 import eg.mts.gsuif.dto.CreateMetadataVersionRequest;
 import eg.mts.gsuif.dto.MetadataVersionDto;
 import eg.mts.gsuif.dto.PagedBody;
+import eg.mts.gsuif.dto.SelectCurrentMetadataVersionRequest;
 import eg.mts.gsuif.service.MetadataVersionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -90,6 +92,33 @@ public class MetadataVersionController {
             @PathVariable("pageId") UUID pageId) {
         MetadataVersionDto dto = metadataVersionService.getLatest(pageId);
         return ResponseEntity.ok(ApiResponse.success(dto, "Latest metadata version retrieved successfully"));
+    }
+
+    @GetMapping("/current")
+    @Operation(summary = "Get the selected metadata version", description = "Returns the page's current selection", operationId = "getCurrentMetadataVersion",
+            responses = {
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Current version retrieved"),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid page ID", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page or current selection not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
+            })
+    @ApiCommonResponses
+    public ResponseEntity<ApiResponse<MetadataVersionDto>> getCurrent(
+            @Parameter(description = "Page UUID", required = true) @PathVariable("pageId") UUID pageId) {
+        return ResponseEntity.ok(ApiResponse.success(metadataVersionService.getCurrent(pageId), "Current metadata version retrieved successfully"));
+    }
+
+    @PutMapping("/current")
+    @Operation(summary = "Select the current metadata version", description = "Selects a version owned by this page without modifying the version", operationId = "selectCurrentMetadataVersion",
+            responses = {
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Current version selected"),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page or version not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
+            })
+    @ApiCommonWriteResponses
+    public ResponseEntity<ApiResponse<MetadataVersionDto>> selectCurrent(
+            @Parameter(description = "Page UUID", required = true) @PathVariable("pageId") UUID pageId,
+            @Valid @RequestBody SelectCurrentMetadataVersionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(metadataVersionService.selectCurrent(pageId, request.versionId()), "Current metadata version selected successfully"));
     }
 
     @GetMapping("/{versionId}")

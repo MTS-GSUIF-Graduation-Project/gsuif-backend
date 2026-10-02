@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -599,6 +600,97 @@ class MetadataVersionControllerIntegrationTest {
         // 4. Verify pointer not moved
         GsuifPage updatedPage = pageRepository.findById(page.getId()).orElseThrow();
         assertThat(updatedPage.getCurrentMetadataVersionId()).isEqualTo(firstVersion.id());
+    }
+
+    @Test
+    void current_whenUnselectedOrPageMissing_returns404() throws Exception {
+        GsuifPage page = savedPage("Unselected");
+        mockMvc.perform(get("/api/v1/pages/{pageId}/metadata/current", page.getId()))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.statusCode").value(404));
+        mockMvc.perform(get("/api/v1/pages/{pageId}/metadata/current", UUID.randomUUID()))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.statusCode").value(404));
+    }
+
+    @Test
+    void selectCurrent_rollsBackSelectionWhileLatestAndVersionsStayIntact() throws Exception {
+        GsuifPage page = savedPage("Selection");
+        MetadataVersion first = savedMetadataVersion(page, 1, "1.0", false);
+        MetadataVersion second = savedMetadataVersion(page, 2, "1.1", true);
+        first = metadataVersionRepository.findById(first.getId()).orElseThrow();
+        second = metadataVersionRepository.findById(second.getId()).orElseThrow();
+        String firstSnapshot = first.getSnapshot();
+        String secondSnapshot = second.getSnapshot();
+        var firstCreatedAt = first.getCreatedAt();
+        var secondCreatedAt = second.getCreatedAt();
+        var firstUpdatedAt = first.getUpdatedAt();
+        var secondUpdatedAt = second.getUpdatedAt();
+        String firstCreatedBy = first.getCreatedBy();
+        String secondCreatedBy = second.getCreatedBy();
+        String firstModifiedBy = first.getLastModifiedBy();
+        String secondModifiedBy = second.getLastModifiedBy();
+
+        String request = "{\"versionId\":\"" + first.getId() + "\"}";
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(put("/api/v1/pages/{pageId}/metadata/current", page.getId())
+                            .contentType(MediaType.APPLICATION_JSON).content(request))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.statusCode").value(200))
+                    .andExpect(jsonPath("$.body.id").value(first.getId().toString()))
+                    .andExpect(jsonPath("$.body.isCurrent").value(true));
+        }
+        mockMvc.perform(get("/api/v1/pages/{pageId}/metadata/current", page.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.body.id").value(first.getId().toString()))
+                .andExpect(jsonPath("$.body.isCurrent").value(true));
+        mockMvc.perform(get("/api/v1/pages/{pageId}/metadata/latest", page.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.body.id").value(second.getId().toString()))
+                .andExpect(jsonPath("$.body.isCurrent").value(false));
+        assertThat(pageRepository.findById(page.getId()).orElseThrow().getCurrentMetadataVersionId()).isEqualTo(first.getId());
+        MetadataVersion reloadedFirst = metadataVersionRepository.findById(first.getId()).orElseThrow();
+        MetadataVersion reloadedSecond = metadataVersionRepository.findById(second.getId()).orElseThrow();
+        assertThat(reloadedFirst.getVersion()).isEqualTo(1);
+        assertThat(reloadedSecond.getVersion()).isEqualTo(2);
+        assertThat(reloadedFirst.getSchemaVersion()).isEqualTo("1.0");
+        assertThat(reloadedSecond.getSchemaVersion()).isEqualTo("1.1");
+        assertThat(reloadedFirst.getSnapshot()).isEqualTo(firstSnapshot);
+        assertThat(reloadedSecond.getSnapshot()).isEqualTo(secondSnapshot);
+        assertThat(reloadedFirst.getCreatedAt()).isEqualTo(firstCreatedAt);
+        assertThat(reloadedSecond.getCreatedAt()).isEqualTo(secondCreatedAt);
+        assertThat(reloadedFirst.getUpdatedAt()).isEqualTo(firstUpdatedAt);
+        assertThat(reloadedSecond.getUpdatedAt()).isEqualTo(secondUpdatedAt);
+        assertThat(reloadedFirst.getCreatedBy()).isEqualTo(firstCreatedBy);
+        assertThat(reloadedSecond.getCreatedBy()).isEqualTo(secondCreatedBy);
+        assertThat(reloadedFirst.getLastModifiedBy()).isEqualTo(firstModifiedBy);
+        assertThat(reloadedSecond.getLastModifiedBy()).isEqualTo(secondModifiedBy);
+    }
+
+    @Test
+    void selectCurrent_rejectsMissingAndCrossPageVersions() throws Exception {
+        GsuifPage page = savedPage("Selection target");
+        GsuifPage other = savedPage("Selection owner");
+        MetadataVersion owned = savedMetadataVersion(other, 1, "1.0", true);
+        for (UUID versionId : new UUID[]{UUID.randomUUID(), owned.getId()}) {
+            mockMvc.perform(put("/api/v1/pages/{pageId}/metadata/current", page.getId())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"versionId\":\"" + versionId + "\"}"))
+                    .andExpect(status().isNotFound()).andExpect(jsonPath("$.statusCode").value(404));
+        }
+        mockMvc.perform(put("/api/v1/pages/{pageId}/metadata/current", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"versionId\":\"" + owned.getId() + "\"}"))
+                .andExpect(status().isNotFound());
+        assertThat(pageRepository.findById(page.getId()).orElseThrow().getCurrentMetadataVersionId()).isNull();
+    }
+
+    @Test
+    void selectCurrent_rejectsMalformedAndAbsentRequest() throws Exception {
+        GsuifPage page = savedPage("Bad selection");
+        for (String body : new String[]{"{}", "{\"versionId\":null}", "{\"versionId\":\"invalid\"}"}) {
+            mockMvc.perform(put("/api/v1/pages/{pageId}/metadata/current", page.getId())
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.statusCode").value(400));
+        }
+        mockMvc.perform(put("/api/v1/pages/{pageId}/metadata/current", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.statusCode").value(400));
     }
 
     private MetadataVersion savedMetadataVersion(GsuifPage page, int version, String schemaVersion, boolean isCurrent) {
