@@ -51,10 +51,17 @@ class MetadataBusinessMutationEngineTest {
         ConfigurationParameters parameters = new ConfigurationParameters() {
             // Do not let a saved previous failure change the pinned-seed replay.
             public Optional<String> get(String key) {
-                return "jqwik.database".equals(key) ? Optional.of("") : Optional.empty();
+                return switch (key) {
+                    case "jqwik.database" -> Optional.of("");
+                    // Keep expected mutant-failure reports inside this engine listener.
+                    case "jqwik.reporting.usejunitplatform" -> Optional.of("true");
+                    default -> Optional.empty();
+                };
             }
-            public Optional<Boolean> getBoolean(String key) { return Optional.empty(); }
-            public Set<String> keySet() { return Set.of("jqwik.database"); }
+            public Optional<Boolean> getBoolean(String key) {
+                return "jqwik.reporting.usejunitplatform".equals(key) ? Optional.of(true) : Optional.empty();
+            }
+            public Set<String> keySet() { return Set.of("jqwik.database", "jqwik.reporting.usejunitplatform"); }
         };
         EngineDiscoveryRequest request = new EngineDiscoveryRequest() {
             public <T extends DiscoverySelector> List<T> getSelectorsByType(Class<T> type) {
@@ -70,7 +77,7 @@ class MetadataBusinessMutationEngineTest {
         EngineExecutionListener listener = new EngineExecutionListener() {
             @Override public void reportingEntryPublished(TestDescriptor descriptor,
                     org.junit.platform.engine.reporting.ReportEntry entry) {
-                System.out.println("SCRUM-51 jqwik " + descriptor.getDisplayName() + " " + entry.getKeyValuePairs());
+                // Expected mutant failures are asserted below; avoid printing their full reports.
             }
             @Override public void executionFinished(TestDescriptor descriptor, TestExecutionResult result) {
                 if (descriptor.isTest()) results.add(result);
@@ -83,8 +90,9 @@ class MetadataBusinessMutationEngineTest {
         try {
             var descriptor = engine.discover(request, UniqueId.forEngine("jqwik"));
             engine.execute(ExecutionRequest.create(descriptor, listener, parameters));
-            System.out.printf("SCRUM-51 property=%s seed=%s mutant=%s results=%s recordedSamples=%s%n",
-                    property, method.getAnnotation(Property.class).seed(), mutant, results, samples.size());
+            System.out.printf("SCRUM-51 property=%s seed=%s mutant=%s status=%s recordedSamples=%s%n",
+                    property, method.getAnnotation(Property.class).seed(), mutant,
+                    results.stream().map(TestExecutionResult::getStatus).toList(), samples.size());
             return new Run(List.copyOf(results), List.copyOf(samples));
         } finally {
             MetadataBusinessValidatorPropertiesTest.ENGINE_MUTANT.remove();
