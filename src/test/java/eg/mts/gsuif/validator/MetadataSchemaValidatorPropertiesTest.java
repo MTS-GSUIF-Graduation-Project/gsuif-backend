@@ -32,9 +32,7 @@ class MetadataSchemaValidatorPropertiesTest {
 
         List<ValidationError> errors1 = validator.validate("unsupported", snapshot);
         List<ValidationError> errors2 = validator.validate("unsupported", snapshot);
-        assertThat(errors1).extracting(ValidationError::path).contains(
-                "$.schemaVersion", "$.snapshot.apiBindings", "$.snapshot.components[0].label");
-        assertThat(errors1).hasSizeGreaterThanOrEqualTo(3);
+        assertThat(errors1).extracting(ValidationError::path).containsExactly("$.schemaVersion");
         assertThat(errors1).isEqualTo(errors2);
     }
 

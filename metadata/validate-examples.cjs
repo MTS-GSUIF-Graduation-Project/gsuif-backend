@@ -24,6 +24,9 @@ const schemaFiles = [
   "project.schema.json",
   "page.schema.json",
   "metadata-version.schema.json",
+  "component-1.1.0.schema.json",
+  "page-1.1.0.schema.json",
+  "metadata-version-1.1.0.schema.json",
 ];
 
 const exampleFiles = ["simple.json", "one-to-many.json", "many-to-many.json"];
@@ -55,6 +58,9 @@ const validators = {
   component: ajv.getSchema("gsuif/component.schema.json"),
   apiBinding: ajv.getSchema("gsuif/api-binding.schema.json"),
   metadataVersion: ajv.getSchema("gsuif/metadata-version.schema.json"),
+  component11: ajv.getSchema("gsuif/component-1.1.0.schema.json"),
+  page11: ajv.getSchema("gsuif/page-1.1.0.schema.json"),
+  metadataVersion11: ajv.getSchema("gsuif/metadata-version-1.1.0.schema.json"),
 };
 
 if (Object.values(validators).some((validate) => !validate)) {
@@ -89,6 +95,63 @@ for (const fileName of exampleFiles) {
   }
 }
 
+// Version 1.1.0 extends the unchanged Phase 1 base component.
+const baseComponent = readJson(path.join(examplesDir, "simple.json")).page.components[0];
+function checkComponent(type, config, accepted, label) {
+  const component = { ...baseComponent, type, ...config };
+  const ok = validators.component11(component);
+  if (ok !== accepted) {
+    failed += 1;
+    console.error(`1.1.0 ${label}: expected ${accepted ? "valid" : "invalid"}\n${formatErrors(validators.component11.errors)}`);
+  }
+}
+const validConfigs = {
+  form: { formConfig: { submitLabel: "Save" } },
+  table: { tableConfig: { columns: [{ fieldKey: "name", label: "Name" }] } },
+  navigation: { navigationConfig: { items: [{ label: "Home", route: "/home" }] } },
+  modal: {},
+  pagination: { paginationConfig: { pageSize: 1 } },
+};
+for (const [type, config] of Object.entries(validConfigs)) {
+  checkComponent(type, config, true, `${type} valid`);
+  for (const [otherType, otherConfig] of Object.entries(validConfigs)) {
+    if (otherType !== type && Object.keys(otherConfig).length) {
+      checkComponent(type, { ...config, ...otherConfig }, false, `${type} forbids ${otherType} config`);
+    }
+  }
+}
+checkComponent("form", {}, false, "form requires config");
+checkComponent("form", { formConfig: { submitLabel: "" } }, false, "empty submit label");
+checkComponent("table", {}, true, "legacy table");
+checkComponent("table", { tableConfig: { columns: [] } }, false, "empty columns");
+checkComponent("table", { tableConfig: { columns: [{ fieldKey: "", label: "Name" }] } }, false, "empty field key");
+checkComponent("table", { tableConfig: { columns: [{ fieldKey: "name", label: "" }] } }, false, "empty column label");
+checkComponent("navigation", { navigationConfig: { items: [{ label: "Home", route: "https://host" }] } }, false, "absolute route");
+checkComponent("navigation", { navigationConfig: { items: [{ label: "Home", route: "//host" }] } }, false, "network route");
+checkComponent("navigation", { navigationConfig: { items: [{ label: "", route: "/home" }] } }, false, "empty navigation label");
+checkComponent("navigation", { navigationConfig: { items: [] } }, false, "empty navigation items");
+checkComponent("pagination", { paginationConfig: { pageSize: 0 } }, false, "zero page size");
+checkComponent("pagination", { paginationConfig: { pageSize: 1.5 } }, false, "fractional page size");
+checkComponent("pagination", {}, false, "pagination requires config");
+checkComponent("custom-widget", {}, true, "open unknown type");
+checkComponent("custom-widget", validConfigs.form, false, "unknown type forbids typed config");
+checkComponent("modal", { modalConfig: {} }, false, "modal has no config");
+checkComponent("form", { formConfig: { submitLabel: "Save", extra: true } }, false, "unknown config property");
+
+const example11 = readJson(path.join(examplesDir, "simple.json"));
+example11.metadataVersion.schemaVersion = "1.1.0";
+example11.metadataVersion.snapshot.components = [
+  { ...baseComponent, type: "form", formConfig: { submitLabel: "Save" } },
+];
+if (!validators.metadataVersion11(example11.metadataVersion)) {
+  failed += 1;
+  console.error(`1.1.0 envelope failed:\n${formatErrors(validators.metadataVersion11.errors)}`);
+}
+example11.page.components = example11.metadataVersion.snapshot.components;
+if (!validators.page11(example11.page)) {
+  failed += 1;
+  console.error(`1.1.0 page failed:\n${formatErrors(validators.page11.errors)}`);
+}
 const invalidFiles = fs
   .readdirSync(invalidDir)
   .filter((fileName) => fileName.endsWith(".json"))

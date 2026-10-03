@@ -1029,9 +1029,11 @@ components:
         decisions: []
 
 # =============================================================================
-# DEFERRED COMPONENTS
-# Confirmed out of Phase 1. Recorded here directly (not in a separate file)
-# so nothing postponed silently disappears from the catalog.
+# DEFERRED COMPONENTS AND DEFERRED GENERATION
+# Deferred capabilities are recorded here directly so they remain visible.
+# DEF-05 also remains here for its deferred generator and runtime support;
+# its five-type 1.1.0 schema capability is MANDATORY and CONFIRMED. Read each
+# entry's schema_support and generation statuses separately.
 #
 # `standards` on a deferred entry records the checklist items that will apply
 # when the item is scheduled. DEF-04 and DEF-06 carry the checklist's own
@@ -1184,19 +1186,24 @@ deferred_components:
     name: Full UI Component Metadata Catalog
     category: Metadata
     scope: BOTH
-    requirement_status: DEFERRED
+    requirement_status: MANDATORY
     target_phase: PHASE_2_OR_LATER
     description: >
-      Full component-type metadata (form, table, navigation, modal,
-      pagination), parent-child API binding relationships, and
-      conditional-visibility/permission rules expressed in metadata,
-      extending the Phase 1 schema without replacing it.
+      Version 1.1.0 schema support for form, table, navigation, modal,
+      and pagination component metadata. MANDATORY describes schema capability;
+      pages need not contain all five types. Parent-child API bindings and
+      conditional visibility remain deferred under SCRUM-58. Runtime behavior
+      and generator support remain separate.
     sources:
       - {doc: DOC-08, locator: "SCRUM-12 (E9 — Metadata Extension (Phase 2))"}
       - {doc: DOC-05, locator: "DEC-019"}
     standards: [STD-33, STD-35]
     decisions: [DEC-019]
     dependencies: [BE-02]
+    schema_support:
+      version: "1.1.0"
+      implementation_status: CONFIRMED
+      component_types: [form, table, navigation, modal, pagination]
     generation:
       decision_status: DEFERRED
       implementation_status: DEFERRED

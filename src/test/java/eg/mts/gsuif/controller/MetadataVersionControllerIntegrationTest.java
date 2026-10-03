@@ -95,6 +95,43 @@ class MetadataVersionControllerIntegrationTest {
     }
 
     @Test
+    void create_withVersionElevenPersistsTypedComponentAndRejectsInvalidConfig() throws Exception {
+        GsuifPage page = savedPage("Typed metadata");
+        String valid = """
+                {
+                  "schemaVersion": "1.1.0",
+                  "snapshot": {
+                    "components": [{
+                      "id": "123e4567-e89b-12d3-a456-426614174001",
+                      "type": "form", "label": "Edit",
+                      "position": {"row": 0, "col": 0},
+                      "size": {"width": 2, "height": 1},
+                      "visibility": true, "disabled": false,
+                      "formConfig": {"submitLabel": "Save"}
+                    }],
+                    "apiBindings": []
+                  }
+                }
+                """;
+        mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON).content(valid))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.body.schemaVersion").value("1.1.0"))
+                .andExpect(jsonPath("$.body.snapshot.components[0].formConfig.submitLabel").value("Save"));
+        MetadataVersion first = metadataVersionRepository.findAll().get(0);
+        assertThat(first.getSchemaVersion()).isEqualTo("1.1.0");
+
+        String invalid = valid.replace("\"submitLabel\": \"Save\"", "\"submitLabel\": \"\"");
+        mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON).content(invalid))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors['$.snapshot.components[0].formConfig.submitLabel']").exists());
+        assertThat(metadataVersionRepository.findAll()).hasSize(1);
+        assertThat(pageRepository.findById(page.getId()).orElseThrow().getCurrentMetadataVersionId())
+                .isEqualTo(first.getId());
+    }
+
+    @Test
     void create_withClientSuppliedServerManagedFields_returns400() throws Exception {
         GsuifPage page = savedPage("Home");
 
@@ -503,11 +540,7 @@ class MetadataVersionControllerIntegrationTest {
                         .content(payload2))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.statusCode").value(400))
-                .andExpect(jsonPath("$.errors['$.snapshot.components']").exists())
-                .andExpect(jsonPath("$.errors['$.schemaVersion']").value("schemaVersion must be a constant value '1.0.0'"))
-                .andExpect(jsonPath("$.errors['$.snapshot.apiBindings[0].httpMethod']").value(
-                        "$.apiBindings[0].httpMethod: does not have a value in the enumeration [\"GET\", \"POST\", \"PUT\", \"DELETE\"]; "
-                                + "$.apiBindings[0].httpMethod: integer found, string expected"))
+                .andExpect(jsonPath("$.errors['$.schemaVersion']").value("unsupported schemaVersion; supported versions: 1.0.0, 1.1.0"))
                 .andReturn().getResponse().getContentAsString();
         com.fasterxml.jackson.databind.JsonNode envelope = new com.fasterxml.jackson.databind.ObjectMapper().readTree(rejectedBody);
         java.util.Set<String> fields = new java.util.HashSet<>();
@@ -516,7 +549,7 @@ class MetadataVersionControllerIntegrationTest {
         assertThat(envelope.get("body").isNull()).isTrue();
         assertThat(envelope.get("status").asText()).isEqualTo("BAD_REQUEST");
         assertThat(envelope.get("clientMessage").asText()).isEqualTo("Request validation failed");
-        assertThat(envelope.get("errors").size()).isEqualTo(3);
+        assertThat(envelope.get("errors").size()).isEqualTo(1);
 
         // 3. Verify no new version created
         assertThat(metadataVersionRepository.findAll()).hasSize(1);
