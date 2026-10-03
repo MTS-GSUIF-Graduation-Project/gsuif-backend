@@ -1,0 +1,53 @@
+{
+  "target": "apiBinding12",
+  "instance": {
+    "id": "22000000-0000-4000-8000-000000000001",
+    "name": "listUsers",
+    "httpMethod": "GET",
+    "endpointUrl": "/api/v1/users",
+    "headers": {},
+    "requestMapping": {},
+    "responseMapping": {
+      "list": "body.data",
+      "pagination": "body.totalPages"
+    },
+    "linkedComponentIds": [
+      "12000000-0000-4000-8000-000000000003"
+    ],
+    "parentComponentId": "invalid",
+    "childComponentIds": [
+      "12000000-0000-4000-8000-000000000001",
+      "12000000-0000-4000-8000-000000000005"
+    ],
+    "visibilityRule": {
+      "op": "AND",
+      "rules": [
+        {
+          "op": "permission",
+          "value": "users:read"
+        },
+        {
+          "op": "OR",
+          "rules": [
+            {
+              "op": "role",
+              "value": "admin"
+            },
+            {
+              "op": "field",
+              "field": "status",
+              "equals": "ACTIVE"
+            }
+          ]
+        },
+        {
+          "op": "NOT",
+          "rule": {
+            "op": "role",
+            "value": "suspended"
+          }
+        }
+      ]
+    }
+  }
+}

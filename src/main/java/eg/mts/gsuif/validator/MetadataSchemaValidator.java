@@ -59,7 +59,8 @@ public class MetadataSchemaValidator {
 
         this.snapshotSchemas = Map.of(
             "1.0.0", factory.getSchema(SchemaLocation.of("classpath:metadata-version.schema.json#/properties/snapshot"), config),
-            "1.1.0", factory.getSchema(SchemaLocation.of("classpath:metadata-version-1.1.0.schema.json#/properties/snapshot"), config)
+            "1.1.0", factory.getSchema(SchemaLocation.of("classpath:metadata-version-1.1.0.schema.json#/properties/snapshot"), config),
+            "1.2.0", factory.getSchema(SchemaLocation.of("classpath:metadata-version-1.2.0.schema.json#/properties/snapshot"), config)
         );
 
     }
@@ -90,7 +91,7 @@ public class MetadataSchemaValidator {
 
         JsonSchema snapshotSchema = schemaVersion == null ? null : snapshotSchemas.get(schemaVersion);
         if (snapshotSchema == null) {
-            errors.add(new ValidationError("$.schemaVersion", "unsupported schemaVersion; supported versions: 1.0.0, 1.1.0"));
+            errors.add(new ValidationError("$.schemaVersion", "unsupported schemaVersion; supported versions: 1.0.0, 1.1.0, 1.2.0"));
         }
 
 
@@ -140,6 +141,10 @@ public class MetadataSchemaValidator {
                     .collect(Collectors.toList());
 
             errors.addAll(snapshotErrors);
+
+            if ("1.2.0".equals(schemaVersion) && snapshotErrors.isEmpty()) {
+                errors.addAll(BindingRelationships.validate(snapshot, "$.snapshot"));
+            }
 
         }
 

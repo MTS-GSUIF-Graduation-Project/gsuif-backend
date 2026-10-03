@@ -405,6 +405,48 @@ class MetadataSchemaValidatorTest {
                 .containsExactly("$.schemaVersion", "$.snapshot");
     }
 
+    @Test
+    void versionTwelveAcceptsNestedExampleAndOlderVersionsRejectNewFields() throws Exception {
+        JsonNode snapshot = loadExample("metadata/examples/many-to-many-1.2.0.json")
+                .path("metadataVersion").path("snapshot");
+        assertThat(validator.validate("1.2.0", snapshot)).isEmpty();
+        assertThat(validator.validate("1.0.0", snapshot)).isNotEmpty();
+        assertThat(validator.validate("1.1.0", snapshot)).isNotEmpty();
+    }
+
+    @Test
+    void versionTwelveRejectsBrokenRelationshipTargetsAndCycles() throws Exception {
+        ObjectNode snapshot = (ObjectNode) loadExample("metadata/examples/many-to-many-1.2.0.json")
+                .path("metadataVersion").path("snapshot").deepCopy();
+        ArrayNode bindings = snapshot.withArray("apiBindings");
+        ObjectNode first = (ObjectNode) bindings.get(0);
+        first.put("parentComponentId", "not-a-uuid");
+        assertThat(validator.validate("1.2.0", snapshot)).isNotEmpty();
+        first.put("parentComponentId", "12000000-0000-4000-8000-000000000099");
+        assertThat(validator.validate("1.2.0", snapshot)).anyMatch(e -> e.message().contains("does not exist"));
+        first.put("parentComponentId", "12000000-0000-4000-8000-000000000003");
+        first.withArray("childComponentIds").set(0, objectMapper.getNodeFactory().textNode("12000000-0000-4000-8000-000000000099"));
+        assertThat(validator.validate("1.2.0", snapshot)).anyMatch(e -> e.message().contains("does not exist"));
+        first.withArray("childComponentIds").set(0, objectMapper.getNodeFactory().textNode("12000000-0000-4000-8000-000000000003"));
+        assertThat(validator.validate("1.2.0", snapshot)).anyMatch(e -> e.message().contains("own child"));
+        first.withArray("childComponentIds").set(0, objectMapper.getNodeFactory().textNode("12000000-0000-4000-8000-000000000001"));
+        ((ObjectNode) bindings.get(2)).put("parentComponentId", "12000000-0000-4000-8000-000000000001");
+        ((ObjectNode) bindings.get(2)).putArray("childComponentIds").add("12000000-0000-4000-8000-000000000003");
+        assertThat(validator.validate("1.2.0", snapshot)).anyMatch(e -> e.message().contains("cycle"));
+    }
+
+    @Test
+    void versionTwelveRejectsUnsupportedNestedVisibilityAndUnpairedLinks() throws Exception {
+        ObjectNode snapshot = (ObjectNode) loadExample("metadata/examples/many-to-many-1.2.0.json")
+                .path("metadataVersion").path("snapshot").deepCopy();
+        ObjectNode binding = (ObjectNode) snapshot.withArray("apiBindings").get(0);
+        binding.set("visibilityRule", objectMapper.readTree("{\"op\":\"NOT\",\"rule\":{\"op\":\"unsupported\"}}"));
+        assertThat(validator.validate("1.2.0", snapshot)).isNotEmpty();
+        binding.remove("visibilityRule");
+        binding.remove("parentComponentId");
+        assertThat(validator.validate("1.2.0", snapshot)).isNotEmpty();
+    }
+
     private JsonNode loadExample(String path) throws Exception {
 
         java.io.File file = new java.io.File(path);
