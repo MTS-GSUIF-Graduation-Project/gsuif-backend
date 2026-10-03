@@ -332,6 +332,79 @@ class MetadataSchemaValidatorTest {
 
 
 
+    @Test
+    void originalExamplesRemainValidUnderVersionOne() throws Exception {
+        for (String name : List.of("simple", "one-to-many", "many-to-many")) {
+            JsonNode example = loadExample("metadata/examples/" + name + ".json");
+            assertThat(example.path("metadataVersion").path("schemaVersion").asText()).isEqualTo("1.0.0");
+            assertThat(validator.validate("1.0.0", example.path("metadataVersion").path("snapshot"))).isEmpty();
+        }
+    }
+
+    @Test
+    void typedComponentsUseOnlyTheirMatchingConfigInVersionEleven() throws Exception {
+        ObjectNode snapshot = (ObjectNode) loadExample("metadata/examples/simple.json")
+                .path("metadataVersion").path("snapshot").deepCopy();
+        ObjectNode component = (ObjectNode) snapshot.withArray("components").get(0);
+        component.put("type", "form");
+        component.putObject("formConfig").put("submitLabel", "Save");
+        assertThat(validator.validate("1.1.0", snapshot)).isEmpty();
+        assertThat(validator.validate("1.0.0", snapshot)).isNotEmpty();
+
+        component.putObject("paginationConfig").put("pageSize", 1);
+        assertThat(validator.validate("1.1.0", snapshot)).isNotEmpty();
+        component.remove("paginationConfig");
+        component.with("formConfig").put("submitLabel", "");
+        assertThat(validator.validate("1.1.0", snapshot))
+                .anyMatch(error -> error.path().equals("$.snapshot.components[0].formConfig.submitLabel"));
+    }
+
+    @Test
+    void versionElevenValidatesEveryApprovedTypeAndBoundaries() throws Exception {
+        ObjectNode snapshot = (ObjectNode) loadExample("metadata/examples/simple.json")
+                .path("metadataVersion").path("snapshot").deepCopy();
+        ObjectNode component = (ObjectNode) snapshot.withArray("components").get(0);
+        String[][] valid = {
+                {"form", "formConfig", "{\"submitLabel\":\"Save\"}"},
+                {"table", "tableConfig", "{\"columns\":[{\"fieldKey\":\"name\",\"label\":\"Name\"}]}"},
+                {"navigation", "navigationConfig", "{\"items\":[{\"label\":\"Home\",\"route\":\"/home\"}]}"},
+                {"pagination", "paginationConfig", "{\"pageSize\":1}"}
+        };
+        for (String[] entry : valid) {
+            component.put("type", entry[0]);
+            component.set(entry[1], objectMapper.readTree(entry[2]));
+            assertThat(validator.validate("1.1.0", snapshot)).as(entry[0]).isEmpty();
+            component.remove(entry[1]);
+        }
+        component.put("type", "modal");
+        assertThat(validator.validate("1.1.0", snapshot)).isEmpty();
+        component.put("type", "custom-widget");
+        assertThat(validator.validate("1.1.0", snapshot)).isEmpty();
+        component.put("type", "table");
+        assertThat(validator.validate("1.1.0", snapshot)).isEmpty(); // legacy tableConfig is optional
+
+        component.put("type", "pagination");
+        component.putObject("paginationConfig").put("pageSize", 0);
+        assertThat(validator.validate("1.1.0", snapshot))
+                .anyMatch(error -> error.path().equals("$.snapshot.components[0].paginationConfig.pageSize"));
+        component.with("paginationConfig").put("pageSize", 1.5);
+        assertThat(validator.validate("1.1.0", snapshot)).isNotEmpty();
+        component.remove("paginationConfig");
+        component.put("type", "navigation");
+        component.set("navigationConfig", objectMapper.readTree("{\"items\":[{\"label\":\"Home\",\"route\":\"https://host\"}]}"));
+        assertThat(validator.validate("1.1.0", snapshot))
+                .anyMatch(error -> error.path().equals("$.snapshot.components[0].navigationConfig.items[0].route"));
+    }
+
+    @Test
+    void unsupportedVersionDoesNotApplyAnUnrelatedSnapshotSchema() throws Exception {
+        JsonNode snapshot = objectMapper.readTree("{\"unexpected\":true}");
+        assertThat(validator.validate("unsupported", snapshot)).extracting(ValidationError::path)
+                .containsExactly("$.schemaVersion");
+        assertThat(validator.validate("unsupported", null)).extracting(ValidationError::path)
+                .containsExactly("$.schemaVersion", "$.snapshot");
+    }
+
     private JsonNode loadExample(String path) throws Exception {
 
         java.io.File file = new java.io.File(path);

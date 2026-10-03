@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gsuif/component-1.1.0.schema.json",
+  "title": "Component",
+  "type": "object",
+  "description": "Version 1.1.0 component metadata. Base fields and open type remain available; five known types have matching typed configuration. Modal uses the base label as its title. Unknown types use base fields only; runtime behavior is separate.",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "label",
+    "position",
+    "size",
+    "visibility",
+    "disabled"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID identifier (ADR-005, STD-35)."
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Component type string (SCRUM-20). T-12 examples include text-field, select, table, button, date-field. Not a closed enum in Phase 1 (DEF-05)."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display label (SCRUM-20, T-12)."
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "row",
+        "col"
+      ],
+      "description": "Grid position. Keys taken from the T-12 outline example { row, col }. Origin is (0, 0); negatives are invalid.",
+      "properties": {
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "col": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height"
+      ],
+      "description": "Grid size. Keys taken from the T-12 outline example { width, height }. Span must be at least 1 so the component occupies space.",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "visibility": {
+      "type": "boolean",
+      "description": "Whether the component is visible (SCRUM-20, T-12)."
+    },
+    "disabled": {
+      "type": "boolean",
+      "description": "Whether the component is disabled (SCRUM-20, T-12)."
+    },
+    "fieldKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional mapping to a generated entity/DTO field (T-12). WorkOrder sanity check uses orderNumber, status, dueDate, assignedTo."
+    },
+    "formConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submitLabel"
+      ],
+      "properties": {
+        "submitLabel": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "tableConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "columns"
+      ],
+      "properties": {
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fieldKey",
+              "label"
+            ],
+            "properties": {
+              "fieldKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "navigationConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "route"
+            ],
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "route": {
+                "type": "string",
+                "pattern": "^/(?!/)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "paginationConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pageSize"
+      ],
+      "properties": {
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "form"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "formConfig"
+        ],
+        "properties": {
+          "tableConfig": false,
+          "navigationConfig": false,
+          "paginationConfig": false,
+          "formConfig": true
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "table"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "formConfig": false,
+          "navigationConfig": false,
+          "paginationConfig": false
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "navigation"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "navigationConfig"
+        ],
+        "properties": {
+          "formConfig": false,
+          "tableConfig": false,
+          "paginationConfig": false,
+          "navigationConfig": true
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "modal"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "formConfig": false,
+          "tableConfig": false,
+          "navigationConfig": false,
+          "paginationConfig": false
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "pagination"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "paginationConfig"
+        ],
+        "properties": {
+          "formConfig": false,
+          "tableConfig": false,
+          "navigationConfig": false,
+          "paginationConfig": true
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "not": {
+              "enum": [
+                "form",
+                "table",
+                "navigation",
+                "modal",
+                "pagination"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "formConfig": false,
+          "tableConfig": false,
+          "navigationConfig": false,
+          "paginationConfig": false
+        }
+      }
+    }
+  ]
+}

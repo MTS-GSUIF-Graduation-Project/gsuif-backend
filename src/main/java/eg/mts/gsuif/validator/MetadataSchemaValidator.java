@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 
 import java.util.List;
+import java.util.Map;
 
 import java.util.Set;
 
@@ -30,9 +31,9 @@ public class MetadataSchemaValidator {
 
 
 
-    private final JsonSchema snapshotSchema;
+    private final Map<String, JsonSchema> snapshotSchemas;
 
-    private static final String EXPECTED_SCHEMA_VERSION = "1.0.0";
+
 
 
 
@@ -56,12 +57,9 @@ public class MetadataSchemaValidator {
 
         // automatically if they are in the same classpath directory.
 
-        this.snapshotSchema = factory.getSchema(
-
-            SchemaLocation.of("classpath:metadata-version.schema.json#/properties/snapshot"),
-
-            config
-
+        this.snapshotSchemas = Map.of(
+            "1.0.0", factory.getSchema(SchemaLocation.of("classpath:metadata-version.schema.json#/properties/snapshot"), config),
+            "1.1.0", factory.getSchema(SchemaLocation.of("classpath:metadata-version-1.1.0.schema.json#/properties/snapshot"), config)
         );
 
     }
@@ -74,7 +72,7 @@ public class MetadataSchemaValidator {
 
      * Missing or unsupported schemaVersion does not suppress a missing snapshot.
 
-     * Snapshot findings use the currently registered schema (1.0.0), even if the version is unknown.
+     * Snapshot findings use the selected version's schema. Unknown versions cannot validate a snapshot.
 
      * @param schemaVersion the incoming schema version
 
@@ -90,10 +88,9 @@ public class MetadataSchemaValidator {
 
 
 
-        if (!EXPECTED_SCHEMA_VERSION.equals(schemaVersion)) {
-
-            errors.add(new ValidationError("$.schemaVersion", "schemaVersion must be a constant value '" + EXPECTED_SCHEMA_VERSION + "'"));
-
+        JsonSchema snapshotSchema = schemaVersion == null ? null : snapshotSchemas.get(schemaVersion);
+        if (snapshotSchema == null) {
+            errors.add(new ValidationError("$.schemaVersion", "unsupported schemaVersion; supported versions: 1.0.0, 1.1.0"));
         }
 
 
@@ -102,7 +99,7 @@ public class MetadataSchemaValidator {
 
             errors.add(new ValidationError("$.snapshot", "snapshot is missing but it is required"));
 
-        } else {
+        } else if (snapshotSchema != null) {
 
             Set<ValidationMessage> messages = snapshotSchema.validate(snapshot);
 
