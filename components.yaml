@@ -1029,9 +1029,11 @@ components:
         decisions: []
 
 # =============================================================================
-# DEFERRED COMPONENTS
-# Confirmed out of Phase 1. Recorded here directly (not in a separate file)
-# so nothing postponed silently disappears from the catalog.
+# DEFERRED COMPONENTS AND DEFERRED GENERATION
+# Deferred capabilities are recorded here directly so they remain visible.
+# DEF-05 also remains here for its deferred generator and runtime support;
+# its five-type 1.1.0 schema capability is MANDATORY and CONFIRMED. Read each
+# entry's schema_support and generation statuses separately.
 #
 # `standards` on a deferred entry records the checklist items that will apply
 # when the item is scheduled. DEF-04 and DEF-06 carry the checklist's own

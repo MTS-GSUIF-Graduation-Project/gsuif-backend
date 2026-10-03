@@ -21,6 +21,18 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Set up Node.js for metadata schema validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: metadata/package-lock.json
+
+      - name: Validate metadata schemas and examples with Ajv
+        run: |
+          npm ci --prefix metadata
+          npm run validate --prefix metadata
+
       - name: Run Maven verify with diagnostics
         shell: bash
         run: |
