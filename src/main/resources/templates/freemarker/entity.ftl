@@ -38,6 +38,8 @@ import jakarta.persistence.Table;
 import ${entity.auditBasePackage}.AuditableEntity;
 <#if entity.fields?filter(f -> f.enumType??)?size gt 0>import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+<#list entity.fields?filter(f -> f.enumType??) as enumField>import ${entity.enumPackage}.${enumField.enumType};
+</#list>
 </#if>
 <#if entity.enversAudited!false>import org.hibernate.envers.Audited;
 </#if>

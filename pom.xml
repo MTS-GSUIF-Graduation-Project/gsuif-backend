@@ -79,7 +79,10 @@
             <groupId>org.freemarker</groupId>
             <artifactId>freemarker</artifactId>
             <version>2.3.34</version>
-            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -161,6 +164,12 @@
                 <directory>src/main/resources</directory>
             </resource>
             <resource>
+                <directory>${project.basedir}</directory>
+                <includes>
+                    <include>components.yaml</include>
+                </includes>
+            </resource>
+            <resource>
                 <directory>${project.basedir}/sql</directory>
                 <targetPath>sql</targetPath>
                 <includes>
@@ -206,9 +215,10 @@
 
 
     <profiles>
-        <!-- SCRUM-44 integration fixture: opt-in so example sources never enter normal builds. -->
+        <!-- Generate the reference consumer fixture for normal verification; its sources are not application sources. -->
         <profile>
             <id>openapi-fixture</id>
+            <activation><activeByDefault>true</activeByDefault></activation>
             <build>
                 <plugins>
                     <plugin>
@@ -224,6 +234,7 @@
                                     <generatorName>spring</generatorName>
                                     <templateDirectory>${project.basedir}/src/main/resources/templates/openapi/spring</templateDirectory>
                                     <output>${project.build.directory}/generated-sources/openapi-fixture</output>
+                                    <addCompileSourceRoot>false</addCompileSourceRoot>
                                     <apiPackage>com.example.fixture.api</apiPackage>
                                     <modelPackage>com.example.fixture.dto</modelPackage>
                                     <configOptions>
@@ -239,6 +250,36 @@
                     </plugin>
                 </plugins>
             </build>
+        </profile>
+        <!-- Generate the independent second-contract fixture for normal verification. -->
+        <profile>
+            <id>openapi-second-fixture</id>
+            <activation><activeByDefault>true</activeByDefault></activation>
+            <build><plugins><plugin>
+                <groupId>org.openapitools</groupId>
+                <artifactId>openapi-generator-maven-plugin</artifactId>
+                <version>7.16.0</version>
+                <executions><execution>
+                    <id>generate-service-request-fixture</id>
+                    <goals><goal>generate</goal></goals>
+                    <configuration>
+                        <inputSpec>${project.basedir}/src/main/resources/openapi/service-request-api.yaml</inputSpec>
+                        <generatorName>spring</generatorName>
+                        <templateDirectory>${project.basedir}/src/main/resources/templates/openapi/spring</templateDirectory>
+                        <output>${project.build.directory}/generated-sources/openapi-second-fixture</output>
+                        <addCompileSourceRoot>false</addCompileSourceRoot>
+                        <apiPackage>com.example.fixture.api</apiPackage>
+                        <modelPackage>com.example.fixture.dto</modelPackage>
+                        <configOptions>
+                            <useSpringBoot4>true</useSpringBoot4>
+                            <useJakartaEe>true</useJakartaEe>
+                            <interfaceOnly>true</interfaceOnly>
+                            <skipDefaultInterface>true</skipDefaultInterface>
+                            <useTags>true</useTags>
+                        </configOptions>
+                    </configuration>
+                </execution></executions>
+            </plugin></plugins></build>
         </profile>
         <profile>
             <id>openapi-spike</id>
