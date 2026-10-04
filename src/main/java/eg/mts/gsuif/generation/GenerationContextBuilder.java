@@ -59,7 +59,8 @@ public final class GenerationContextBuilder {
         entity.put("fields", List.copyOf(fields));
         Map<String, Object> model = Map.of("project", Map.of("basePackage", spec.basePackage(), "name", version.getPage().getProject().getName()),
                 "entity", Map.copyOf(entity), "api", api);
-        return new GenerationContext(version, snapshot.deepCopy(), spec, Set.copyOf(targets), framework, model);
+        GenerationCatalog catalog = GenerationCatalog.load();
+        return new GenerationContext(version, snapshot.deepCopy(), spec, Set.copyOf(targets), framework, model, catalog);
     }
 
     public GenerationContext build(MetadataVersion version, GenerationSpecification spec) {

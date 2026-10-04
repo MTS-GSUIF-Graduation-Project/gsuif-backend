@@ -59,16 +59,36 @@ transient and assigned-ID cases.
 
 ## SCRUM-28 ownership and limits
 
-SCRUM-28 owns the context adapter, explicit entity specification, catalog
-selection, general binding-to-OpenAPI mapping, provider and render orchestration,
-versioned support-source export, output paths, and artifact persistence. The
-controller template emits exactly five AssetTicket-shaped operations and does
-not consume `api.bindings`. It does not establish arbitrary contract compatibility.
-Restricted-role expressions and logging policy are unresolved; generated Java
-contains no placeholder authorization or logging annotations. BE-07 owns basic
-RBAC infrastructure and BE-10 owns AOP logging; SCRUM-28 must define the policy
-inputs that let BE-05 generated endpoints meet their applicable standards.
-The minimal Angular TS/HTML template required for Phase 1 is also SCRUM-28 work;
-this fixture does not verify Angular generation or the deferred full Angular app.
-The catalog entry
-remains `PLANNED` until production integration and review.
+SCRUM-28 owns the context adapter, explicit entity specification, resolved
+catalog and standards selection, general binding-to-OpenAPI mapping, provider
+and buffered rendering, versioned support-source export, and controlled relative
+output paths. Publication and artifact persistence belong to downstream tasks.
+The Phase 1 provider supports the two packaged CRUD contracts, selected bindings,
+and the documented Angular subset. Generated controllers use nonempty any-of
+`ROLE_ADMIN` / `ROLE_USER` expressions; the consuming application must enable
+method security and provide its own authentication and authorization configuration.
+
+`GenerationResult.consumerBuild` is the versioned build handoff for T-29 and
+other generated consumers. Contract 1.0.0 specifies Java 21, Spring Boot parent
+4.0.8, Boot web/data-jpa/security/validation starters, Hibernate Envers,
+Springdoc 3.0.3, and jackson-databind-nullable 0.2.6. The generated support
+sources are `ApiResponse`, `PagedBody`, `AuditableEntity`, `AuditorAwareImpl`,
+and `JpaAuditingConfig`. The standalone consumer fixture compiles these sources,
+the generated controllers, and OpenAPI generated interfaces/DTOs with this
+dependency contract. OpenAPI specification `info.version` is distinct from the
+OpenAPI Generator build tool version 7.16.0 and Swagger annotation library
+versions resolved by Springdoc.
+
+The former logging-policy input assignment is transferred to BE-10/T-19.
+BE-10/T-19 must define and test the consumer logging policy for generated BE-05
+endpoints under STD-15/STD-16, including AOP activation and sensitive-data
+masking. SCRUM-28 does not infer host logging configuration or add an unapproved
+logging field to the minimal generation specification. Until that integration,
+generation does not claim consumer logging compliance. BE-14/SCRUM-48 owns
+generation-request logging in the GSUIF host (STD-14/STD-17). This updates the
+historical handoff assignment without adding a REST endpoint in SCRUM-28.
+
+The catalog version is 1.1. BE-02, BE-05, and BE-13 generation entries and
+templates are marked implemented at 1.0.0; runtime selection rejects entries
+whose implementation status is PLANNED or DEFERRED. Other generation entries
+remain unchanged, including deferred schema 1.1 generation support.
