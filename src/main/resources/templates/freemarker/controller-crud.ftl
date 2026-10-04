@@ -39,6 +39,8 @@ import ${api.servicePackage}.${api.serviceInterface};
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+<#if api.operationRoles??>import org.springframework.security.access.prepost.PreAuthorize;
+</#if>
 import java.util.UUID;
 
 @RestController
@@ -50,27 +52,37 @@ public class ${entity.className}Controller implements ${api.interfaceClass} {
     }
 
     @Override
+<#if api.operationRoles??>    @PreAuthorize("${api.operationRoles.createMethod}")
+</#if>
     public ResponseEntity<ApiResponse<${api.dtoClass}>> ${api.createMethod}(${api.createRequestClass} request) {
         ${api.dtoClass} created = service.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created, "Created successfully", 201));
     }
 
     @Override
+<#if api.operationRoles??>    @PreAuthorize("${api.operationRoles.getMethod}")
+</#if>
     public ResponseEntity<ApiResponse<${api.dtoClass}>> ${api.getMethod}(UUID id) {
         return ResponseEntity.ok(ApiResponse.success(service.getById(id), "Retrieved successfully"));
     }
 
     @Override
+<#if api.operationRoles??>    @PreAuthorize("${api.operationRoles.listMethod}")
+</#if>
     public ResponseEntity<ApiResponse<${api.pageDtoClass}>> ${api.listMethod}(${api.statusEnumClass} status) {
         return ResponseEntity.ok(ApiResponse.success(service.list(status), "Retrieved successfully"));
     }
 
     @Override
+<#if api.operationRoles??>    @PreAuthorize("${api.operationRoles.updateMethod}")
+</#if>
     public ResponseEntity<ApiResponse<${api.dtoClass}>> ${api.updateMethod}(UUID id, ${api.updateRequestClass} request) {
         return ResponseEntity.ok(ApiResponse.success(service.update(id, request), "Updated successfully"));
     }
 
     @Override
+<#if api.operationRoles??>    @PreAuthorize("${api.operationRoles.deleteMethod}")
+</#if>
     public ResponseEntity<ApiResponse<Void>> ${api.deleteMethod}(UUID id) {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Deleted successfully"));

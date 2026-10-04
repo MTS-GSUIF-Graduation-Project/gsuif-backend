@@ -1,0 +1,151 @@
+# SCRUM-28 independent date-bearing consumer fixture.
+openapi: 3.0.3
+info:
+  title: ServiceRequest fixture API
+  version: 1.0.0
+paths:
+  /api/v1/service-requests:
+    get:
+      tags: [ServiceRequest]
+      operationId: listServiceRequests
+      x-gsuif-payload-java-type: com.example.fixture.dto.ServiceRequestPage
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/ServiceRequestStatus' }
+      responses:
+        '200':
+          description: Service requests listed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceRequestPageResponse' }
+    post:
+      tags: [ServiceRequest]
+      operationId: createServiceRequest
+      x-gsuif-payload-java-type: com.example.fixture.dto.ServiceRequestDto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateServiceRequestRequest' }
+      responses:
+        '201':
+          description: Service request created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceRequestDtoResponse' }
+  /api/v1/service-requests/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [ServiceRequest]
+      operationId: getServiceRequestById
+      x-gsuif-payload-java-type: com.example.fixture.dto.ServiceRequestDto
+      responses:
+        '200':
+          description: Service request retrieved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceRequestDtoResponse' }
+    put:
+      tags: [ServiceRequest]
+      operationId: updateServiceRequest
+      x-gsuif-payload-java-type: com.example.fixture.dto.ServiceRequestDto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateServiceRequestRequest' }
+      responses:
+        '200':
+          description: Service request updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceRequestDtoResponse' }
+    delete:
+      tags: [ServiceRequest]
+      operationId: deleteServiceRequest
+      x-gsuif-payload-java-type: java.lang.Void
+      responses:
+        '200':
+          description: Service request deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceRequestVoidResponse' }
+components:
+  schemas:
+    ServiceRequestStatus:
+      type: string
+      enum: [OPEN, CLOSED]
+    ServiceRequestDto:
+      type: object
+      required: [id, title, status, dueDate]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/ServiceRequestStatus' }
+        dueDate: { type: string, format: date }
+    CreateServiceRequestRequest:
+      type: object
+      required: [title, status, dueDate]
+      properties:
+        title: { type: string }
+        status: { $ref: '#/components/schemas/ServiceRequestStatus' }
+        dueDate: { type: string, format: date }
+    UpdateServiceRequestRequest:
+      type: object
+      properties:
+        title: { type: string }
+        status: { $ref: '#/components/schemas/ServiceRequestStatus' }
+        dueDate: { type: string, format: date }
+    ServiceRequestPage:
+      type: object
+      required: [data, totalPages, totalElements, size, number]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/ServiceRequestDto' }
+        totalPages: { type: integer, format: int32 }
+        totalElements: { type: integer, format: int64 }
+        size: { type: integer, format: int32 }
+        number: { type: integer, format: int32 }
+    ServiceRequestDtoResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { $ref: '#/components/schemas/ServiceRequestDto' }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    ServiceRequestPageResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { $ref: '#/components/schemas/ServiceRequestPage' }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    ServiceRequestVoidResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { type: object, nullable: true }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }

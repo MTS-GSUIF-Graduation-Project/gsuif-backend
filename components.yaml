@@ -776,7 +776,15 @@ components:
           name: Apache FreeMarker
           version: "2.3.34"
           scope: "Runtime template engine invoked by the provider"
-      template: null
+      template:
+        artifacts:
+          - role: ANGULAR_TYPESCRIPT
+            location_type: CLASSPATH
+            path: templates/freemarker/angular-component.ts.ftl
+          - role: ANGULAR_HTML
+            location_type: CLASSPATH
+            path: templates/freemarker/angular-component.html.ftl
+        version: "0.0.1-planned"
       metadata_fields:
         - metadata/schema/metadata-version.schema.json
         - metadata/schema/project.schema.json
