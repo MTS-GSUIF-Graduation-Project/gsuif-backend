@@ -101,10 +101,16 @@ public class MetadataSchemaValidator {
             errors.add(new ValidationError("$.snapshot", "snapshot is missing but it is required"));
 
         } else if (snapshotSchema != null) {
+            List<ValidationError> preValidationErrors = "1.2.0".equals(schemaVersion)
+                    ? VisibilityRules.validate(snapshot, "$.snapshot")
+                    : List.of();
 
-            Set<ValidationMessage> messages = snapshotSchema.validate(snapshot);
+            if (!preValidationErrors.isEmpty()) {
+                errors.addAll(preValidationErrors);
+            } else {
+                Set<ValidationMessage> messages = snapshotSchema.validate(snapshot);
 
-            List<ValidationError> snapshotErrors = messages.stream()
+                List<ValidationError> snapshotErrors = messages.stream()
 
                     .map(msg -> {
 
@@ -140,13 +146,12 @@ public class MetadataSchemaValidator {
 
                     .collect(Collectors.toList());
 
-            errors.addAll(snapshotErrors);
+                errors.addAll(snapshotErrors);
 
-            if ("1.2.0".equals(schemaVersion) && snapshotErrors.isEmpty()) {
-                errors.addAll(BindingRelationships.validate(snapshot, "$.snapshot"));
-                errors.addAll(VisibilityRules.validate(snapshot, "$.snapshot"));
+                if ("1.2.0".equals(schemaVersion) && snapshotErrors.isEmpty()) {
+                    errors.addAll(BindingRelationships.validate(snapshot, "$.snapshot"));
+                }
             }
-
         }
 
 
