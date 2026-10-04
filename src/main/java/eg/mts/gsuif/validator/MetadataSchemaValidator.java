@@ -144,6 +144,7 @@ public class MetadataSchemaValidator {
 
             if ("1.2.0".equals(schemaVersion) && snapshotErrors.isEmpty()) {
                 errors.addAll(BindingRelationships.validate(snapshot, "$.snapshot"));
+                errors.addAll(VisibilityRules.validate(snapshot, "$.snapshot"));
             }
 
         }

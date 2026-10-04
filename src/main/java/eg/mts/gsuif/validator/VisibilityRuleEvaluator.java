@@ -5,6 +5,8 @@ import java.util.Set;
 
 /** Pure display decision for 1.2.0 binding rules. Never grants endpoint access. */
 public final class VisibilityRuleEvaluator {
+    static final int MAX_DEPTH = 64;
+
     private VisibilityRuleEvaluator() {}
 
     public record Context(Set<String> permissions, Set<String> roles, JsonNode fields) {}
@@ -16,7 +18,7 @@ public final class VisibilityRuleEvaluator {
     private enum Result { TRUE, FALSE, INVALID }
 
     private static Result evaluateInternal(JsonNode rule, Context context, int depth) {
-        if (rule == null || !rule.isObject() || context == null || depth > 64) return Result.INVALID;
+        if (rule == null || !rule.isObject() || context == null || depth > MAX_DEPTH) return Result.INVALID;
         JsonNode opNode = rule.get("op");
         if (opNode == null || !opNode.isTextual()) return Result.INVALID;
         String op = opNode.asText();

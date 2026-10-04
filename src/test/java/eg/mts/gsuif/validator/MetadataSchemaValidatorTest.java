@@ -447,6 +447,27 @@ class MetadataSchemaValidatorTest {
         assertThat(validator.validate("1.2.0", snapshot)).isNotEmpty();
     }
 
+    @Test
+    void versionTwelveVisibilityDepthMatchesEvaluatorBoundary() throws Exception {
+        ObjectNode snapshot = (ObjectNode) loadExample("metadata/examples/many-to-many-1.2.0.json")
+                .path("metadataVersion").path("snapshot").deepCopy();
+        ObjectNode binding = (ObjectNode) snapshot.withArray("apiBindings").get(0);
+        JsonNode rule = objectMapper.readTree("{\"op\":\"permission\",\"value\":\"users:read\"}");
+        for (int i = 0; i < VisibilityRuleEvaluator.MAX_DEPTH; i++) {
+            rule = objectMapper.createObjectNode().put("op", "NOT").set("rule", rule);
+        }
+        binding.set("visibilityRule", rule);
+        var context = new VisibilityRuleEvaluator.Context(java.util.Set.of("users:read"), java.util.Set.of(), objectMapper.createObjectNode());
+        assertThat(validator.validate("1.2.0", snapshot)).isEmpty();
+        assertThat(VisibilityRuleEvaluator.evaluate(rule, context)).isTrue();
+
+        JsonNode tooDeep = objectMapper.createObjectNode().put("op", "NOT").set("rule", rule);
+        binding.set("visibilityRule", tooDeep);
+        assertThat(validator.validate("1.2.0", snapshot))
+                .contains(new ValidationError("$.snapshot.apiBindings[0].visibilityRule", "visibility rule exceeds maximum nesting depth of 64"));
+        assertThat(VisibilityRuleEvaluator.evaluate(tooDeep, context)).isFalse();
+    }
+
     private JsonNode loadExample(String path) throws Exception {
 
         java.io.File file = new java.io.File(path);

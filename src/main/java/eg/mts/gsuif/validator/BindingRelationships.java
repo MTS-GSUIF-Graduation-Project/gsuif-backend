@@ -1,9 +1,12 @@
 package eg.mts.gsuif.validator;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,23 +48,39 @@ public final class BindingRelationships {
                 outgoing.add(child);
             }
         }
-        for (String node : edges.keySet()) {
-            if (cyclic(node, edges, new HashSet<>(), new HashSet<>())) {
-                errors.add(new MetadataSchemaValidator.ValidationError(path + ".apiBindings", "component relationships contain a cycle"));
-                break;
-            }
+        if (containsCycle(edges)) {
+            errors.add(new MetadataSchemaValidator.ValidationError(path + ".apiBindings", "component relationships contain a cycle"));
         }
         return errors;
     }
 
-    private static boolean cyclic(String node, Map<String, Set<String>> edges, Set<String> visiting, Set<String> visited) {
-        if (visiting.contains(node)) return true;
-        if (!visited.add(node)) return false;
-        visiting.add(node);
-        for (String child : edges.getOrDefault(node, Set.of())) {
-            if (cyclic(child, edges, visiting, visited)) return true;
+    private static boolean containsCycle(Map<String, Set<String>> edges) {
+        Map<String, VisitState> states = new HashMap<>();
+        for (String start : edges.keySet()) {
+            if (states.containsKey(start)) continue;
+            Deque<Traversal> stack = new ArrayDeque<>();
+            states.put(start, VisitState.VISITING);
+            stack.push(new Traversal(start, edges.getOrDefault(start, Set.of()).iterator()));
+            while (!stack.isEmpty()) {
+                Traversal current = stack.peek();
+                if (!current.children().hasNext()) {
+                    states.put(current.node(), VisitState.VISITED);
+                    stack.pop();
+                    continue;
+                }
+                String child = current.children().next();
+                VisitState childState = states.get(child);
+                if (childState == VisitState.VISITING) return true;
+                if (childState == null) {
+                    states.put(child, VisitState.VISITING);
+                    stack.push(new Traversal(child, edges.getOrDefault(child, Set.of()).iterator()));
+                }
+            }
         }
-        visiting.remove(node);
         return false;
     }
+
+    private enum VisitState { VISITING, VISITED }
+
+    private record Traversal(String node, Iterator<String> children) {}
 }
