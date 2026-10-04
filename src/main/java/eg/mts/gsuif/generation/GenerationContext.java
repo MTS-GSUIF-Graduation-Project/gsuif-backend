@@ -8,6 +8,6 @@ import java.util.Set;
 /** Validated provider input; target and framework are execution choices. */
 public record GenerationContext(MetadataVersion metadataVersion, JsonNode snapshot,
         GenerationSpecification specification, Set<Target> targets, String framework,
-        Map<String, Object> templateModel) {
+        Map<String, Object> templateModel, GenerationCatalog catalog) {
     public enum Target { ENTITY, CONTROLLER, ANGULAR }
 }
