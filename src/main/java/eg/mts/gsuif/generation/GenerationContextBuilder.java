@@ -114,6 +114,7 @@ public final class GenerationContextBuilder {
                 JsonNode b = bindings.get(i); String p = "specification.openApi.bindingOperations[" + i + "]";
                 UUID id;
                 try { id = UUID.fromString(b.path("id").asText()); } catch (Exception ex) { errors.add(p + ": invalid binding UUID"); continue; }
+                if (!selected.containsKey(id)) continue;
                 if (!seenIds.add(id)) errors.add(p + ": duplicate binding ID");
                 String operationId = selected.get(id);
                 Operation operation = operationId == null ? null : operations.get(operationId);
@@ -131,7 +132,7 @@ public final class GenerationContextBuilder {
                 if (operation.path().contains("{id}") && !"id".equals(request.path("path").path("id").asText())) errors.add(p + ".requestMapping.path.id: required");
                 if (operation.kind().equals("list") && !"status".equals(request.path("query").path("status").asText())) errors.add(p + ".requestMapping.query.status: required");
             }
-            if (!selected.keySet().equals(seenIds)) errors.add("specification.openApi.bindingOperations: unknown or missing binding ID");
+            if (!selected.keySet().equals(seenIds)) errors.add("specification.openApi.bindingOperations: unknown binding ID");
             if (targets != null && targets.contains(Target.CONTROLLER) && seenOperations.size() != operations.size()) errors.add("specification.openApi.bindingOperations: all contract operations required");
         }
         if (s.operationRoles() == null) errors.add("specification.operationRoles: required");
@@ -158,9 +159,12 @@ public final class GenerationContextBuilder {
         for (FieldSpec field : s.entity().fields()) if (field != null && field.name() != null) fields.put(field.name(), field);
         Map<String, Object> dto = contract.dtoProperties();
         JsonNode components = snapshot.path("components"); JsonNode bindings = snapshot.path("apiBindings");
+        Map<UUID, String> selectedOperations = s.openApi().bindingOperations();
+        Set<String> selectedComponents = selectedComponentIds(snapshot, selectedOperations);
         Set<UUID> tables = new HashSet<>();
         for (int i = 0; i < components.size(); i++) {
             JsonNode component = components.get(i); String p = "snapshot.components[" + i + "]";
+            if (selectedOperations != null && !selectedComponents.contains(component.path("id").asText())) continue;
             String type = component.path("type").asText(); String key = component.path("fieldKey").asText();
             if (!Set.of("text-field", "select", "date-field", "table").contains(type)) { errors.add(p + ".type: unsupported Angular component"); continue; }
             if (component.has("tableConfig")) {
@@ -184,9 +188,10 @@ public final class GenerationContextBuilder {
                 else for (int j = 0; j < columns.size(); j++) if (!identifier(columns.get(j), "[a-z][A-Za-z0-9]*") || !dto.containsKey(columns.get(j))) errors.add(p + ".tableColumns[" + j + "]: absent from DTO or invalid property");
                 boolean linked = false;
                 for (JsonNode binding : bindings) {
+                    if (selectedOperations == null) break;
                     UUID bindingId;
                     try { bindingId = UUID.fromString(binding.path("id").asText()); } catch (Exception ex) { continue; }
-                    Operation op = contract.operations().get(s.openApi().bindingOperations().get(bindingId));
+                    Operation op = contract.operations().get(selectedOperations.get(bindingId));
                     if (op == null || !op.kind().equals("list")) continue;
                     for (JsonNode linkedId : binding.path("linkedComponentIds")) if (linkedId.asText().equals(id.toString())) linked = true;
                 }
@@ -205,6 +210,23 @@ public final class GenerationContextBuilder {
             if (!valid) errors.add(p + ".fieldKey: incompatible DTO type");
         }
         for (UUID id : s.angular().tableColumns().keySet()) if (!tables.contains(id)) errors.add("specification.angular.tableColumns." + id + ": unknown table");
+        if (selectedOperations != null) for (String id : selectedComponents) {
+            boolean present = false;
+            for (JsonNode component : components) if (id.equals(component.path("id").asText())) { present = true; break; }
+            if (!present) errors.add("snapshot.apiBindings.linkedComponentIds: selected component " + id + " absent from snapshot");
+        }
+    }
+
+    static Set<String> selectedComponentIds(JsonNode snapshot, Map<UUID, String> selectedOperations) {
+        Set<String> ids = new HashSet<>();
+        if (selectedOperations == null) return ids;
+        for (JsonNode binding : snapshot.path("apiBindings")) {
+            UUID id;
+            try { id = UUID.fromString(binding.path("id").asText()); } catch (Exception ex) { continue; }
+            if (selectedOperations.containsKey(id))
+                for (JsonNode linked : binding.path("linkedComponentIds")) ids.add(linked.asText());
+        }
+        return ids;
     }
 
     private record Operation(String verb, String path, String kind, String request, Set<String> requestFields) { }

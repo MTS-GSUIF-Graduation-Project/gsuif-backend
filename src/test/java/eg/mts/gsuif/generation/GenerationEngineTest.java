@@ -162,6 +162,35 @@ class GenerationEngineTest {
         assertTrue(failure.diagnostics().stream().anyMatch(d -> d.contains("bindingOperations[4].responseMapping.item")));
     }
 
+    @Test void angularUsesOnlySelectedBindingsAndTheirComponents() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        ObjectNode selectedComponent = snapshot.withArray("components").addObject();
+        selectedComponent.put("id", new UUID(0, 10).toString());
+        selectedComponent.put("type", "text-field"); selectedComponent.put("fieldKey", "title");
+        selectedComponent.put("label", "Title");
+        selectedComponent.putObject("position").put("row", 0).put("col", 0);
+        selectedComponent.putObject("size").put("width", 6).put("height", 1);
+        selectedComponent.put("visibility", true); selectedComponent.put("disabled", false);
+        ObjectNode otherComponent = snapshot.withArray("components").addObject();
+        otherComponent.put("id", new UUID(0, 11).toString());
+        otherComponent.put("type", "navigation"); otherComponent.put("label", "Other");
+        otherComponent.putObject("position").put("row", 1).put("col", 0);
+        otherComponent.putObject("size").put("width", 6).put("height", 1);
+        otherComponent.put("visibility", true); otherComponent.put("disabled", false);
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).putArray("linkedComponentIds").add(new UUID(0, 10).toString());
+        ((ObjectNode) snapshot.withArray("apiBindings").get(1)).putArray("linkedComponentIds").add(new UUID(0, 11).toString());
+        Map<UUID, String> selected = Map.of(new UUID(0, 1), "listAssetTickets");
+        var specification = spec("AssetTicket", "asset-ticket-api", selected,
+                Map.of("listAssetTickets", EnumSet.of(SupportedRole.ROLE_USER)));
+        var result = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot), specification,
+                Set.of(Target.ANGULAR), "spring-angular");
+        assertEquals(2, result.artifacts().size());
+        String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+        assertTrue(html.contains("type=\"text\""));
+        assertFalse(html.contains("Other"));
+        stageAngularForCompilation(result);
+    }
+
     @Test void angularTextSelectAndLegacyTableUseSelectedColumns() throws Exception {
         ObjectNode snapshot = bindings("AssetTicket");
         String[] types = {"text-field", "select", "table"};
@@ -184,6 +213,15 @@ class GenerationEngineTest {
         var baseline = spec("AssetTicket", "asset-ticket-api", selected, roles);
         var spec = new GenerationSpecification("1.0.0", baseline.basePackage(), baseline.entity(), baseline.openApi(), baseline.operationRoles(),
                 new AngularSpec("AssetTicket", Map.of(new UUID(0, 12), List.of("id", "title"))));
+        var missingBindings = new GenerationSpecification(spec.specVersion(), spec.basePackage(), spec.entity(),
+                new OpenApiSpec(spec.openApi().contractId(), spec.openApi().contractVersion(), null),
+                spec.operationRoles(), spec.angular());
+        var missingBindingsFailure = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.0.0", snapshot), missingBindings, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(missingBindingsFailure.diagnostics().stream().anyMatch(d -> d.contains("openApi.bindingOperations: required")),
+                missingBindingsFailure.diagnostics().toString());
+        assertTrue(missingBindingsFailure.diagnostics().stream().anyMatch(d -> d.contains("components[2]") && d.contains("selected list binding")),
+                missingBindingsFailure.diagnostics().toString());
         var result = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot), spec, Set.of(Target.ANGULAR), "spring-angular");
         String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
         assertTrue(html.contains("type=\"text\"")); assertTrue(html.contains("<select"));

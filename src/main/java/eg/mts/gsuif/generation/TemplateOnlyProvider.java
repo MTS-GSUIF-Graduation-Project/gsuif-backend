@@ -73,12 +73,15 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
     private void renderAngular(GenerationContext context, List<GenerationResult.Artifact> output, GenerationCatalog catalog) throws Exception {
         GenerationSpecification s = context.specification();
         JsonNode components = context.snapshot().path("components");
+        Set<String> selectedComponents = GenerationContextBuilder.selectedComponentIds(
+                context.snapshot(), s.openApi().bindingOperations());
         StringBuilder ts = new StringBuilder("import { Component } from '@angular/core';\nimport { CommonModule } from '@angular/common';\nimport { FormsModule } from '@angular/forms';\n\nexport interface " + s.angular().className() + "Dto {\n");
         StringBuilder html = new StringBuilder();
         Map<String, FieldSpec> fields = new HashMap<>();
         for (var f : s.entity().fields()) fields.put(f.name(), f);
         for (int i = 0; i < components.size(); i++) {
             JsonNode c = components.get(i);
+            if (!selectedComponents.contains(c.path("id").asText())) continue;
             String type = c.path("type").asText();
             String key = c.path("fieldKey").asText();
             if (!List.of("text-field", "select", "date-field", "table").contains(type))
