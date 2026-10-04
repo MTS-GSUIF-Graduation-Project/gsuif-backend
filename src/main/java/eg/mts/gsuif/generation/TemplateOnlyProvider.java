@@ -45,7 +45,15 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
     @Override public GenerationResult generate(GenerationContext supplied) {
         if (supplied == null) throw new GenerationValidationException(List.of("context: required"));
         GenerationContext context = builder.build(supplied.metadataVersion(), supplied.specification(), supplied.targets(), supplied.framework());
-        GenerationCatalog catalog = GenerationCatalog.load();
+        GenerationCatalog catalog = context.catalog();
+        if (supplied.catalog() == null || !supplied.catalog().version().equals(catalog.version())
+                || !supplied.catalog().entity().equals(catalog.entity())
+                || !supplied.catalog().controller().equals(catalog.controller())
+                || !supplied.catalog().angularTypescript().equals(catalog.angularTypescript())
+                || !supplied.catalog().angularHtml().equals(catalog.angularHtml())
+                || !supplied.catalog().providerVersion().equals(catalog.providerVersion())
+                || !supplied.catalog().standardRefs().equals(catalog.standardRefs()))
+            throw new GenerationValidationException(List.of("context.catalog: selected catalog differs from packaged standards"));
         GenerationSpecification spec = context.specification();
         Map<String, Object> model = new LinkedHashMap<>(context.templateModel());
         Map<String, Object> api = new LinkedHashMap<>((Map<String, Object>) context.templateModel().get("api"));
@@ -67,12 +75,15 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
                 pending.add(artifact(root + "entity/" + spec.entity().className() + ".java", render(catalog.entity().path(), model), catalog.entity().version(), catalog.version()));
             if (context.targets().contains(Target.CONTROLLER)) {
                 pending.add(artifact(root + "controller/" + spec.entity().className() + "Controller.java", render(catalog.controller().path(), model), catalog.controller().version(), catalog.version()));
-                for (String source : SUPPORT) pending.add(artifact("src/main/java/" + source, resource("/consumer-support/" + source), catalog.providerVersion(), catalog.version()));
             }
+            if (context.targets().contains(Target.ENTITY) || context.targets().contains(Target.CONTROLLER))
+                for (String source : SUPPORT) pending.add(artifact("src/main/java/" + source, resource("/consumer-support/" + source), catalog.providerVersion(), catalog.version()));
             if (context.targets().contains(Target.ANGULAR)) renderAngular(context, pending, catalog);
         } catch (GenerationValidationException ex) { throw ex; }
         catch (Exception ex) { throw new GenerationValidationException(List.of("render: " + ex.getMessage())); }
-        return new GenerationResult(pending, List.of());
+        return new GenerationResult(pending, List.of(),
+                context.targets().contains(Target.ENTITY) || context.targets().contains(Target.CONTROLLER)
+                        ? ConsumerBuildContract.phaseOne() : null);
     }
 
     private void renderAngular(GenerationContext context, List<GenerationResult.Artifact> output, GenerationCatalog catalog) throws Exception {

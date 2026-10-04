@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /** The packaged component catalog is the authority for Phase 1 tool and template choices. */
-final class GenerationCatalog {
-    record Choice(String path, String version) { }
+public final class GenerationCatalog {
+    public record Choice(String path, String version) { }
 
     private final String version;
     private final Choice entity;
@@ -17,28 +17,38 @@ final class GenerationCatalog {
     private final Choice angularTypescript;
     private final Choice angularHtml;
     private final String providerVersion;
+    private final List<String> standardRefs;
 
     private GenerationCatalog(String version, Choice entity, Choice controller, Choice angularTypescript,
-                              Choice angularHtml, String providerVersion) {
+                              Choice angularHtml, String providerVersion, List<String> standardRefs) {
         this.version = version;
         this.entity = entity;
         this.controller = controller;
         this.angularTypescript = angularTypescript;
         this.angularHtml = angularHtml;
         this.providerVersion = providerVersion;
+        this.standardRefs = List.copyOf(standardRefs);
     }
 
-    String version() { return version; }
-    Choice entity() { return entity; }
-    Choice controller() { return controller; }
-    Choice angularTypescript() { return angularTypescript; }
-    Choice angularHtml() { return angularHtml; }
-    String providerVersion() { return providerVersion; }
+    public String version() { return version; }
+    public Choice entity() { return entity; }
+    public Choice controller() { return controller; }
+    public Choice angularTypescript() { return angularTypescript; }
+    public Choice angularHtml() { return angularHtml; }
+    public String providerVersion() { return providerVersion; }
+    public List<String> standardRefs() { return standardRefs; }
 
-    static GenerationCatalog load() {
+    public static GenerationCatalog load() {
         try (InputStream input = GenerationCatalog.class.getResourceAsStream("/components.yaml")) {
             if (input == null) throw invalid("packaged components.yaml is missing");
-            Map<?, ?> catalog = map(new Yaml().load(input), "catalog");
+            return parse(new Yaml().load(input));
+        } catch (GenerationValidationException ex) { throw ex; }
+        catch (Exception ex) { throw invalid("cannot read packaged components.yaml: " + ex.getMessage()); }
+    }
+
+    static GenerationCatalog parse(Object source) {
+        try {
+            Map<?, ?> catalog = map(source, "catalog");
             String version = required(catalog.get("catalog_version"), "catalog_version");
             Object entries = catalog.get("components");
             if (!(entries instanceof List<?> components)) throw invalid("components must be a list");
@@ -89,7 +99,9 @@ final class GenerationCatalog {
                     new Choice(entityPath, required(entityTemplate.get("version"), "BE-02.template.version")),
                     new Choice(controllerPath, required(crudTemplate.get("version"), "BE-05.template.version")),
                     new Choice(typescriptPath, angularVersion), new Choice(htmlPath, angularVersion),
-                    required(map(engineGeneration.get("tool"), "BE-13.tool").get("version"), "BE-13.tool.version"));
+                    required(map(engineGeneration.get("tool"), "BE-13.tool").get("version"), "BE-13.tool.version"),
+                    java.util.stream.Stream.of(entity, crud, engine)
+                            .flatMap(item -> standardRefs(item).stream()).distinct().toList());
         } catch (GenerationValidationException ex) { throw ex; }
         catch (Exception ex) { throw invalid("cannot read packaged components.yaml: " + ex.getMessage()); }
     }
@@ -106,7 +118,16 @@ final class GenerationCatalog {
         Map<?, ?> choice = map(component.get("generation"), id + ".generation");
         if (!"CONFIRMED".equals(choice.get("decision_status")) || !strategy.equals(choice.get("strategy")))
             throw invalid(id + " generation choice is unsupported");
+        if (!"CONFIRMED".equals(choice.get("implementation_status")))
+            throw invalid(id + " generation implementation is not CONFIRMED");
         return choice;
+    }
+
+    private static List<String> standardRefs(Map<?, ?> component) {
+        Object refs = map(map(component.get("generation"), "generation").get("validation_rules"),
+                "generation.validation_rules").get("standard_refs");
+        if (!(refs instanceof List<?> values)) throw invalid("generation.validation_rules.standard_refs must be a list");
+        return values.stream().map(String::valueOf).toList();
     }
 
     private static void tool(Map<?, ?> generation, String id, String name, String version) {

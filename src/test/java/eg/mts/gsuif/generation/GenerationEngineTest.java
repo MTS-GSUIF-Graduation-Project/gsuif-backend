@@ -10,14 +10,13 @@ import eg.mts.gsuif.generation.GenerationSpecification.*;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.yaml.snakeyaml.Yaml;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import javax.tools.*;
-import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.net.URLClassLoader;
@@ -53,13 +52,31 @@ class GenerationEngineTest {
         assertTrue(templateProvider.isAvailable());
         assertEquals(List.of("fake"), new GenerationEngine(builder, fake).generate(version, spec, Set.of(Target.ENTITY), "spring-angular").diagnostics());
         var result = GenerationEngine.templateOnly(builder).generate(version, spec, Set.of(Target.ENTITY), "spring-angular");
-        assertEquals(1, result.artifacts().size());
+        var context = builder.build(version, spec, Set.of(Target.ENTITY), "spring-angular");
+        assertEquals("1.0.0", context.catalog().entity().version());
+        assertTrue(context.catalog().standardRefs().contains("STD-33"));
+        assertNotNull(result.consumerBuild(), "Entity-only output still requires audit support and dependencies");
+        assertEquals(6, result.artifacts().size());
         var artifact = result.artifacts().getFirst();
         assertEquals("src/main/java/com/example/fixture/entity/AssetTicket.java", artifact.relativePath());
         assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(artifact.bytes())), artifact.sha256());
         assertEquals(GenerationCatalog.load().version(), artifact.catalogVersion());
         assertEquals(GenerationCatalog.load().entity().version(), artifact.templateVersion());
         assertTrue(new String(artifact.bytes(), StandardCharsets.UTF_8).contains("class AssetTicket extends AuditableEntity"));
+    }
+
+    @Test void runtimeRejectsCatalogEntriesWithoutConfirmedImplementation() throws Exception {
+        String packaged;
+        try (var input = getClass().getResourceAsStream("/components.yaml")) {
+            assertNotNull(input);
+            packaged = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        for (String status : List.of("PLANNED", "DEFERRED")) {
+            String altered = packaged.replaceFirst("(?s)(- id: BE-02.*?implementation_status: )CONFIRMED", "$1" + status);
+            assertTrue(assertThrows(GenerationValidationException.class,
+                    () -> GenerationCatalog.parse(new Yaml().load(altered)))
+                    .diagnostics().stream().anyMatch(message -> message.contains("BE-02 generation implementation")));
+        }
     }
 
     @Test void indexedValidationAndSchemaDispatch() throws Exception {
@@ -267,8 +284,14 @@ class GenerationEngineTest {
         Map<String, Set<SupportedRole>> roles = new LinkedHashMap<>();
         String[] methods = {"list" + entity + "s", "create" + entity, "get" + entity + "ById", "update" + entity, "delete" + entity};
         for (int i = 0; i < 5; i++) { selected.put(new UUID(0, i + 1), methods[i]); roles.put(methods[i], EnumSet.of(SupportedRole.ROLE_ADMIN, SupportedRole.ROLE_USER)); }
-        var artifacts = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot),
-                spec(entity, contract, selected, roles), Set.of(Target.ENTITY, Target.CONTROLLER), "spring-angular").artifacts();
+        var result = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot),
+                spec(entity, contract, selected, roles), Set.of(Target.ENTITY, Target.CONTROLLER), "spring-angular");
+        var build = result.consumerBuild();
+        assertNotNull(build, "Generated Java must declare its consumer build contract");
+        assertEquals("1.0.0", build.contractVersion());
+        assertEquals(21, build.javaVersion());
+        assertTrue(build.methodSecurityPrerequisite().contains("@EnableMethodSecurity"));
+        var artifacts = result.artifacts();
         List<Path> sources = new ArrayList<>();
         for (var artifact : artifacts) {
             Path destination = temporaryDirectory.resolve(artifact.relativePath());
@@ -300,21 +323,26 @@ class GenerationEngineTest {
         sources.add(methodSecurity);
         Path generated = Path.of("target/generated-sources/" + fixtureDirectory + "/src/main/java");
         assertTrue(Files.isDirectory(generated), "Generate the consumer fixtures with -Popenapi-fixture,openapi-second-fixture");
-        try (var files = Files.walk(generated)) { files.filter(p -> p.toString().endsWith(".java")).forEach(sources::add); }
-        String classpath = Arrays.stream(System.getProperty("java.class.path").split(java.util.regex.Pattern.quote(File.pathSeparator)))
-                .filter(p -> !p.replace('\\', '/').endsWith("/target/classes") && !p.replace('\\', '/').endsWith("/target/test-classes"))
-                .collect(java.util.stream.Collectors.joining(File.pathSeparator));
-        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        assertNotNull(compiler);
-        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        try (StandardJavaFileManager files = compiler.getStandardFileManager(diagnostics, null, StandardCharsets.UTF_8)) {
-            boolean compiled = compiler.getTask(null, files, diagnostics,
-                    List.of("--release", "21", "-proc:none", "-classpath", classpath, "-d", temporaryDirectory.toString()),
-                    null, files.getJavaFileObjectsFromPaths(sources)).call();
-            assertTrue(compiled, () -> diagnostics.getDiagnostics().toString());
+        try (var files = Files.walk(generated)) {
+            for (Path source : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                Path destination = temporaryDirectory.resolve("src/main/java").resolve(generated.relativize(source));
+                Files.createDirectories(destination.getParent());
+                Files.copy(source, destination);
+            }
         }
-        assertTrue(Files.exists(temporaryDirectory.resolve("com/example/fixture/controller/" + entity + "Controller.class")));
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[]{temporaryDirectory.toUri().toURL()}, getClass().getClassLoader())) {
+        Files.writeString(temporaryDirectory.resolve("pom.xml"), build.mavenPom("com.example", entity.toLowerCase(Locale.ROOT) + "-consumer"));
+        String configuredMaven = System.getenv("GSUIF_MAVEN_COMMAND");
+        String executable = configuredMaven != null && !configuredMaven.isBlank() ? configuredMaven
+                : Path.of(System.getProperty("user.dir"), System.getProperty("os.name").startsWith("Windows") ? "mvnw.cmd" : "mvnw").toString();
+        List<String> command = new ArrayList<>(List.of(executable, "-B", "-q", "-f", temporaryDirectory.resolve("pom.xml").toString(), "compile"));
+        String repository = System.getProperty("maven.repo.local");
+        if (repository != null && !repository.isBlank()) command.add("-Dmaven.repo.local=" + repository);
+        Process process = new ProcessBuilder(command).directory(temporaryDirectory.toFile()).redirectErrorStream(true).start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, process.waitFor(), "Standalone generated consumer failed to compile with only declared dependencies:\n" + output);
+        Path classes = temporaryDirectory.resolve("target/classes");
+        assertTrue(Files.exists(classes.resolve("com/example/fixture/controller/" + entity + "Controller.class")));
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[]{classes.toUri().toURL()}, getClass().getClassLoader())) {
             verifyConsumerMethodSecurity(entity, loader);
         }
     }
