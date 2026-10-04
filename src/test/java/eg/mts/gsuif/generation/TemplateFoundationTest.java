@@ -101,45 +101,50 @@ class TemplateFoundationTest {
         assertFalse(controllerSource.contains("@PreAuthorize"));
         assertFalse(controllerSource.contains("@Loggable"));
 
-        Class<?> apiInterface = Class.forName("com.example.fixture.api.AssetTicketApi");
-        Class<?> dto = Class.forName("com.example.fixture.dto.AssetTicketDto");
-        Class<?> page = Class.forName("com.example.fixture.dto.AssetTicketPage");
-        Class<?> status = Class.forName("com.example.fixture.dto.AssetTicketStatus");
-        Class<?> createRequest = Class.forName("com.example.fixture.dto.CreateAssetTicketRequest");
-        Class<?> updateRequest = Class.forName("com.example.fixture.dto.UpdateAssetTicketRequest");
-        assertMapping(apiInterface, "createAssetTicket", RequestMethod.POST, ASSET_TICKET_ROUTE, createRequest);
-        assertMapping(apiInterface, "listAssetTickets", RequestMethod.GET, ASSET_TICKET_ROUTE, status);
-        assertMapping(apiInterface, "getAssetTicketById", RequestMethod.GET, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class);
-        assertMapping(apiInterface, "updateAssetTicket", RequestMethod.PUT, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class, updateRequest);
-        assertMapping(apiInterface, "deleteAssetTicket", RequestMethod.DELETE, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class);
-        assertReturn(apiInterface.getMethod("createAssetTicket", createRequest), dto);
-        assertReturn(apiInterface.getMethod("listAssetTickets", status), page);
-        assertReturn(apiInterface.getMethod("getAssetTicketById", java.util.UUID.class), dto);
-        assertReturn(apiInterface.getMethod("updateAssetTicket", java.util.UUID.class, updateRequest), dto);
-        assertReturn(apiInterface.getMethod("deleteAssetTicket", java.util.UUID.class), Void.class);
-        assertPublishedEnvelope(apiInterface.getMethod("createAssetTicket", createRequest),
-                "AssetTicketDtoResponse", dto);
-        assertPublishedEnvelope(apiInterface.getMethod("listAssetTickets", status),
-                "AssetTicketPageResponse", page);
-        assertPublishedEnvelope(apiInterface.getMethod("getAssetTicketById", java.util.UUID.class),
-                "AssetTicketDtoResponse", dto);
-        assertPublishedEnvelope(apiInterface.getMethod("updateAssetTicket", java.util.UUID.class, updateRequest),
-                "AssetTicketDtoResponse", dto);
-        assertPublishedEnvelope(apiInterface.getMethod("deleteAssetTicket", java.util.UUID.class),
-                "AssetTicketVoidResponse", null);
-        assertNotNull(page.getMethod("getData"));
-        assertNotNull(page.getMethod("getTotalPages"));
-        assertNotNull(page.getMethod("getTotalElements"));
-        assertNotNull(page.getMethod("getSize"));
-        assertNotNull(page.getMethod("getNumber"));
-
-        Path entityFile = write("com/example/fixture/entity/AssetTicket.java", entitySource);
-        Path controllerFile = write("com/example/fixture/controller/AssetTicketController.java", controllerSource);
-        List<Path> sources = new ArrayList<>(List.of(entityFile, controllerFile));
+        Path fixtureRoot = Path.of("target/generated-sources/openapi-fixture/src/main/java");
+        assertTrue(Files.isDirectory(fixtureRoot), "Generate the consumer fixture with -Popenapi-fixture");
+        List<Path> sources = new ArrayList<>();
+        try (var files = Files.walk(fixtureRoot)) {
+            files.filter(path -> path.toString().endsWith(".java")).forEach(sources::add);
+        }
+        sources.add(write("com/example/fixture/entity/AssetTicket.java", entitySource));
+        sources.add(write("com/example/fixture/controller/AssetTicketController.java", controllerSource));
         sources.add(writeFixtureService());
         compile(sources);
         try (URLClassLoader loader = new URLClassLoader(
                 new java.net.URL[]{temporaryDirectory.toUri().toURL()}, getClass().getClassLoader())) {
+            Class<?> apiInterface = loader.loadClass("com.example.fixture.api.AssetTicketApi");
+            Class<?> dto = loader.loadClass("com.example.fixture.dto.AssetTicketDto");
+            Class<?> page = loader.loadClass("com.example.fixture.dto.AssetTicketPage");
+            Class<?> status = loader.loadClass("com.example.fixture.dto.AssetTicketStatus");
+            Class<?> createRequest = loader.loadClass("com.example.fixture.dto.CreateAssetTicketRequest");
+            Class<?> updateRequest = loader.loadClass("com.example.fixture.dto.UpdateAssetTicketRequest");
+            assertMapping(apiInterface, "createAssetTicket", RequestMethod.POST, ASSET_TICKET_ROUTE, createRequest);
+            assertMapping(apiInterface, "listAssetTickets", RequestMethod.GET, ASSET_TICKET_ROUTE, status);
+            assertMapping(apiInterface, "getAssetTicketById", RequestMethod.GET, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class);
+            assertMapping(apiInterface, "updateAssetTicket", RequestMethod.PUT, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class, updateRequest);
+            assertMapping(apiInterface, "deleteAssetTicket", RequestMethod.DELETE, ASSET_TICKET_ROUTE + "/{id}", java.util.UUID.class);
+            assertReturn(apiInterface.getMethod("createAssetTicket", createRequest), dto);
+            assertReturn(apiInterface.getMethod("listAssetTickets", status), page);
+            assertReturn(apiInterface.getMethod("getAssetTicketById", java.util.UUID.class), dto);
+            assertReturn(apiInterface.getMethod("updateAssetTicket", java.util.UUID.class, updateRequest), dto);
+            assertReturn(apiInterface.getMethod("deleteAssetTicket", java.util.UUID.class), Void.class);
+            assertPublishedEnvelope(apiInterface.getMethod("createAssetTicket", createRequest),
+                    "AssetTicketDtoResponse", dto);
+            assertPublishedEnvelope(apiInterface.getMethod("listAssetTickets", status),
+                    "AssetTicketPageResponse", page);
+            assertPublishedEnvelope(apiInterface.getMethod("getAssetTicketById", java.util.UUID.class),
+                    "AssetTicketDtoResponse", dto);
+            assertPublishedEnvelope(apiInterface.getMethod("updateAssetTicket", java.util.UUID.class, updateRequest),
+                    "AssetTicketDtoResponse", dto);
+            assertPublishedEnvelope(apiInterface.getMethod("deleteAssetTicket", java.util.UUID.class),
+                    "AssetTicketVoidResponse", null);
+            assertNotNull(page.getMethod("getData"));
+            assertNotNull(page.getMethod("getTotalPages"));
+            assertNotNull(page.getMethod("getTotalElements"));
+            assertNotNull(page.getMethod("getSize"));
+            assertNotNull(page.getMethod("getNumber"));
+
             Class<?> generatedEntity = loader.loadClass("com.example.fixture.entity.AssetTicket");
             Object first = generatedEntity.getConstructor().newInstance();
             Object second = generatedEntity.getConstructor().newInstance();

@@ -27,7 +27,7 @@
 # implicit.
 # =============================================================================
 
-catalog_version: "1.0"
+catalog_version: "1.1"
 generated_for: "SCRUM-45 (T-17)"
 
 # `dependencies` records implementation prerequisites aligned with Jira's
@@ -226,7 +226,7 @@ components:
     dependencies: [BE-01]
     generation:
       decision_status: CONFIRMED
-      implementation_status: PLANNED
+      implementation_status: CONFIRMED
       strategy: FREEMARKER
       tool:
         name: Apache FreeMarker
@@ -234,7 +234,7 @@ components:
         supplement: null
       template:
         path: templates/freemarker/entity.ftl
-        version: "0.0.0-planned"
+        version: "1.0.0"
       metadata_fields:
         - metadata/schema/project.schema.json
         - metadata/schema/page.schema.json
@@ -373,7 +373,7 @@ components:
     dependencies: [BE-04, BE-09]
     generation:
       decision_status: CONFIRMED
-      implementation_status: PLANNED
+      implementation_status: CONFIRMED
       strategy: OPENAPI_PLUS_FREEMARKER
       tool:
         name: openapi-generator-maven-plugin
@@ -389,7 +389,7 @@ components:
           - role: CONTROLLER_IMPLEMENTATION
             location_type: CLASSPATH
             path: templates/freemarker/controller-crud.ftl
-        version: "0.0.0-planned"
+        version: "1.0.0"
       metadata_fields:
         - metadata/schema/api-binding.schema.json#/properties/httpMethod
         - metadata/schema/api-binding.schema.json#/properties/endpointUrl
@@ -767,16 +767,24 @@ components:
     dependencies: [BE-17]
     generation:
       decision_status: CONFIRMED
-      implementation_status: PLANNED
+      implementation_status: CONFIRMED
       strategy: HAND_WRITTEN
       tool:
         name: TemplateOnlyProvider
-        version: "0.0.1-planned"
+        version: "1.0.0"
         supplement:
           name: Apache FreeMarker
           version: "2.3.34"
           scope: "Runtime template engine invoked by the provider"
-      template: null
+      template:
+        artifacts:
+          - role: ANGULAR_TYPESCRIPT
+            location_type: CLASSPATH
+            path: templates/freemarker/angular-component.ts.ftl
+          - role: ANGULAR_HTML
+            location_type: CLASSPATH
+            path: templates/freemarker/angular-component.html.ftl
+        version: "1.0.0"
       metadata_fields:
         - metadata/schema/metadata-version.schema.json
         - metadata/schema/project.schema.json
