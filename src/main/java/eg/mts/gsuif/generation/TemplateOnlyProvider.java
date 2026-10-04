@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Comparator;
+import java.util.Locale;
 import org.yaml.snakeyaml.Yaml;
 
 /** Phase 1 provider. Rendering is fully buffered; callers own publication and run persistence. */
@@ -36,6 +37,10 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
         templates.setTemplateExceptionHandler(TemplateExceptionHandler.RETHROW_HANDLER);
         templates.setLogTemplateExceptions(false);
     }
+
+    @Override public String getProviderName() { return "TemplateOnlyProvider"; }
+
+    @Override public boolean isAvailable() { return true; }
 
     @Override public GenerationResult generate(GenerationContext supplied) {
         if (supplied == null) throw new GenerationValidationException(List.of("context: required"));
@@ -75,8 +80,7 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
         JsonNode components = context.snapshot().path("components");
         Set<String> selectedComponents = GenerationContextBuilder.selectedComponentIds(
                 context.snapshot(), s.openApi().bindingOperations());
-        StringBuilder ts = new StringBuilder("import { Component } from '@angular/core';\nimport { CommonModule } from '@angular/common';\nimport { FormsModule } from '@angular/forms';\n\nexport interface " + s.angular().className() + "Dto {\n");
-        StringBuilder html = new StringBuilder();
+        List<Map<String, Object>> controls = new ArrayList<>();
         Map<String, FieldSpec> fields = new HashMap<>();
         for (var f : s.entity().fields()) fields.put(f.name(), f);
         for (int i = 0; i < components.size(); i++) {
@@ -87,49 +91,41 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
             if (!List.of("text-field", "select", "date-field", "table").contains(type))
                 throw new GenerationValidationException(List.of("snapshot.components[" + i + "].type: unsupported Angular component"));
             if ("table".equals(type)) {
-                html.append("<table><thead><tr>");
                 java.util.UUID tableId = java.util.UUID.fromString(c.path("id").asText());
                 List<String> columns = s.angular().tableColumns().get(tableId);
-                for (String column : columns) html.append("<th>" + escapeHtml(column) + "</th>");
-                html.append("</tr></thead><tbody><tr *ngFor=\"let row of rows\">");
-                for (String column : columns) html.append("<td>{{ row." + column + " }}</td>");
-                html.append("</tr></tbody></table>\n");
+                controls.add(Map.of("type", type, "columns", columns));
                 continue;
             }
             FieldSpec f = fields.get(key);
             if (f == null) throw new GenerationValidationException(List.of("snapshot.components[" + i + "].fieldKey: missing DTO property"));
             String expected = "date-field".equals(type) ? "LocalDate" : "select".equals(type) ? f.enumType() : "String";
             if (expected == null || !expected.equals(f.javaType())) throw new GenerationValidationException(List.of("snapshot.components[" + i + "].fieldKey: incompatible DTO type"));
-            String label = escapeHtml(c.path("label").asText());
-            if ("select".equals(type)) html.append("<label>" + label + "<select [(ngModel)]=\"model." + key + "\"><option *ngFor=\"let option of options." + key + "\" [value]=\"option\">{{ option }}</option></select></label>\n");
-            else html.append("<label>" + label + "<input type=\"" + ("date-field".equals(type) ? "date" : "text") + "\" [(ngModel)]=\"model." + key + "\"></label>\n");
+            controls.add(Map.of("type", type, "key", key, "label", c.path("label").asText()));
         }
         @SuppressWarnings("unchecked")
         Map<String, Map<String, Object>> dtoProperties = (Map<String, Map<String, Object>>) ((Map<String, Object>) context.templateModel().get("api")).get("dtoProperties");
         @SuppressWarnings("unchecked")
         List<String> dtoRequired = (List<String>) ((Map<String, Object>) context.templateModel().get("api")).get("dtoRequired");
+        List<Map<String, String>> properties = new ArrayList<>();
         for (var property : dtoProperties.entrySet()) {
             String name = property.getKey(); Map<String, Object> definition = property.getValue();
-            FieldSpec field = fields.get(name);
             String tsType = definition.containsKey("$ref") || "string".equals(definition.get("type")) ? "string"
                     : "boolean".equals(definition.get("type")) ? "boolean" : "number";
-            ts.append("  " + name + (dtoRequired.contains(name) ? ": " : "?: ") + tsType + ";\n");
+            properties.add(Map.of("name", name, "type", tsType, "optional", dtoRequired.contains(name) ? "" : "?"));
         }
-        String kebab = s.angular().className().replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase(java.util.Locale.ROOT);
-        ts.append("}\n@Component({ selector: 'app-generated-" + kebab + "', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './" + kebab + ".component.html' })\n");
-        ts.append("export class " + s.angular().className() + "Component {\n  model = {} as " + s.angular().className() + "Dto;\n  rows: " + s.angular().className() + "Dto[] = [];\n  options: Record<string, string[]> = {");
+        String kebab = s.angular().className().replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
         Map<String, List<String>> options = enumOptions(s.openApi().contractId());
+        Map<String, List<String>> selectedOptions = new LinkedHashMap<>();
         for (var field : s.entity().fields()) if (field.enumType() != null) {
             List<String> values = options.get(field.enumType());
             if (values == null || values.isEmpty()) throw new GenerationValidationException(List.of("specification.fields." + field.name() + ": enum options absent from contract"));
-            ts.append("\n    " + field.name() + ": [");
-            for (int i = 0; i < values.size(); i++) ts.append((i == 0 ? "" : ", ") + "'" + values.get(i) + "'");
-            ts.append("],");
+            selectedOptions.put(field.name(), values);
         }
-        ts.append("\n  };\n}\n");
+        Map<String, Object> model = Map.of("className", s.angular().className(), "kebab", kebab,
+                "properties", properties, "controls", controls, "options", selectedOptions);
         String base = "src/app/generated/" + kebab;
-        output.add(artifact(base + ".component.ts", ts.toString(), catalog.providerVersion(), catalog.version()));
-        output.add(artifact(base + ".component.html", html.toString(), catalog.providerVersion(), catalog.version()));
+        output.add(artifact(base + ".component.ts", render(catalog.angularTypescript().path(), model), catalog.angularTypescript().version(), catalog.version()));
+        output.add(artifact(base + ".component.html", render(catalog.angularHtml().path(), model), catalog.angularHtml().version(), catalog.version()));
     }
 
     @SuppressWarnings("unchecked")
@@ -150,10 +146,6 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
             }
             return result;
         }
-    }
-
-    private static String escapeHtml(String value) {
-        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;");
     }
 
     private String render(String path, Map<String, Object> model) throws Exception {
