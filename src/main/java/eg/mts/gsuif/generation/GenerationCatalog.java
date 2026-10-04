@@ -14,18 +14,25 @@ final class GenerationCatalog {
     private final String version;
     private final Choice entity;
     private final Choice controller;
+    private final Choice angularTypescript;
+    private final Choice angularHtml;
     private final String providerVersion;
 
-    private GenerationCatalog(String version, Choice entity, Choice controller, String providerVersion) {
+    private GenerationCatalog(String version, Choice entity, Choice controller, Choice angularTypescript,
+                              Choice angularHtml, String providerVersion) {
         this.version = version;
         this.entity = entity;
         this.controller = controller;
+        this.angularTypescript = angularTypescript;
+        this.angularHtml = angularHtml;
         this.providerVersion = providerVersion;
     }
 
     String version() { return version; }
     Choice entity() { return entity; }
     Choice controller() { return controller; }
+    Choice angularTypescript() { return angularTypescript; }
+    Choice angularHtml() { return angularHtml; }
     String providerVersion() { return providerVersion; }
 
     static GenerationCatalog load() {
@@ -62,9 +69,26 @@ final class GenerationCatalog {
                 if (role.equals("OPENAPI_OVERRIDE")) override = true;
             }
             if (!override || controllerPath == null) throw invalid("BE-05 requires OpenAPI override and controller template");
+            Map<?, ?> angularTemplate = map(engineGeneration.get("template"), "BE-13.template");
+            Object angularArtifacts = angularTemplate.get("artifacts");
+            if (!(angularArtifacts instanceof List<?> angularList)) throw invalid("BE-13.template.artifacts must be a list");
+            String typescriptPath = null;
+            String htmlPath = null;
+            for (Object entry : angularList) {
+                Map<?, ?> artifact = map(entry, "BE-13.template.artifacts");
+                if (!Objects.equals(artifact.get("location_type"), "CLASSPATH")) throw invalid("BE-13 template must use CLASSPATH");
+                String path = checkedPath(artifact.get("path"), "BE-13.template.artifacts.path");
+                String role = required(artifact.get("role"), "BE-13.template.artifacts.role");
+                if (role.equals("ANGULAR_TYPESCRIPT") && typescriptPath == null) typescriptPath = path;
+                else if (role.equals("ANGULAR_HTML") && htmlPath == null) htmlPath = path;
+                else throw invalid("BE-13 template role is duplicate or unsupported");
+            }
+            if (typescriptPath == null || htmlPath == null) throw invalid("BE-13 requires both Angular templates");
+            String angularVersion = required(angularTemplate.get("version"), "BE-13.template.version");
             return new GenerationCatalog(version,
                     new Choice(entityPath, required(entityTemplate.get("version"), "BE-02.template.version")),
                     new Choice(controllerPath, required(crudTemplate.get("version"), "BE-05.template.version")),
+                    new Choice(typescriptPath, angularVersion), new Choice(htmlPath, angularVersion),
                     required(map(engineGeneration.get("tool"), "BE-13.tool").get("version"), "BE-13.tool.version"));
         } catch (GenerationValidationException ex) { throw ex; }
         catch (Exception ex) { throw invalid("cannot read packaged components.yaml: " + ex.getMessage()); }

@@ -37,11 +37,20 @@ class GenerationEngineTest {
     @Test void providerSubstitutionAndBufferedEntity() throws Exception {
         var version = version("1.0.0", emptySnapshot());
         var spec = spec("AssetTicket", "asset-ticket-api", Map.of(), Map.of());
-        AICodeGenerationProvider fake = context -> {
-            assertEquals("AssetTicket", context.specification().entity().className());
-            assertEquals(Set.of(Target.ENTITY), context.targets());
-            return new GenerationResult(List.of(), List.of("fake"));
+        AICodeGenerationProvider fake = new AICodeGenerationProvider() {
+            @Override public String getProviderName() { return "fake"; }
+            @Override public boolean isAvailable() { return true; }
+            @Override public GenerationResult generate(GenerationContext context) {
+                assertEquals("AssetTicket", context.specification().entity().className());
+                assertEquals(Set.of(Target.ENTITY), context.targets());
+                return new GenerationResult(List.of(), List.of("fake"));
+            }
         };
+        assertEquals("fake", fake.getProviderName());
+        assertTrue(fake.isAvailable());
+        AICodeGenerationProvider templateProvider = new TemplateOnlyProvider(builder);
+        assertEquals("TemplateOnlyProvider", templateProvider.getProviderName());
+        assertTrue(templateProvider.isAvailable());
         assertEquals(List.of("fake"), new GenerationEngine(builder, fake).generate(version, spec, Set.of(Target.ENTITY), "spring-angular").diagnostics());
         var result = GenerationEngine.templateOnly(builder).generate(version, spec, Set.of(Target.ENTITY), "spring-angular");
         assertEquals(1, result.artifacts().size());
@@ -167,7 +176,7 @@ class GenerationEngineTest {
         ObjectNode selectedComponent = snapshot.withArray("components").addObject();
         selectedComponent.put("id", new UUID(0, 10).toString());
         selectedComponent.put("type", "text-field"); selectedComponent.put("fieldKey", "title");
-        selectedComponent.put("label", "Title");
+        selectedComponent.put("label", "Title {{ missing }} <draft>");
         selectedComponent.putObject("position").put("row", 0).put("col", 0);
         selectedComponent.putObject("size").put("width", 6).put("height", 1);
         selectedComponent.put("visibility", true); selectedComponent.put("disabled", false);
@@ -187,6 +196,7 @@ class GenerationEngineTest {
         assertEquals(2, result.artifacts().size());
         String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
         assertTrue(html.contains("type=\"text\""));
+        assertTrue(html.contains("<span ngNonBindable>Title {{ missing }} &lt;draft&gt;</span>"));
         assertFalse(html.contains("Other"));
         stageAngularForCompilation(result);
     }
