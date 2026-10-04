@@ -60,6 +60,60 @@ class MetadataVersionControllerIntegrationTest {
     }
 
     @Test
+    void versionTwelvePersistsValidRelationshipsAndRejectsMissingTargets() throws Exception {
+        GsuifPage page = savedPage("Nested bindings");
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode snapshot = (com.fasterxml.jackson.databind.node.ObjectNode) mapper
+                .readTree(new java.io.File("metadata/examples/many-to-many-1.2.0.json"))
+                .path("metadataVersion").path("snapshot").deepCopy();
+        String valid = "{\"schemaVersion\":\"1.2.0\",\"snapshot\":" + snapshot + "}";
+        mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON).content(valid))
+                .andExpect(status().isCreated());
+        assertThat(metadataVersionRepository.findAll()).hasSize(1);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) snapshot.withArray("apiBindings").get(0))
+                .put("parentComponentId", "12000000-0000-4000-8000-000000000099");
+        mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"schemaVersion\":\"1.2.0\",\"snapshot\":" + snapshot + "}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors['$.snapshot.apiBindings[0].parentComponentId']").exists());
+        assertThat(metadataVersionRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void versionTwelveRejectsDanglingLinkedComponentWithoutPersistenceOrPointerChange() throws Exception {
+        GsuifPage page = savedPage("Linked binding validation");
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode snapshot = (com.fasterxml.jackson.databind.node.ObjectNode) mapper
+                .readTree(new java.io.File("metadata/examples/many-to-many-1.2.0.json"))
+                .path("metadataVersion").path("snapshot").deepCopy();
+
+        mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"schemaVersion\":\"1.2.0\",\"snapshot\":" + snapshot + "}"))
+                .andExpect(status().isCreated());
+        MetadataVersion original = metadataVersionRepository.findAll().getFirst();
+        assertThat(pageRepository.findById(page.getId()).orElseThrow().getCurrentMetadataVersionId())
+                .isEqualTo(original.getId());
+
+        com.fasterxml.jackson.databind.node.ObjectNode linkedOnlyBinding =
+                (com.fasterxml.jackson.databind.node.ObjectNode) snapshot.withArray("apiBindings").get(2);
+        linkedOnlyBinding.withArray("linkedComponentIds").set(
+                0, mapper.getNodeFactory().textNode("12000000-0000-4000-8000-000000000099"));
+        mockMvc.perform(post("/api/v1/pages/{pageId}/metadata", page.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"schemaVersion\":\"1.2.0\",\"snapshot\":" + snapshot + "}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors['$.snapshot.apiBindings[2].linkedComponentIds[0]']")
+                        .value("linked component does not exist"));
+
+        assertThat(metadataVersionRepository.findAll()).containsExactly(original);
+        assertThat(pageRepository.findById(page.getId()).orElseThrow().getCurrentMetadataVersionId())
+                .isEqualTo(original.getId());
+    }
+
+    @Test
     void create_withValidPayload_returns201AndTrimsSchemaVersion() throws Exception {
         GsuifPage page = savedPage("Home");
 
@@ -540,7 +594,7 @@ class MetadataVersionControllerIntegrationTest {
                         .content(payload2))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.statusCode").value(400))
-                .andExpect(jsonPath("$.errors['$.schemaVersion']").value("unsupported schemaVersion; supported versions: 1.0.0, 1.1.0"))
+                .andExpect(jsonPath("$.errors['$.schemaVersion']").value("unsupported schemaVersion; supported versions: 1.0.0, 1.1.0, 1.2.0"))
                 .andReturn().getResponse().getContentAsString();
         com.fasterxml.jackson.databind.JsonNode envelope = new com.fasterxml.jackson.databind.ObjectMapper().readTree(rejectedBody);
         java.util.Set<String> fields = new java.util.HashSet<>();
