@@ -50,6 +50,9 @@ function validRelationships(record) {
   const childIds = new Set();
   const edges = new Map();
   for (const binding of record.apiBindings) {
+    for (const linked of binding.linkedComponentIds || []) {
+      if (!componentIds.has(linked)) return false;
+    }
     const parent = binding.parentComponentId;
     const children = binding.childComponentIds;
     if (parent === undefined && children === undefined) continue;
@@ -206,6 +209,27 @@ if (!validators.page11(example11.page)) {
 }
 const example12 = readJson(path.join(examplesDir, "many-to-many-1.2.0.json"));
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const nestedVisibilityRule = (operators) => operators.reduce(
+  (rule, op) => op === "NOT" ? { op, rule } : { op, rules: [rule] },
+  { op: "permission", value: "users:read" },
+);
+for (const [label, operators] of [
+  ["nested AND", Array(16).fill("AND")],
+  ["nested OR", Array(16).fill("OR")],
+  ["mixed AND/OR", Array.from({ length: 16 }, (_, index) => index % 2 ? "OR" : "AND")],
+]) {
+  for (const target of ["page12", "metadataVersion12"]) {
+    const instance = clone(target === "page12" ? example12.page : example12.metadataVersion);
+    const record = target === "page12" ? instance : instance.snapshot;
+    record.apiBindings[0].visibilityRule = nestedVisibilityRule(operators);
+    if (!validators[target](instance)) {
+      failed++;
+      console.error(
+        `1.2.0 ${label} failed for ${target}:\n${formatErrors(validators[target].errors)}`,
+      );
+    }
+  }
+}
 // Exercise the scalar union and recursive references through both public schemas.
 for (const equals of ["approved", 42, true, null, {}, []]) {
   for (const target of ["page12", "metadataVersion12"]) {
@@ -239,6 +263,7 @@ for (const target of ["page", "page11", "metadataVersion", "metadataVersion11"])
   if (validators[target](instance)) { failed++; console.error(`${target} accepted 1.2.0 binding fields`); }
 }
 for (const [label, mutate] of [
+  ["missing linked", (v) => { v.apiBindings[2].linkedComponentIds[0] = "12000000-0000-4000-8000-000000000099"; }],
   ["missing parent", (v) => { v.apiBindings[0].parentComponentId = "12000000-0000-4000-8000-000000000099"; }],
   ["missing child", (v) => { v.apiBindings[0].childComponentIds[0] = "12000000-0000-4000-8000-000000000099"; }],
   ["self link", (v) => { v.apiBindings[0].childComponentIds[0] = v.apiBindings[0].parentComponentId; }],

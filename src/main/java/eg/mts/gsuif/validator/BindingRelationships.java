@@ -29,6 +29,15 @@ public final class BindingRelationships {
             String base = path + ".apiBindings[" + i + "]";
             JsonNode parentNode = binding.get("parentComponentId");
             JsonNode children = binding.get("childComponentIds");
+            JsonNode linked = binding.get("linkedComponentIds");
+            if (linked != null) {
+                for (int j = 0; j < linked.size(); j++) {
+                    if (!components.contains(linked.get(j).asText())) {
+                        errors.add(new MetadataSchemaValidator.ValidationError(
+                                base + ".linkedComponentIds[" + j + "]", "linked component does not exist"));
+                    }
+                }
+            }
             if (parentNode == null && children == null) continue;
             if (parentNode == null || children == null || children.isEmpty()) {
                 errors.add(new MetadataSchemaValidator.ValidationError(base, "relationship requires parentComponentId and nonempty childComponentIds"));

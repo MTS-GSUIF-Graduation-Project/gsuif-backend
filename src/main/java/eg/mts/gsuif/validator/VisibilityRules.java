@@ -13,9 +13,11 @@ final class VisibilityRules {
     static List<MetadataSchemaValidator.ValidationError> validate(JsonNode record, String path) {
         List<MetadataSchemaValidator.ValidationError> errors = new ArrayList<>();
         JsonNode bindings = record.path("apiBindings");
+        if (!bindings.isArray()) return errors;
         for (int i = 0; i < bindings.size(); i++) {
-            JsonNode rule = bindings.get(i).get("visibilityRule");
-            if (rule != null && exceedsMaxDepth(rule)) {
+            JsonNode binding = bindings.get(i);
+            JsonNode rule = binding != null && binding.isObject() ? binding.get("visibilityRule") : null;
+            if (rule != null && rule.isContainerNode() && exceedsMaxDepth(rule)) {
                 errors.add(new MetadataSchemaValidator.ValidationError(
                         path + ".apiBindings[" + i + "].visibilityRule",
                         "visibility rule exceeds maximum nesting depth of " + VisibilityRuleEvaluator.MAX_DEPTH));

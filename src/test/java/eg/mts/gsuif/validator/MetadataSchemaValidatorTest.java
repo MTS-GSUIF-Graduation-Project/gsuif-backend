@@ -448,14 +448,43 @@ class MetadataSchemaValidatorTest {
     }
 
     @Test
-    void versionTwelveVisibilityDepthMatchesEvaluatorBoundary() throws Exception {
-        ObjectNode snapshot = (ObjectNode) loadExample("metadata/examples/many-to-many-1.2.0.json")
-                .path("metadataVersion").path("snapshot").deepCopy();
+    @org.junit.jupiter.api.Timeout(10)
+    void versionTwelveValidatesDeeplyNestedAndRulesWithoutBranchExplosion() throws Exception {
+        assertNestedVisibilityRuleValid("AND", "AND");
+    }
+
+    @Test
+    @org.junit.jupiter.api.Timeout(10)
+    void versionTwelveValidatesDeeplyNestedOrRulesWithoutBranchExplosion() throws Exception {
+        assertNestedVisibilityRuleValid("OR", "OR");
+    }
+
+    @Test
+    @org.junit.jupiter.api.Timeout(10)
+    void versionTwelveValidatesMixedAndOrRulesWithoutBranchExplosion() throws Exception {
+        assertNestedVisibilityRuleValid("AND", "OR");
+    }
+
+    @Test
+    void versionTwelveInvalidNestedVisibilityReportsItemPath() throws Exception {
+        ObjectNode snapshot = versionTwelveSnapshot();
         ObjectNode binding = (ObjectNode) snapshot.withArray("apiBindings").get(0);
-        JsonNode rule = objectMapper.readTree("{\"op\":\"permission\",\"value\":\"users:read\"}");
-        for (int i = 0; i < VisibilityRuleEvaluator.MAX_DEPTH; i++) {
-            rule = objectMapper.createObjectNode().put("op", "NOT").set("rule", rule);
-        }
+        binding.set("visibilityRule", objectMapper.readTree(
+                "{\"op\":\"AND\",\"rules\":[{\"op\":\"field\",\"field\":\"status\"}]}"));
+
+        assertThat(validator.validate("1.2.0", snapshot))
+                .anySatisfy(error -> {
+                    assertThat(error.path()).isEqualTo(
+                            "$.snapshot.apiBindings[0].visibilityRule.rules[0].equals");
+                    assertThat(error.message()).isNotBlank();
+                });
+    }
+
+    @Test
+    void versionTwelveVisibilityDepthMatchesEvaluatorBoundary() throws Exception {
+        ObjectNode snapshot = versionTwelveSnapshot();
+        ObjectNode binding = (ObjectNode) snapshot.withArray("apiBindings").get(0);
+        JsonNode rule = nestedVisibilityRule(VisibilityRuleEvaluator.MAX_DEPTH, "NOT", "NOT");
         binding.set("visibilityRule", rule);
         var context = new VisibilityRuleEvaluator.Context(java.util.Set.of("users:read"), java.util.Set.of(), objectMapper.createObjectNode());
         assertThat(validator.validate("1.2.0", snapshot)).isEmpty();
@@ -466,6 +495,36 @@ class MetadataSchemaValidatorTest {
         assertThat(validator.validate("1.2.0", snapshot))
                 .contains(new ValidationError("$.snapshot.apiBindings[0].visibilityRule", "visibility rule exceeds maximum nesting depth of 64"));
         assertThat(VisibilityRuleEvaluator.evaluate(tooDeep, context)).isFalse();
+    }
+
+    private void assertNestedVisibilityRuleValid(String firstOperator, String secondOperator) throws Exception {
+        ObjectNode snapshot = versionTwelveSnapshot();
+        JsonNode rule = nestedVisibilityRule(16, firstOperator, secondOperator);
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).set("visibilityRule", rule);
+        var context = new VisibilityRuleEvaluator.Context(
+                java.util.Set.of("users:read"), java.util.Set.of(), objectMapper.createObjectNode());
+        assertThat(validator.validate("1.2.0", snapshot)).isEmpty();
+        assertThat(VisibilityRuleEvaluator.evaluate(rule, context)).isTrue();
+    }
+
+    private JsonNode nestedVisibilityRule(int depth, String firstOperator, String secondOperator) throws Exception {
+        JsonNode rule = objectMapper.readTree("{\"op\":\"permission\",\"value\":\"users:read\"}");
+        for (int i = 0; i < depth; i++) {
+            String operator = i % 2 == 0 ? firstOperator : secondOperator;
+            ObjectNode parent = objectMapper.createObjectNode().put("op", operator);
+            if ("NOT".equals(operator)) {
+                parent.set("rule", rule);
+            } else {
+                parent.putArray("rules").add(rule);
+            }
+            rule = parent;
+        }
+        return rule;
+    }
+
+    private ObjectNode versionTwelveSnapshot() throws Exception {
+        return (ObjectNode) loadExample("metadata/examples/many-to-many-1.2.0.json")
+                .path("metadataVersion").path("snapshot").deepCopy();
     }
 
     private JsonNode loadExample(String path) throws Exception {

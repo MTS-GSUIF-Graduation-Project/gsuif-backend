@@ -22,6 +22,19 @@ class BindingRelationshipsTest {
                 .anyMatch(error -> error.message().contains("cycle"));
     }
 
+    @Test
+    void validatesLinkedComponentsWithoutParentChildRelationship() {
+        ObjectNode record = mapper.createObjectNode();
+        record.putArray("components").addObject().put("id", "existing");
+        record.putArray("apiBindings").addObject()
+                .putArray("linkedComponentIds").add("existing").add("missing");
+
+        assertThat(BindingRelationships.validate(record, "$.snapshot"))
+                .containsExactly(new MetadataSchemaValidator.ValidationError(
+                        "$.snapshot.apiBindings[0].linkedComponentIds[1]",
+                        "linked component does not exist"));
+    }
+
     private ObjectNode chain(boolean cycle) {
         ObjectNode record = mapper.createObjectNode();
         ArrayNode components = record.putArray("components");
