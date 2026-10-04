@@ -77,6 +77,10 @@ class GsuifJpaMappingTest {
         run.setToolName("TemplateOnlyProvider");
         run.setToolVersion("1.0.0");
         run.setStatus(GenerationRunStatus.SUCCESS);
+        run.setCompileExitCode(0);
+        run.setTestExitCode(0);
+        run.setCompileOutput("compile passed");
+        run.setTestOutput("test passed");
         run.setTriggeringUser(user);
         entityManager.persist(run);
 
@@ -112,6 +116,11 @@ class GsuifJpaMappingTest {
         GeneratedArtifact reloadedArtifact = entityManager.find(GeneratedArtifact.class, artifact.getId());
         assertThat(reloadedArtifact.getComponentId()).isNull();
         assertThat(reloadedArtifact.getGenerationRun().getStatus()).isEqualTo(GenerationRunStatus.SUCCESS);
+        GenerationRun reloadedRun = entityManager.find(GenerationRun.class, run.getId());
+        assertThat(reloadedRun.getCompileExitCode()).isZero();
+        assertThat(reloadedRun.getTestExitCode()).isZero();
+        assertThat(reloadedRun.getCompileOutput()).isEqualTo("compile passed");
+        assertThat(reloadedRun.getTestOutput()).isEqualTo("test passed");
     }
 
     @Test
