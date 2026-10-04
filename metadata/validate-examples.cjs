@@ -27,9 +27,13 @@ const schemaFiles = [
   "component-1.1.0.schema.json",
   "page-1.1.0.schema.json",
   "metadata-version-1.1.0.schema.json",
+  "visibility-rule-1.2.0.schema.json",
+  "api-binding-1.2.0.schema.json",
+  "page-1.2.0.schema.json",
+  "metadata-version-1.2.0.schema.json",
 ];
 
-const exampleFiles = ["simple.json", "one-to-many.json", "many-to-many.json"];
+const exampleFiles = ["simple.json", "one-to-many.json", "many-to-many.json", "many-to-many-1.2.0.json"];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -41,15 +45,55 @@ function formatErrors(errors) {
     .join("\n");
 }
 
+function validRelationships(record) {
+  const componentIds = new Set(record.components.map((component) => component.id));
+  const childIds = new Set();
+  const edges = new Map();
+  for (const binding of record.apiBindings) {
+    for (const linked of binding.linkedComponentIds || []) {
+      if (!componentIds.has(linked)) return false;
+    }
+    const parent = binding.parentComponentId;
+    const children = binding.childComponentIds;
+    if (parent === undefined && children === undefined) continue;
+    if (!parent || !Array.isArray(children) || children.length === 0 || !componentIds.has(parent)) return false;
+    for (const child of children) {
+      if (!componentIds.has(child) || child === parent || childIds.has(child)) return false;
+      childIds.add(child);
+      if (!edges.has(parent)) edges.set(parent, []);
+      edges.get(parent).push(child);
+    }
+  }
+  const active = new Set(), done = new Set();
+  function cyclic(node) {
+    if (active.has(node)) return true;
+    if (done.has(node)) return false;
+    active.add(node);
+    for (const child of edges.get(node) || []) if (cyclic(child)) return true;
+    active.delete(node);
+    done.add(node);
+    return false;
+  }
+  return ![...edges.keys()].some(cyclic);
+}
+
 const ajv = new Ajv2020({
   allErrors: true,
   strict: true,
+  // Visibility field comparisons deliberately accept any JSON scalar.
+  allowUnionTypes: true,
 });
 addFormats(ajv);
 
 for (const fileName of schemaFiles) {
   const schema = readJson(path.join(schemaDir, fileName));
-  ajv.addSchema(schema);
+  // The binding's ../ reference resolves to a root-relative URI in Ajv.
+  // Register that alias while retaining the schema's classpath-compatible $id
+  // and recursive # references used by the JVM validator.
+  const key = fileName === "visibility-rule-1.2.0.schema.json"
+    ? "/visibility-rule-1.2.0.schema.json"
+    : undefined;
+  ajv.addSchema(schema, key);
 }
 
 const validators = {
@@ -61,6 +105,9 @@ const validators = {
   component11: ajv.getSchema("gsuif/component-1.1.0.schema.json"),
   page11: ajv.getSchema("gsuif/page-1.1.0.schema.json"),
   metadataVersion11: ajv.getSchema("gsuif/metadata-version-1.1.0.schema.json"),
+  apiBinding12: ajv.getSchema("gsuif/api-binding-1.2.0.schema.json"),
+  page12: ajv.getSchema("gsuif/page-1.2.0.schema.json"),
+  metadataVersion12: ajv.getSchema("gsuif/metadata-version-1.2.0.schema.json"),
 };
 
 if (Object.values(validators).some((validate) => !validate)) {
@@ -77,8 +124,8 @@ for (const fileName of exampleFiles) {
   const bundle = readJson(filePath);
   const checks = [
     ["project", validators.project, bundle.project],
-    ["page", validators.page, bundle.page],
-    ["metadataVersion", validators.metadataVersion, bundle.metadataVersion],
+    ["page", fileName.includes("1.2.0") ? validators.page12 : validators.page, bundle.page],
+    ["metadataVersion", fileName.includes("1.2.0") ? validators.metadataVersion12 : validators.metadataVersion, bundle.metadataVersion],
   ];
 
   for (const [label, validate, instance] of checks) {
@@ -91,6 +138,14 @@ for (const fileName of exampleFiles) {
     if (!ok) {
       failed += 1;
       console.error(`${fileName} → ${label} failed:\n${formatErrors(validate.errors)}`);
+    }
+  }
+  if (fileName.includes("1.2.0")) {
+    for (const [label, record] of [["page", bundle.page], ["snapshot", bundle.metadataVersion.snapshot]]) {
+      if (!validRelationships(record)) {
+        failed += 1;
+        console.error(`${fileName}: ${label} has invalid component relationships`);
+      }
     }
   }
 }
@@ -151,6 +206,74 @@ example11.page.components = example11.metadataVersion.snapshot.components;
 if (!validators.page11(example11.page)) {
   failed += 1;
   console.error(`1.1.0 page failed:\n${formatErrors(validators.page11.errors)}`);
+}
+const example12 = readJson(path.join(examplesDir, "many-to-many-1.2.0.json"));
+const clone = (value) => JSON.parse(JSON.stringify(value));
+const nestedVisibilityRule = (operators) => operators.reduce(
+  (rule, op) => op === "NOT" ? { op, rule } : { op, rules: [rule] },
+  { op: "permission", value: "users:read" },
+);
+for (const [label, operators] of [
+  ["nested AND", Array(16).fill("AND")],
+  ["nested OR", Array(16).fill("OR")],
+  ["mixed AND/OR", Array.from({ length: 16 }, (_, index) => index % 2 ? "OR" : "AND")],
+]) {
+  for (const target of ["page12", "metadataVersion12"]) {
+    const instance = clone(target === "page12" ? example12.page : example12.metadataVersion);
+    const record = target === "page12" ? instance : instance.snapshot;
+    record.apiBindings[0].visibilityRule = nestedVisibilityRule(operators);
+    if (!validators[target](instance)) {
+      failed++;
+      console.error(
+        `1.2.0 ${label} failed for ${target}:\n${formatErrors(validators[target].errors)}`,
+      );
+    }
+  }
+}
+// Exercise the scalar union and recursive references through both public schemas.
+for (const equals of ["approved", 42, true, null, {}, []]) {
+  for (const target of ["page12", "metadataVersion12"]) {
+    const instance = clone(target === "page12" ? example12.page : example12.metadataVersion);
+    const record = target === "page12" ? instance : instance.snapshot;
+    record.apiBindings[0].visibilityRule = {
+      op: "NOT", rule: { op: "AND", rules: [{ op: "field", field: "status", equals }] },
+    };
+    const expected = equals === null || typeof equals !== "object";
+    if (validators[target](instance) !== expected) {
+      failed++;
+      console.error(`1.2.0 nested field comparison ${JSON.stringify(equals)}: expected ${expected} for ${target}`);
+    }
+  }
+}
+for (const [label, mutate] of [
+  ["malformed parent UUID", (v) => { v.apiBindings[0].parentComponentId = "invalid"; }],
+  ["malformed child UUID", (v) => { v.apiBindings[0].childComponentIds[0] = "invalid"; }],
+  ["duplicate child", (v) => { v.apiBindings[0].childComponentIds.push(v.apiBindings[0].childComponentIds[0]); }],
+  ["unpaired relationship", (v) => { delete v.apiBindings[0].parentComponentId; }],
+  ["unsupported rule", (v) => { v.apiBindings[0].visibilityRule = { op: "NOT", rule: { op: "unsupported" } }; }],
+]) {
+  for (const [target, original] of [["page12", example12.page], ["metadataVersion12", example12.metadataVersion]]) {
+    const instance = clone(original);
+    mutate(target === "page12" ? instance : instance.snapshot);
+    if (validators[target](instance)) { failed++; console.error(`1.2.0 ${label} accepted by ${target}`); }
+  }
+}
+for (const target of ["page", "page11", "metadataVersion", "metadataVersion11"]) {
+  const instance = target.startsWith("page") ? example12.page : example12.metadataVersion;
+  if (validators[target](instance)) { failed++; console.error(`${target} accepted 1.2.0 binding fields`); }
+}
+for (const [label, mutate] of [
+  ["missing linked", (v) => { v.apiBindings[2].linkedComponentIds[0] = "12000000-0000-4000-8000-000000000099"; }],
+  ["missing parent", (v) => { v.apiBindings[0].parentComponentId = "12000000-0000-4000-8000-000000000099"; }],
+  ["missing child", (v) => { v.apiBindings[0].childComponentIds[0] = "12000000-0000-4000-8000-000000000099"; }],
+  ["self link", (v) => { v.apiBindings[0].childComponentIds[0] = v.apiBindings[0].parentComponentId; }],
+  ["shared child", (v) => { v.apiBindings[1].childComponentIds[0] = v.apiBindings[0].childComponentIds[0]; }],
+  ["cycle", (v) => { v.apiBindings[2].parentComponentId = v.apiBindings[0].childComponentIds[0]; v.apiBindings[2].childComponentIds = [v.apiBindings[0].parentComponentId]; }],
+]) {
+  for (const original of [example12.page, example12.metadataVersion.snapshot]) {
+    const record = clone(original); mutate(record);
+    if (validRelationships(record)) { failed++; console.error(`1.2.0 ${label} relationship accepted`); }
+  }
 }
 const invalidFiles = fs
   .readdirSync(invalidDir)

@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "visibility-rule-1.2.0.schema.json",
+  "title": "VisibilityRule",
+  "description": "Pure visibility predicate; does not grant authorization.",
+  "type": "object",
+  "required": [
+    "op"
+  ],
+  "properties": {
+    "op": {
+      "enum": [
+        "permission",
+        "role",
+        "field",
+        "AND",
+        "OR",
+        "NOT"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "op"
+        ],
+        "properties": {
+          "op": {
+            "const": "permission"
+          }
+        }
+      },
+      "then": {
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "value"
+        ],
+        "properties": {
+          "op": {
+            "const": "permission"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "op"
+        ],
+        "properties": {
+          "op": {
+            "const": "role"
+          }
+        }
+      },
+      "then": {
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "value"
+        ],
+        "properties": {
+          "op": {
+            "const": "role"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "op"
+        ],
+        "properties": {
+          "op": {
+            "const": "field"
+          }
+        }
+      },
+      "then": {
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "field",
+          "equals"
+        ],
+        "properties": {
+          "op": {
+            "const": "field"
+          },
+          "field": {
+            "type": "string",
+            "minLength": 1
+          },
+          "equals": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "op"
+        ],
+        "properties": {
+          "op": {
+            "const": "AND"
+          }
+        }
+      },
+      "then": {
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "rules"
+        ],
+        "properties": {
+          "op": {
+            "const": "AND"
+          },
+          "rules": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "op"
+        ],
+        "properties": {
+          "op": {
+            "const": "OR"
+          }
+        }
+      },
+      "then": {
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "rules"
+        ],
+        "properties": {
+          "op": {
+            "const": "OR"
+          },
+          "rules": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "op"
+        ],
+        "properties": {
+          "op": {
+            "const": "NOT"
+          }
+        }
+      },
+      "then": {
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "rule"
+        ],
+        "properties": {
+          "op": {
+            "const": "NOT"
+          },
+          "rule": {
+            "$ref": "#"
+          }
+        }
+      }
+    }
+  ]
+}
