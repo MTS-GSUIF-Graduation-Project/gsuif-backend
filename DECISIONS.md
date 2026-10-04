@@ -63,6 +63,12 @@ All other acceptance criteria remained unchanged.
   Unsupported method values rejected first by structural schema validation
   retain the existing `enum` error in the HTTP 400 response.
 
+## SCRUM-47 diagnostics decision
+
+| ID | Decision | Source | Status | Approved by |
+|----|----------|--------|--------|-------------|
+| DEC-030 | SCRUM-47 persists bounded build output and exit codes and makes them retrievable through an internal generation-run lookup by ID. SCRUM-48 owns the REST `GET /api/v1/generation/runs/{id}` response that exposes those diagnostics to clients. SCRUM-47 adds no REST endpoint. | SCRUM-47 planning approval, 2026-10-04 | CONFIRMED | Esraa Abdelrazek |
+
 
 ## Database Rules
 

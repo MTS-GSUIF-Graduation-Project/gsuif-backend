@@ -66,6 +66,61 @@ class GenerationRunServiceIntegrationTest {
         assertTrue(saved.getTestOutput().contains("COMPILATION ERROR"), saved.getTestOutput());
     }
 
+    @Test void mavenConfigCannotTurnBrokenJavaIntoSuccess() {
+        var fixture = fixture();
+        var bypass = Map.of(".mvn/maven.config",
+                "-Dmaven.main.skip=true\n-Dmaven.test.skip=true\n".getBytes(StandardCharsets.UTF_8));
+        UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), brokenResult(), bypass).getId();
+        entityManager.flush(); entityManager.clear();
+        GenerationRun saved = realService().findById(id).orElseThrow();
+        assertEquals(GenerationRunStatus.BUILD_FAILED, saved.getStatus());
+        assertNull(saved.getCompileExitCode(), saved.getCompileOutput());
+        assertTrue(saved.getCompileOutput().contains("Unsupported consumer input path"), saved.getCompileOutput());
+    }
+
+    @Test void realExecutedAssertionFailurePersistsTestFailure() {
+        var fixture = fixture();
+        var failingTest = Map.of("src/test/java/example/GeneratedTest.java", """
+                package example;
+                import org.junit.jupiter.api.Test;
+                import static org.junit.jupiter.api.Assertions.fail;
+                class GeneratedTest {
+                    @Test void actualAssertionFailure() { fail("ASSERTION_SENTINEL"); }
+                }
+                """.getBytes(StandardCharsets.UTF_8));
+        UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), result(), failingTest).getId();
+        entityManager.flush(); entityManager.clear();
+        GenerationRun saved = realService().findById(id).orElseThrow();
+        assertEquals(GenerationRunStatus.BUILD_FAILED, saved.getStatus());
+        assertEquals(0, saved.getCompileExitCode(), saved.getCompileOutput());
+        assertNotEquals(0, saved.getTestExitCode(), saved.getTestOutput());
+        assertTrue(saved.getTestOutput().contains("ASSERTION_SENTINEL"), saved.getTestOutput());
+    }
+
+    @Test void successfulMavenTestGoalDoesNotRequireDiscoveredTests() {
+        for (Map<String, byte[]> testInputs : List.of(
+                Map.<String, byte[]>of(),
+                Map.of("src/test/java/example/UndiscoveredCheck.java", """
+                        package example;
+                        import org.junit.jupiter.api.Test;
+                        class UndiscoveredCheck { @Test void runsOnlyWhenSelected() { throw new AssertionError(); } }
+                        """.getBytes(StandardCharsets.UTF_8)),
+                Map.of("src/test/java/example/GeneratedTest.java", """
+                        package example;
+                        import org.junit.jupiter.api.Disabled;
+                        import org.junit.jupiter.api.Test;
+                        class GeneratedTest { @Disabled @Test void intentionallySkipped() { throw new AssertionError(); } }
+                        """.getBytes(StandardCharsets.UTF_8)))) {
+            var fixture = fixture();
+            UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), result(), testInputs).getId();
+            entityManager.flush(); entityManager.clear();
+            GenerationRun saved = realService().findById(id).orElseThrow();
+            assertEquals(GenerationRunStatus.SUCCESS, saved.getStatus(), saved.getCompileOutput() + "\n" + saved.getTestOutput());
+            assertEquals(0, saved.getCompileExitCode());
+            assertEquals(0, saved.getTestExitCode());
+        }
+    }
+
     @Test void passingCompileAndTestPersistSuccess() {
         var calls = new ArrayList<String>();
         var service = service((project, goal) -> {

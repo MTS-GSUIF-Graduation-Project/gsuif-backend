@@ -19,6 +19,9 @@ import java.util.concurrent.TimeUnit;
 public final class ConsumerBuildValidator {
     public static final int OUTPUT_LIMIT = 16000;
     private static final Duration COMMAND_LIMIT = Duration.ofMinutes(5);
+    private static final String TRUNCATION_MARKER = "\n[build output truncated]\n";
+    private static final int OUTPUT_HEAD = 4000;
+    private static final int OUTPUT_TAIL = OUTPUT_LIMIT - OUTPUT_HEAD - TRUNCATION_MARKER.length();
 
     public record CommandResult(Integer exitCode, String output) {
         public CommandResult { output = bounded(output); }
@@ -58,8 +61,16 @@ public final class ConsumerBuildValidator {
             Files.createDirectories(stagingRoot);
             project = Files.createTempDirectory(stagingRoot, "consumer-");
             Set<Path> staged = new HashSet<>();
-            for (var artifact : result.artifacts()) stage(project, artifact.relativePath(), artifact.bytes(), staged);
-            for (var input : extraInputs.entrySet()) stage(project, input.getKey(), input.getValue(), staged);
+            for (var artifact : result.artifacts()) {
+                Path path = safeRelativePath(artifact.relativePath());
+                if (isConsumerInput(path)) stage(project, path, artifact.bytes(), staged);
+                else if (!isAngularArtifact(path)) throw new IllegalArgumentException("Unsupported consumer input path: " + path);
+            }
+            for (var input : extraInputs.entrySet()) {
+                Path path = safeRelativePath(input.getKey());
+                if (!isConsumerInput(path)) throw new IllegalArgumentException("Unsupported consumer input path: " + path);
+                stage(project, path, input.getValue(), staged);
+            }
             Files.writeString(project.resolve("pom.xml"), result.consumerBuild().mavenPom("com.example", "generated-consumer"));
             compile = runner.run(project, "compile");
             if (!compile.passed()) return new BuildResult(compile, null);
@@ -79,11 +90,34 @@ public final class ConsumerBuildValidator {
                 : new BuildResult(compile, new CommandResult(null, message));
     }
 
-    private static void stage(Path root, String relative, byte[] bytes, Set<Path> staged) throws IOException {
-        if (relative == null || bytes == null || relative.indexOf('\\') >= 0 || relative.indexOf(':') >= 0)
+    private static Path safeRelativePath(String relative) {
+        if (relative == null || relative.isBlank() || relative.indexOf('\\') >= 0 || relative.indexOf(':') >= 0)
             throw new IllegalArgumentException("Unsafe consumer input path");
+        Path path = Path.of(relative);
+        if (path.isAbsolute() || !path.normalize().equals(path) || path.toString().equals("."))
+            throw new IllegalArgumentException("Unsafe consumer input path: " + relative);
+        for (Path part : path)
+            if (part.toString().equals(".") || part.toString().equals(".."))
+                throw new IllegalArgumentException("Unsafe consumer input path: " + relative);
+        return path;
+    }
+
+    private static boolean isConsumerInput(Path path) {
+        String value = path.toString().replace('\\', '/');
+        if (value.endsWith(".class") || value.endsWith(".jar")) return false;
+        return ((value.startsWith("src/main/java/") || value.startsWith("src/test/java/")) && value.endsWith(".java"))
+                || value.startsWith("src/main/resources/") || value.startsWith("src/test/resources/");
+    }
+
+    private static boolean isAngularArtifact(Path path) {
+        String value = path.toString().replace('\\', '/');
+        return value.startsWith("src/app/generated/") && (value.endsWith(".ts") || value.endsWith(".html"));
+    }
+
+    private static void stage(Path root, Path relative, byte[] bytes, Set<Path> staged) throws IOException {
+        if (bytes == null) throw new IllegalArgumentException("Consumer input bytes are missing: " + relative);
         Path destination = root.resolve(relative).normalize();
-        if (!destination.startsWith(root) || destination.equals(root) || destination.equals(root.resolve("pom.xml")))
+        if (!destination.startsWith(root) || destination.equals(root))
             throw new IllegalArgumentException("Unsafe consumer input path: " + relative);
         if (!staged.add(destination)) throw new IllegalArgumentException("Duplicate consumer input path: " + relative);
         Files.createDirectories(destination.getParent());
@@ -101,16 +135,13 @@ public final class ConsumerBuildValidator {
         if (repository != null && !repository.isBlank())
             command.add("-Dmaven.repo.local=" + Path.of(repository).toAbsolutePath().normalize());
         Process process = new ProcessBuilder(command).directory(project.toFile()).redirectErrorStream(true).start();
-        StringBuilder output = new StringBuilder();
+        OutputCapture output = new OutputCapture();
         Thread reader = Thread.ofVirtual().start(() -> {
             try (var stream = new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)) {
                 char[] chunk = new char[2048];
                 int count;
                 while ((count = stream.read(chunk)) != -1) {
-                    synchronized (output) {
-                        int remaining = OUTPUT_LIMIT - output.length();
-                        if (remaining > 0) output.append(chunk, 0, Math.min(count, remaining));
-                    }
+                    output.append(chunk, count);
                 }
             } catch (IOException ignored) { /* process termination closes the pipe */ }
         });
@@ -126,10 +157,8 @@ public final class ConsumerBuildValidator {
             throw ex;
         }
         reader.join(5000);
-        String captured;
-        synchronized (output) { captured = output.toString(); }
         return new CommandResult(finished ? process.exitValue() : null,
-                captured + (finished ? "" : "\nMaven " + goal + " timed out"));
+                finished ? output.result() : output.resultWithSuffix("\nMaven " + goal + " timed out"));
     }
 
     private static void stop(Process process) {
@@ -139,7 +168,40 @@ public final class ConsumerBuildValidator {
 
     private static String bounded(String output) {
         String value = output == null ? "" : output;
-        return value.length() <= OUTPUT_LIMIT ? value : value.substring(0, OUTPUT_LIMIT);
+        return value.length() <= OUTPUT_LIMIT ? value
+                : value.substring(0, OUTPUT_HEAD) + TRUNCATION_MARKER + value.substring(value.length() - OUTPUT_TAIL);
+    }
+
+    static final class OutputCapture {
+        private final StringBuilder output = new StringBuilder();
+        private boolean truncated;
+
+        synchronized void append(char[] chunk, int count) {
+            output.append(chunk, 0, count);
+            trim();
+        }
+
+        synchronized void append(String message) {
+            output.append(message);
+            trim();
+        }
+
+        private void trim() {
+            if (output.length() > (truncated ? OUTPUT_LIMIT - TRUNCATION_MARKER.length() : OUTPUT_LIMIT)) {
+                output.delete(OUTPUT_HEAD, output.length() - OUTPUT_TAIL);
+                truncated = true;
+            }
+        }
+
+        synchronized String result() {
+            return truncated ? output.substring(0, OUTPUT_HEAD) + TRUNCATION_MARKER + output.substring(OUTPUT_HEAD)
+                    : output.toString();
+        }
+
+        synchronized String resultWithSuffix(String suffix) {
+            append(suffix);
+            return result();
+        }
     }
 
     private static void deleteTree(Path root) {
