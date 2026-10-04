@@ -77,12 +77,20 @@ function validRelationships(record) {
 const ajv = new Ajv2020({
   allErrors: true,
   strict: true,
+  // Visibility field comparisons deliberately accept any JSON scalar.
+  allowUnionTypes: true,
 });
 addFormats(ajv);
 
 for (const fileName of schemaFiles) {
   const schema = readJson(path.join(schemaDir, fileName));
-  ajv.addSchema(schema);
+  // The binding's ../ reference resolves to a root-relative URI in Ajv.
+  // Register that alias while retaining the schema's classpath-compatible $id
+  // and recursive # references used by the JVM validator.
+  const key = fileName === "visibility-rule-1.2.0.schema.json"
+    ? "/visibility-rule-1.2.0.schema.json"
+    : undefined;
+  ajv.addSchema(schema, key);
 }
 
 const validators = {
@@ -198,6 +206,21 @@ if (!validators.page11(example11.page)) {
 }
 const example12 = readJson(path.join(examplesDir, "many-to-many-1.2.0.json"));
 const clone = (value) => JSON.parse(JSON.stringify(value));
+// Exercise the scalar union and recursive references through both public schemas.
+for (const equals of ["approved", 42, true, null, {}, []]) {
+  for (const target of ["page12", "metadataVersion12"]) {
+    const instance = clone(target === "page12" ? example12.page : example12.metadataVersion);
+    const record = target === "page12" ? instance : instance.snapshot;
+    record.apiBindings[0].visibilityRule = {
+      op: "NOT", rule: { op: "AND", rules: [{ op: "field", field: "status", equals }] },
+    };
+    const expected = equals === null || typeof equals !== "object";
+    if (validators[target](instance) !== expected) {
+      failed++;
+      console.error(`1.2.0 nested field comparison ${JSON.stringify(equals)}: expected ${expected} for ${target}`);
+    }
+  }
+}
 for (const [label, mutate] of [
   ["malformed parent UUID", (v) => { v.apiBindings[0].parentComponentId = "invalid"; }],
   ["malformed child UUID", (v) => { v.apiBindings[0].childComponentIds[0] = "invalid"; }],
