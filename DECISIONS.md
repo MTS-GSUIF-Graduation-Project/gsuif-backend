@@ -63,6 +63,21 @@ All other acceptance criteria remained unchanged.
   Unsupported method values rejected first by structural schema validation
   retain the existing `enum` error in the HTTP 400 response.
 
+## SCRUM-47 diagnostics decision
+
+| ID | Decision | Source | Status | Approved by |
+|----|----------|--------|--------|-------------|
+| DEC-030 | SCRUM-47 owns build validation, persists bounded build output and exit codes, and makes diagnostics retrievable through an internal generation-run lookup by ID. SCRUM-48 owns the REST `GET /api/v1/generation/runs/{id}` response that exposes those diagnostics to clients. SCRUM-47 adds no REST endpoint. | Team decision, 2026-10-05 | CONFIRMED | Team |
+
+### SCRUM-47 zero-test success rule
+
+The team confirmed that SCRUM-47 records `SUCCESS` when the generated Java
+consumer's Maven compile and test goals both succeed. No minimum executed-test
+count is required for SCRUM-47. Maven may discover or execute zero tests, so
+`SUCCESS` does not guarantee that any test executed. A stricter rule for future
+generation work requires a separate decision; this clarification preserves the
+saved SCRUM-47 acceptance criteria.
+
 
 ## Database Rules
 

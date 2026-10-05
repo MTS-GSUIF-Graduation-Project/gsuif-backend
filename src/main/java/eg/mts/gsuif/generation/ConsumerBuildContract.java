@@ -5,7 +5,11 @@ import java.util.List;
 /** Versioned build requirements for a project consuming generated Java sources. */
 public record ConsumerBuildContract(String contractVersion, int javaVersion, Dependency parent,
         List<Dependency> dependencies, String methodSecurityPrerequisite) {
-    public record Dependency(String groupId, String artifactId, String version) { }
+    public record Dependency(String groupId, String artifactId, String version, String scope) {
+        public Dependency(String groupId, String artifactId, String version) {
+            this(groupId, artifactId, version, null);
+        }
+    }
 
     public ConsumerBuildContract { dependencies = List.copyOf(dependencies); }
 
@@ -19,7 +23,8 @@ public record ConsumerBuildContract(String contractVersion, int javaVersion, Dep
                         new Dependency("org.springframework.boot", "spring-boot-starter-validation", null),
                         new Dependency("org.hibernate.orm", "hibernate-envers", null),
                         new Dependency("org.springdoc", "springdoc-openapi-starter-webmvc-ui", "3.0.3"),
-                        new Dependency("org.openapitools", "jackson-databind-nullable", "0.2.6")),
+                        new Dependency("org.openapitools", "jackson-databind-nullable", "0.2.6"),
+                        new Dependency("org.springframework.boot", "spring-boot-starter-test", null, "test")),
                 "Enable Spring method security in the consumer with @EnableMethodSecurity; configure authentication and authorization there.");
     }
 
@@ -39,6 +44,7 @@ public record ConsumerBuildContract(String contractVersion, int javaVersion, Dep
             pom.append("<dependency><groupId>").append(dependency.groupId())
                     .append("</groupId><artifactId>").append(dependency.artifactId()).append("</artifactId>");
             if (dependency.version() != null) pom.append("<version>").append(dependency.version()).append("</version>");
+            if (dependency.scope() != null) pom.append("<scope>").append(dependency.scope()).append("</scope>");
             pom.append("</dependency>");
         }
         return pom.append("</dependencies></project>").toString();

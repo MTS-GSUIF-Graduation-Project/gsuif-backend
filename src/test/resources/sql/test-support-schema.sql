@@ -1,5 +1,5 @@
 -- Test-only schema for the pre-existing WorkOrder entity, which is outside T-14.
--- The GSUIF tables under test are loaded from sql/V1__init_schema.sql.
+-- The GSUIF tables under test are loaded from sql/V1__init_schema.sql followed by sql/V2__add_build_diagnostics.sql.
 CREATE TABLE work_orders (
     id               UUID                     NOT NULL,
     order_number     VARCHAR(64)              NOT NULL,

@@ -63,6 +63,18 @@ public class GenerationRun extends AuditableEntity {
     @Column(name = "status", nullable = false, length = 20)
     private GenerationRunStatus status;
 
+    @Column(name = "compile_exit_code")
+    private Integer compileExitCode;
+
+    @Column(name = "test_exit_code")
+    private Integer testExitCode;
+
+    @Column(name = "compile_output", length = 16000)
+    private String compileOutput;
+
+    @Column(name = "test_output", length = 16000)
+    private String testOutput;
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(
             name = "triggering_user_id",
@@ -126,6 +138,15 @@ public class GenerationRun extends AuditableEntity {
     public void setStatus(GenerationRunStatus status) {
         this.status = status;
     }
+
+    public Integer getCompileExitCode() { return compileExitCode; }
+    public void setCompileExitCode(Integer value) { compileExitCode = value; }
+    public Integer getTestExitCode() { return testExitCode; }
+    public void setTestExitCode(Integer value) { testExitCode = value; }
+    public String getCompileOutput() { return compileOutput; }
+    public void setCompileOutput(String value) { compileOutput = value; }
+    public String getTestOutput() { return testOutput; }
+    public void setTestOutput(String value) { testOutput = value; }
 
     public GsuifUser getTriggeringUser() {
         return triggeringUser;

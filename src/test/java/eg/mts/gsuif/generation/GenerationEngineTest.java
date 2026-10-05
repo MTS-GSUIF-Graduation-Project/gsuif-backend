@@ -336,7 +336,11 @@ class GenerationEngineTest {
                 : Path.of(System.getProperty("user.dir"), System.getProperty("os.name").startsWith("Windows") ? "mvnw.cmd" : "mvnw").toString();
         List<String> command = new ArrayList<>(List.of(executable, "-B", "-q", "-f", temporaryDirectory.resolve("pom.xml").toString(), "compile"));
         String repository = System.getProperty("maven.repo.local");
-        if (repository != null && !repository.isBlank()) command.add("-Dmaven.repo.local=" + repository);
+        if (repository != null && !repository.isBlank()) {
+            Path repositoryPath = Path.of(repository);
+            if (!repositoryPath.isAbsolute()) repositoryPath = Path.of(System.getProperty("user.dir")).resolve(repositoryPath);
+            command.add("-Dmaven.repo.local=" + repositoryPath.normalize().toAbsolutePath());
+        }
         Process process = new ProcessBuilder(command).directory(temporaryDirectory.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertEquals(0, process.waitFor(), "Standalone generated consumer failed to compile with only declared dependencies:\n" + output);
