@@ -67,17 +67,16 @@ All other acceptance criteria remained unchanged.
 
 | ID | Decision | Source | Status | Approved by |
 |----|----------|--------|--------|-------------|
-| DEC-030 | SCRUM-47 persists bounded build output and exit codes and makes them retrievable through an internal generation-run lookup by ID. SCRUM-48 owns the REST `GET /api/v1/generation/runs/{id}` response that exposes those diagnostics to clients. SCRUM-47 adds no REST endpoint. | SCRUM-47 planning approval, 2026-10-04 | CONFIRMED | Esraa Abdelrazek |
+| DEC-030 | SCRUM-47 owns build validation, persists bounded build output and exit codes, and makes diagnostics retrievable through an internal generation-run lookup by ID. SCRUM-48 owns the REST `GET /api/v1/generation/runs/{id}` response that exposes those diagnostics to clients. SCRUM-47 adds no REST endpoint. | Team decision, 2026-10-05 | CONFIRMED | Team |
 
-### SCRUM-47 review clarification awaiting team sign-off
+### SCRUM-47 zero-test success rule
 
-The current SCRUM-47 implementation records `SUCCESS` after generated Java
-compiles and the Maven `test` goal exits successfully, even if Maven discovers
-or executes zero tests. The task requester confirmed on 2026-10-04 that the
-approved SCRUM-47 contract keeps this Maven-goal rule. Whether to strengthen
-ADR-007 with a minimum executed-test count for future generation work remains
-open for team sign-off. This clarification does not change the saved SCRUM-47
-acceptance criteria or claim team approval.
+The team confirmed that SCRUM-47 records `SUCCESS` when the generated Java
+consumer's Maven compile and test goals both succeed. No minimum executed-test
+count is required for SCRUM-47. Maven may discover or execute zero tests, so
+`SUCCESS` does not guarantee that any test executed. A stricter rule for future
+generation work requires a separate decision; this clarification preserves the
+saved SCRUM-47 acceptance criteria.
 
 
 ## Database Rules
