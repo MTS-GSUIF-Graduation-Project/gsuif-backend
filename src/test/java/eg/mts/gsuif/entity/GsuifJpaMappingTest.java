@@ -88,6 +88,8 @@ class GsuifJpaMappingTest {
         artifact.setGenerationRun(run);
         artifact.setArtifactName("WorkOrderController.java");
         artifact.setArtifactType("java-source");
+        artifact.setRelativePath("src/main/java/WorkOrderController.java");
+        artifact.setTemplateVersion("1.0.0");
         artifact.setComponentId(null);
         entityManager.persist(artifact);
 
@@ -115,6 +117,8 @@ class GsuifJpaMappingTest {
 
         GeneratedArtifact reloadedArtifact = entityManager.find(GeneratedArtifact.class, artifact.getId());
         assertThat(reloadedArtifact.getComponentId()).isNull();
+        assertThat(reloadedArtifact.getRelativePath()).isEqualTo("src/main/java/WorkOrderController.java");
+        assertThat(reloadedArtifact.getTemplateVersion()).isEqualTo("1.0.0");
         assertThat(reloadedArtifact.getGenerationRun().getStatus()).isEqualTo(GenerationRunStatus.SUCCESS);
         GenerationRun reloadedRun = entityManager.find(GenerationRun.class, run.getId());
         assertThat(reloadedRun.getCompileExitCode()).isZero();

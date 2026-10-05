@@ -39,6 +39,13 @@ public class GenerationRun extends AuditableEntity {
     @Column(name = "id", nullable = false, updatable = false, length = 36)
     private UUID id;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "attempt_id", length = 36, unique = true)
+    private UUID attemptId;
+
+    public UUID getAttemptId() { return attemptId; }
+    public void setAttemptId(UUID attemptId) { this.attemptId = attemptId; }
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(
             name = "metadata_version_id",

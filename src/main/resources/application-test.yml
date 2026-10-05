@@ -10,6 +10,7 @@ spring:
       schema-locations:
         - classpath:sql/V1__init_schema.sql
         - classpath:sql/V2__add_build_diagnostics.sql
+        - classpath:sql/V3__add_generated_artifact_registry.sql
         - classpath:sql/test-support-schema.sql
   jpa:
     hibernate:

@@ -175,6 +175,7 @@
                 <includes>
                     <include>V1__init_schema.sql</include>
                     <include>V2__add_build_diagnostics.sql</include>
+                    <include>V3__add_generated_artifact_registry.sql</include>
                 </includes>
             </resource>
             <resource>
@@ -202,6 +203,7 @@
                 <includes>
                     <include>V1__init_schema.sql</include>
                     <include>V2__add_build_diagnostics.sql</include>
+                    <include>V3__add_generated_artifact_registry.sql</include>
                 </includes>
             </testResource>
         </testResources>
