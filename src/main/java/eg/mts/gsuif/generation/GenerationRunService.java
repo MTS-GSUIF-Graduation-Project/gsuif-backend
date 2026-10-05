@@ -4,7 +4,6 @@ import eg.mts.gsuif.entity.GenerationRun;
 import eg.mts.gsuif.entity.GenerationRunStatus;
 import eg.mts.gsuif.entity.GsuifUser;
 import eg.mts.gsuif.entity.MetadataVersion;
-import eg.mts.gsuif.generation.GenerationContext.Target;
 import eg.mts.gsuif.repository.GenerationRunRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -13,7 +12,6 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 /** Internal generation-run persistence and lookup; REST exposure belongs to SCRUM-48. */
@@ -30,12 +28,6 @@ public class GenerationRunService {
     public GenerationRunService(GenerationRunRepository runs, ConsumerBuildValidator validator) {
         this.runs = Objects.requireNonNull(runs);
         this.validator = Objects.requireNonNull(validator);
-    }
-
-    public GenerationRun generateAndRecord(GenerationEngine engine, MetadataVersion version,
-            GenerationSpecification specification, Set<Target> targets, String framework,
-            GsuifUser user, Map<String, byte[]> consumerInputs) {
-        return validateAndRecord(version, user, engine.generate(version, specification, targets, framework), consumerInputs);
     }
 
     /** Persists only after both build commands have completed or validation has failed. */

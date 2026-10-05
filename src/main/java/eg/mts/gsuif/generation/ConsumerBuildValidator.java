@@ -15,7 +15,13 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-/** Stages a standalone consumer and validates Java output with sequential Maven goals. */
+/**
+ * Stages a standalone consumer and validates Java output with sequential Maven goals.
+ * Abrupt JVM termination can leave a staging directory under target/generation-builds.
+ * Each validation uses a new directory, so an orphan is never reused. Normal completion
+ * removes its directory. An operator can remove leftovers when no validation is active;
+ * no startup sweep runs because it could delete an active build.
+ */
 public final class ConsumerBuildValidator {
     public static final int OUTPUT_LIMIT = 16000;
     private static final Duration COMMAND_LIMIT = Duration.ofMinutes(5);
