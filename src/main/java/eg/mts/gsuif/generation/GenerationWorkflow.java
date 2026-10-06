@@ -35,9 +35,17 @@ public class GenerationWorkflow {
             GenerationSpecification specification, Set<Target> targets, String framework,
             Map<String, byte[]> consumerInputs) {
         Objects.requireNonNull(attemptId);
+        String fingerprint = GenerationAttemptFingerprint.request(version, user, specification, targets, framework, consumerInputs);
+        var existing = runs.findByAttemptId(attemptId);
+        if (existing.isPresent()) {
+            GenerationRunService.requireSameAttempt(existing.get(), fingerprint);
+            return new CompletedAttempt(runs.readResult(existing.get()), existing.get());
+        }
         GenerationResult result = engine.generate(version, specification, targets, framework);
-        GenerationRun run = runs.validateAndRecord(attemptId, version, user, result, consumerInputs);
-        return new CompletedAttempt(result, run);
+        GenerationRun run = runs.validateAndRecord(attemptId, version, user, result, consumerInputs, fingerprint);
+        // A concurrent request may have recorded this attempt after our first lookup.
+        // Always return the result attached to the run that actually won.
+        return new CompletedAttempt(runs.readResult(run), run);
     }
 
     public record CompletedAttempt(GenerationResult result, GenerationRun run) { }

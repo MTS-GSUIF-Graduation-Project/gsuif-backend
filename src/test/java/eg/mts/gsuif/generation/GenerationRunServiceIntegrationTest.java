@@ -44,6 +44,7 @@ class GenerationRunServiceIntegrationTest {
         assertEquals(beforeFiles + 2, artifactRepository.count());
         var file = service.findFile(run.getId(), second.relativePath()).orElseThrow();
         assertEquals("2.0.0", file.getTemplateVersion());
+        assertArrayEquals(second.bytes(), service.readArtifact(run.getId(), second.relativePath()));
         assertEquals(fixture.version().getId(), file.getGenerationRun().getMetadataVersion().getId());
         assertTrue(service.findFile(run.getId(), "src/test/java/example/GeneratedTest.java").isEmpty());
         assertEquals(run.getId(), service.validateAndRecord(attempt, fixture.version(), fixture.user(), multi, inputs()).getId());
@@ -78,6 +79,7 @@ class GenerationRunServiceIntegrationTest {
         assertEquals(beforeFiles + result.artifacts().size(), artifactRepository.count());
         assertEquals("1.0.0", service.findFile(id, result.artifacts().getFirst().relativePath()).orElseThrow().getTemplateVersion());
         assertEquals("2.0.0", service.findFile(id, second.relativePath()).orElseThrow().getTemplateVersion());
+        assertArrayEquals(second.bytes(), service.readArtifact(id, second.relativePath()));
     }
 
     @Test void realMavenCompileAndTestPersistSuccess() {
@@ -88,6 +90,8 @@ class GenerationRunServiceIntegrationTest {
         assertEquals(GenerationRunStatus.SUCCESS, saved.getStatus(), saved.getCompileOutput() + "\n" + saved.getTestOutput());
         assertEquals(0, saved.getCompileExitCode());
         assertEquals(0, saved.getTestExitCode());
+        assertArrayEquals(result().artifacts().getFirst().bytes(), realService().readArtifact(id,
+                result().artifacts().getFirst().relativePath()));
         assertTrue(saved.getCompileOutput().contains("BUILD SUCCESS"));
         assertTrue(saved.getTestOutput().contains("BUILD SUCCESS"));
     }
@@ -104,6 +108,8 @@ class GenerationRunServiceIntegrationTest {
         assertTrue(saved.getCompileOutput().length() <= ConsumerBuildValidator.OUTPUT_LIMIT);
         assertNull(saved.getTestExitCode());
         assertNull(saved.getTestOutput());
+        assertArrayEquals(brokenResult().artifacts().getFirst().bytes(), realService().readArtifact(id,
+                brokenResult().artifacts().getFirst().relativePath()));
     }
 
     @Test void realMavenTestFailurePersistsBothExitCodes() {
