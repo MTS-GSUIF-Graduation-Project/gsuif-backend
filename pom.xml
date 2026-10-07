@@ -177,6 +177,7 @@
                     <include>V2__add_build_diagnostics.sql</include>
                     <include>V3__add_generated_artifact_registry.sql</include>
                     <include>V4__add_generation_attempt_fingerprint.sql</include>
+                    <include>V5__add_permission_role_permission.sql</include>
                 </includes>
             </resource>
             <resource>
@@ -206,6 +207,7 @@
                     <include>V2__add_build_diagnostics.sql</include>
                     <include>V3__add_generated_artifact_registry.sql</include>
                     <include>V4__add_generation_attempt_fingerprint.sql</include>
+                    <include>V5__add_permission_role_permission.sql</include>
                 </includes>
             </testResource>
         </testResources>
