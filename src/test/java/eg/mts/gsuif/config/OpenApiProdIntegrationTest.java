@@ -40,6 +40,8 @@ public class OpenApiProdIntegrationTest {
                 .andExpect(status().isNotFound());
         mockMvc.perform(get("/v3/api-docs/reference-api"))
                 .andExpect(status().isNotFound());
+        mockMvc.perform(get("/v3/api-docs/generation-api"))
+                .andExpect(status().isNotFound());
 
         // Swagger UI endpoints
         mockMvc.perform(get("/swagger-ui.html"))

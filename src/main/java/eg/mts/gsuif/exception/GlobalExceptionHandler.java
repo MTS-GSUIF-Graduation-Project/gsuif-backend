@@ -1,6 +1,7 @@
 package eg.mts.gsuif.exception;
 
 import eg.mts.gsuif.dto.ApiResponse;
+import eg.mts.gsuif.generation.GenerationValidationException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +40,12 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(GenerationValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGenerationValidation(GenerationValidationException ex) {
+        return ResponseEntity.badRequest().body(ApiResponse.error(400, "Invalid generation request",
+                Map.of("_global", ex.getMessage())));
+    }
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
