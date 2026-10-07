@@ -2,6 +2,7 @@ package eg.mts.gsuif.generation;
 
 import eg.mts.gsuif.entity.*;
 import eg.mts.gsuif.repository.GenerationRunRepository;
+import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,22 +26,79 @@ import static org.junit.jupiter.api.Assertions.*;
 class GenerationRunServiceIntegrationTest {
     @Autowired EntityManager entityManager;
     @Autowired GenerationRunRepository repository;
+    @Autowired GeneratedArtifactRepository artifactRepository;
+
+    @Test void recordsEachReturnedFileAndItsOwnVersionWithRunHistory() {
+        var service = service((project, goal) -> new ConsumerBuildValidator.CommandResult(0, goal + " passed"));
+        var fixture = fixture();
+        var first = result();
+        var second = new GenerationResult.Artifact("src/main/java/example/Other.java",
+                "package example; class Other {}".getBytes(StandardCharsets.UTF_8), "other-hash", "2.0.0", "1.0.0");
+        var multi = new GenerationResult(List.of(first.artifacts().getFirst(), second), List.of(), ConsumerBuildContract.phaseOne());
+        long beforeRuns = repository.count();
+        long beforeFiles = artifactRepository.count();
+        UUID attempt = UUID.randomUUID();
+        GenerationRun run = service.validateAndRecord(attempt, fixture.version(), fixture.user(), multi, inputs());
+        entityManager.flush(); entityManager.clear();
+        assertEquals(beforeRuns + 1, repository.count());
+        assertEquals(beforeFiles + 2, artifactRepository.count());
+        var file = service.findFile(run.getId(), second.relativePath()).orElseThrow();
+        assertEquals("2.0.0", file.getTemplateVersion());
+        assertArrayEquals(second.bytes(), service.readArtifact(run.getId(), second.relativePath()));
+        assertEquals(fixture.version().getId(), file.getGenerationRun().getMetadataVersion().getId());
+        assertTrue(service.findFile(run.getId(), "src/test/java/example/GeneratedTest.java").isEmpty());
+        assertEquals(run.getId(), service.validateAndRecord(attempt, fixture.version(), fixture.user(), multi, inputs()).getId());
+        entityManager.flush();
+        assertEquals(beforeRuns + 1, repository.count());
+        assertEquals(beforeFiles + 2, artifactRepository.count());
+
+        UUID anotherRun = service.validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), multi, inputs()).getId();
+        entityManager.flush(); entityManager.clear();
+        assertNotEquals(run.getId(), anotherRun);
+        assertEquals(2, service.findFileHistory(second.relativePath()).size());
+    }
+
+    @Test void failedBuildRetainsAllReturnedFilesAndPreResultFailureWritesNothing() {
+        var service = service((project, goal) -> new ConsumerBuildValidator.CommandResult(1, "compile error"));
+        var fixture = fixture();
+        long beforeRuns = repository.count();
+        long beforeFiles = artifactRepository.count();
+        assertThrows(NullPointerException.class, () -> service.validateAndRecord(
+                UUID.randomUUID(), fixture.version(), fixture.user(), null, inputs()));
+        assertEquals(beforeRuns, repository.count());
+        var original = result();
+        var second = new GenerationResult.Artifact("src/main/java/example/Other.java",
+                "package example; class Other {}".getBytes(StandardCharsets.UTF_8),
+                "other-hash", "2.0.0", "1.0.0");
+        var result = new GenerationResult(List.of(original.artifacts().getFirst(), second),
+                List.of(), ConsumerBuildContract.phaseOne());
+        UUID id = service.validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), result, inputs()).getId();
+        entityManager.flush(); entityManager.clear();
+        assertEquals(GenerationRunStatus.BUILD_FAILED, service.findById(id).orElseThrow().getStatus());
+        assertEquals(beforeRuns + 1, repository.count());
+        assertEquals(beforeFiles + result.artifacts().size(), artifactRepository.count());
+        assertEquals("1.0.0", service.findFile(id, result.artifacts().getFirst().relativePath()).orElseThrow().getTemplateVersion());
+        assertEquals("2.0.0", service.findFile(id, second.relativePath()).orElseThrow().getTemplateVersion());
+        assertArrayEquals(second.bytes(), service.readArtifact(id, second.relativePath()));
+    }
 
     @Test void realMavenCompileAndTestPersistSuccess() {
         var fixture = fixture();
-        UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), result(), inputs()).getId();
+        UUID id = realService().validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), result(), inputs()).getId();
         entityManager.flush(); entityManager.clear();
         GenerationRun saved = realService().findById(id).orElseThrow();
         assertEquals(GenerationRunStatus.SUCCESS, saved.getStatus(), saved.getCompileOutput() + "\n" + saved.getTestOutput());
         assertEquals(0, saved.getCompileExitCode());
         assertEquals(0, saved.getTestExitCode());
+        assertArrayEquals(result().artifacts().getFirst().bytes(), realService().readArtifact(id,
+                result().artifacts().getFirst().relativePath()));
         assertTrue(saved.getCompileOutput().contains("BUILD SUCCESS"));
         assertTrue(saved.getTestOutput().contains("BUILD SUCCESS"));
     }
 
     @Test void realMavenCompileFailurePersistsCompilerOutputAndSkipsTest() {
         var fixture = fixture();
-        UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), brokenResult(), inputs()).getId();
+        UUID id = realService().validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), brokenResult(), inputs()).getId();
         entityManager.flush(); entityManager.clear();
         GenerationRun saved = realService().findById(id).orElseThrow();
         assertEquals(GenerationRunStatus.BUILD_FAILED, saved.getStatus());
@@ -50,13 +108,15 @@ class GenerationRunServiceIntegrationTest {
         assertTrue(saved.getCompileOutput().length() <= ConsumerBuildValidator.OUTPUT_LIMIT);
         assertNull(saved.getTestExitCode());
         assertNull(saved.getTestOutput());
+        assertArrayEquals(brokenResult().artifacts().getFirst().bytes(), realService().readArtifact(id,
+                brokenResult().artifacts().getFirst().relativePath()));
     }
 
     @Test void realMavenTestFailurePersistsBothExitCodes() {
         var fixture = fixture();
         var brokenTest = Map.of("src/test/java/example/GeneratedTest.java",
                 "package example; BROKEN TEST".getBytes(StandardCharsets.UTF_8));
-        UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), result(), brokenTest).getId();
+        UUID id = realService().validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), result(), brokenTest).getId();
         entityManager.flush(); entityManager.clear();
         GenerationRun saved = realService().findById(id).orElseThrow();
         assertEquals(GenerationRunStatus.BUILD_FAILED, saved.getStatus());
@@ -70,7 +130,7 @@ class GenerationRunServiceIntegrationTest {
         var fixture = fixture();
         var bypass = Map.of(".mvn/maven.config",
                 "-Dmaven.main.skip=true\n-Dmaven.test.skip=true\n".getBytes(StandardCharsets.UTF_8));
-        UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), brokenResult(), bypass).getId();
+        UUID id = realService().validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), brokenResult(), bypass).getId();
         entityManager.flush(); entityManager.clear();
         GenerationRun saved = realService().findById(id).orElseThrow();
         assertEquals(GenerationRunStatus.BUILD_FAILED, saved.getStatus());
@@ -88,7 +148,7 @@ class GenerationRunServiceIntegrationTest {
                     @Test void actualAssertionFailure() { fail("ASSERTION_SENTINEL"); }
                 }
                 """.getBytes(StandardCharsets.UTF_8));
-        UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), result(), failingTest).getId();
+        UUID id = realService().validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), result(), failingTest).getId();
         entityManager.flush(); entityManager.clear();
         GenerationRun saved = realService().findById(id).orElseThrow();
         assertEquals(GenerationRunStatus.BUILD_FAILED, saved.getStatus());
@@ -112,7 +172,7 @@ class GenerationRunServiceIntegrationTest {
                         class GeneratedTest { @Disabled @Test void intentionallySkipped() { throw new AssertionError(); } }
                         """.getBytes(StandardCharsets.UTF_8)))) {
             var fixture = fixture();
-            UUID id = realService().validateAndRecord(fixture.version(), fixture.user(), result(), testInputs).getId();
+            UUID id = realService().validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), result(), testInputs).getId();
             entityManager.flush(); entityManager.clear();
             GenerationRun saved = realService().findById(id).orElseThrow();
             assertEquals(GenerationRunStatus.SUCCESS, saved.getStatus(), saved.getCompileOutput() + "\n" + saved.getTestOutput());
@@ -131,7 +191,7 @@ class GenerationRunServiceIntegrationTest {
             return new ConsumerBuildValidator.CommandResult(0, goal + " passed");
         });
         var fixture = fixture();
-        UUID id = service.validateAndRecord(fixture.version(), fixture.user(), result(), inputs()).getId();
+        UUID id = service.validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), result(), inputs()).getId();
         entityManager.flush(); entityManager.clear();
         GenerationRun saved = service.findById(id).orElseThrow();
         assertEquals(List.of("compile", "test"), calls);
@@ -150,7 +210,7 @@ class GenerationRunServiceIntegrationTest {
             return new ConsumerBuildValidator.CommandResult(1, "compiler error\n" + "x".repeat(20000));
         });
         var fixture = fixture();
-        UUID id = service.validateAndRecord(fixture.version(), fixture.user(), brokenResult(), inputs()).getId();
+        UUID id = service.validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), brokenResult(), inputs()).getId();
         entityManager.flush(); entityManager.clear();
         GenerationRun saved = service.findById(id).orElseThrow();
         assertEquals(List.of("compile"), calls);
@@ -167,7 +227,7 @@ class GenerationRunServiceIntegrationTest {
         var service = service((project, goal) -> new ConsumerBuildValidator.CommandResult(
                 goal.equals("compile") ? 0 : 7, goal.equals("compile") ? "compiled" : "assertion failed"));
         var fixture = fixture();
-        UUID id = service.validateAndRecord(fixture.version(), fixture.user(), result(), inputs()).getId();
+        UUID id = service.validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), result(), inputs()).getId();
         entityManager.flush(); entityManager.clear();
         GenerationRun saved = service.findById(id).orElseThrow();
         assertEquals(GenerationRunStatus.BUILD_FAILED, saved.getStatus());
@@ -177,11 +237,11 @@ class GenerationRunServiceIntegrationTest {
     }
 
     private GenerationRunService service(ConsumerBuildValidator.CommandRunner runner) {
-        return new GenerationRunService(repository, new ConsumerBuildValidator(Path.of("target", "generation-build-tests"), runner));
+        return new GenerationRunService(repository, artifactRepository, new ConsumerBuildValidator(Path.of("target", "generation-build-tests"), runner));
     }
 
     private GenerationRunService realService() {
-        return new GenerationRunService(repository, new ConsumerBuildValidator(Path.of("target", "generation-build-tests")));
+        return new GenerationRunService(repository, artifactRepository, new ConsumerBuildValidator(Path.of("target", "generation-build-tests")));
     }
 
     private GenerationResult result() {

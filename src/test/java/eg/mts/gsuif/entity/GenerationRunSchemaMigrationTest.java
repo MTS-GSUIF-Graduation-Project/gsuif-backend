@@ -21,6 +21,14 @@ class GenerationRunSchemaMigrationTest {
             assertFalse(hasColumn(connection, "COMPILE_EXIT_CODE"));
 
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("sql/V2__add_build_diagnostics.sql"));
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("sql/V3__add_generated_artifact_registry.sql"));
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("sql/V4__add_generation_attempt_fingerprint.sql"));
+            assertTrue(hasColumn(connection, "GSUIF_GENERATION_RUN", "INPUT_FINGERPRINT"));
+            assertTrue(hasColumn(connection, "GSUIF_GENERATION_RUN", "ATTEMPT_ID"));
+            assertTrue(hasColumn(connection, "GSUIF_GENERATED_ARTIFACT", "RELATIVE_PATH"));
+            assertTrue(hasColumn(connection, "GSUIF_GENERATED_ARTIFACT", "TEMPLATE_VERSION"));
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("sql/V3__add_generated_artifact_registry.sql"));
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("sql/V4__add_generation_attempt_fingerprint.sql"));
             for (String column : new String[] {
                     "COMPILE_EXIT_CODE", "TEST_EXIT_CODE", "COMPILE_OUTPUT", "TEST_OUTPUT" }) {
                 assertTrue(hasColumn(connection, column), column);
@@ -32,8 +40,12 @@ class GenerationRunSchemaMigrationTest {
     }
 
     private boolean hasColumn(Connection connection, String column) throws Exception {
+        return hasColumn(connection, "GSUIF_GENERATION_RUN", column);
+    }
+
+    private boolean hasColumn(Connection connection, String table, String column) throws Exception {
         try (ResultSet columns = connection.getMetaData().getColumns(null, null,
-                "GSUIF_GENERATION_RUN", column)) {
+                table, column)) {
             return columns.next();
         }
     }

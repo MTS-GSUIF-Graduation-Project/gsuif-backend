@@ -48,6 +48,17 @@ public class GeneratedArtifact extends AuditableEntity {
     @Column(name = "artifact_type", nullable = false, length = 100)
     private String artifactType;
 
+    @Column(name = "relative_path", length = 1024)
+    private String relativePath;
+
+    @Column(name = "template_version", length = 100)
+    private String templateVersion;
+
+    public String getRelativePath() { return relativePath; }
+    public void setRelativePath(String relativePath) { this.relativePath = relativePath; }
+    public String getTemplateVersion() { return templateVersion; }
+    public void setTemplateVersion(String templateVersion) { this.templateVersion = templateVersion; }
+
     @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "component_id", length = 36)
     private UUID componentId;
