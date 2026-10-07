@@ -85,6 +85,14 @@ public class OpenApiIntegrationTest {
         assertEquals(expectedReferenceOps, getOperations(referenceDocs), "Reference operations mismatch");
         assertAllOperationsProtected(referenceDocs);
 
+        JsonNode generationDocs = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs/generation-api"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertEquals(Set.of("POST /api/v1/generation/generate", "GET /api/v1/generation/providers",
+                "GET /api/v1/generation/runs/{id}"), getOperations(generationDocs));
+        assertAllOperationsProtected(generationDocs);
+        assertFalse(generationDocs.at("/paths/~1api~1v1~1generation~1generate/post/requestBody/content/application~1json/schema")
+                .isMissingNode(), "Generate request schema missing");
+
         // Auth API Group
         String authApiJson = mockMvc.perform(get("/v3/api-docs/auth-api"))
                 .andExpect(status().isOk())

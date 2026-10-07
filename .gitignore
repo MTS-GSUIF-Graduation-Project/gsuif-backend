@@ -34,7 +34,6 @@ build/
 !**/src/test/**/build/
 
 # VS Code
-.vscode/
 !.vscode/extensions.json
 !.vscode/settings.json
 
@@ -45,8 +44,6 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # Environment / secrets
-.env
-.env.*
 !.env.example
 
 # OS files
@@ -65,3 +62,4 @@ NOTES.local.md
 
 # jqwik database
 .jqwik-database
+config.bat
