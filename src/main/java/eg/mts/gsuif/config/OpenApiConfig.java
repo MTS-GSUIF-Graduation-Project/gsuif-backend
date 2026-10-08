@@ -30,6 +30,16 @@ import org.springframework.context.annotation.Configuration;
 public class OpenApiConfig {
 
     @Bean
+    public GroupedOpenApi generationApi() {
+        return GroupedOpenApi.builder()
+                .group("generation-api")
+                .packagesToScan("eg.mts.gsuif.controller")
+                .pathsToMatch("/api/v1/generation/**")
+                .addOpenApiCustomizer(methodNotAllowedCustomizer())
+                .build();
+    }
+
+    @Bean
     public GroupedOpenApi metadataApi() {
         return GroupedOpenApi.builder()
                 .group("metadata-api")
