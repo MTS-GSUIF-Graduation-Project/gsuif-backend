@@ -188,6 +188,9 @@ public class OpenApiValidationTest {
         baseExpected.put("get /api/v1/work-orders", "getWorkOrders");
         baseExpected.put("put /api/v1/work-orders/{id}", "updateWorkOrder");
         baseExpected.put("delete /api/v1/work-orders/{id}", "deleteWorkOrder");
+        baseExpected.put("post /api/v1/generation/generate", "generateSource");
+        baseExpected.put("get /api/v1/generation/providers", "listGenerationProviders");
+        baseExpected.put("get /api/v1/generation/runs/{id}", "getGenerationRun");
 
         Map<String, String> authExpected = new HashMap<>();
         authExpected.put("post /api/auth/login", "login");
@@ -198,11 +201,15 @@ public class OpenApiValidationTest {
         Map<String, String> metaExpected = new HashMap<>();
         baseExpected.entrySet().stream().filter(e -> e.getKey().contains("/projects") || e.getKey().contains("/pages")).forEach(e -> metaExpected.put(e.getKey(), e.getValue()));
 
+        Map<String, String> generationExpected = new HashMap<>();
+        baseExpected.entrySet().stream().filter(e -> e.getKey().contains("/generation/")).forEach(e -> generationExpected.put(e.getKey(), e.getValue()));
+
         Map<String, Map<String, String>> groupExpectations = new HashMap<>();
         groupExpectations.put("/v3/api-docs", baseExpected);
         groupExpectations.put("/v3/api-docs/metadata-api", metaExpected);
         groupExpectations.put("/v3/api-docs/auth-api", authExpected);
         groupExpectations.put("/v3/api-docs/reference-api", refExpected);
+        groupExpectations.put("/v3/api-docs/generation-api", generationExpected);
 
         for (Map.Entry<String, Map<String, String>> entry : groupExpectations.entrySet()) {
             String url = entry.getKey();
