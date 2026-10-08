@@ -11,7 +11,8 @@ import jakarta.persistence.MapsId;
 import jakarta.persistence.Table;
 
 /**
- * Auditable association between a role and a configurable permission.
+ * Association between a role and a configurable permission with Spring Data JPA audit fields.
+ * This entity does not provide Envers grant/revoke revision history.
  */
 @Entity
 @Table(

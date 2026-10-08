@@ -1,4 +1,5 @@
--- SCRUM-59: generic permission persistence and audited role-permission assignments.
+-- SCRUM-59: generic permission persistence with Spring Data JPA lifecycle audit fields.
+-- This migration does not add Envers grant/revoke revision history.
 CREATE TABLE gsuif_permission (
     id               CHAR(36)                  NOT NULL,
     code             VARCHAR(50)               NOT NULL,

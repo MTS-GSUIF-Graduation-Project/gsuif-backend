@@ -10,36 +10,71 @@ import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.repository.GsuifPermissionRepository;
 import eg.mts.gsuif.repository.GsuifRolePermissionRepository;
 import eg.mts.gsuif.service.impl.PermissionServiceImpl;
+import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+@SpringJUnitConfig(PermissionServiceTest.Config.class)
 class PermissionServiceTest {
 
-    @Mock
+    @Autowired
     private GsuifPermissionRepository permissionRepository;
 
-    @Mock
+    @Autowired
     private GsuifRolePermissionRepository rolePermissionRepository;
 
+    @Autowired
     private PermissionService permissionService;
 
     @BeforeEach
     void setUp() {
-        permissionService = new PermissionServiceImpl(permissionRepository, rolePermissionRepository);
+        reset(permissionRepository, rolePermissionRepository);
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class Config {
+
+        @Bean
+        static MethodValidationPostProcessor methodValidationPostProcessor() {
+            return new MethodValidationPostProcessor();
+        }
+
+        @Bean
+        GsuifPermissionRepository permissionRepository() {
+            return org.mockito.Mockito.mock(GsuifPermissionRepository.class);
+        }
+
+        @Bean
+        GsuifRolePermissionRepository rolePermissionRepository() {
+            return org.mockito.Mockito.mock(GsuifRolePermissionRepository.class);
+        }
+
+        @Bean
+        PermissionService permissionService(GsuifPermissionRepository permissionRepository,
+                                            GsuifRolePermissionRepository rolePermissionRepository) {
+            return new PermissionServiceImpl(permissionRepository, rolePermissionRepository);
+        }
     }
 
     @Test
@@ -70,6 +105,30 @@ class PermissionServiceTest {
         verify(permissionRepository, never()).save(any());
     }
 
+    @ParameterizedTest(name = "create rejects invalid {0}")
+    @MethodSource("invalidCreateRequests")
+    void create_whenDeclaredDtoConstraintIsViolated_rejectsBeforePersistence(
+            String field, CreatePermissionRequest request) {
+        assertThatThrownBy(() -> permissionService.create(request))
+                .isInstanceOf(ConstraintViolationException.class)
+                .hasMessageContaining(field);
+
+        verifyNoInteractions(permissionRepository, rolePermissionRepository);
+    }
+
+    private static Stream<Arguments> invalidCreateRequests() {
+        return Stream.of(
+                Arguments.of("code", new CreatePermissionRequest(null, "Read catalog", null)),
+                Arguments.of("code", new CreatePermissionRequest("", "Read catalog", null)),
+                Arguments.of("code", new CreatePermissionRequest("   ", "Read catalog", null)),
+                Arguments.of("code", new CreatePermissionRequest("c".repeat(51), "Read catalog", null)),
+                Arguments.of("name", new CreatePermissionRequest("catalog.read", null, null)),
+                Arguments.of("name", new CreatePermissionRequest("catalog.read", "", null)),
+                Arguments.of("name", new CreatePermissionRequest("catalog.read", "   ", null)),
+                Arguments.of("name", new CreatePermissionRequest("catalog.read", "n".repeat(201), null))
+        );
+    }
+
     @Test
     void update_changesOnlyMutableFields() {
         UUID id = UUID.randomUUID();
@@ -83,6 +142,32 @@ class PermissionServiceTest {
         assertThat(result.code()).isEqualTo("catalog.read");
         assertThat(result.name()).isEqualTo("View catalog");
         assertThat(result.description()).isEqualTo("Updated description");
+    }
+
+    @ParameterizedTest(name = "update rejects invalid name: {0}")
+    @MethodSource("invalidUpdateRequests")
+    void update_whenDeclaredNameConstraintIsViolated_leavesPermissionUnchanged(
+            String caseName, UpdatePermissionRequest request) {
+        UUID id = UUID.randomUUID();
+        GsuifPermission existing = permission("catalog.read", "Read catalog");
+        existing.setDescription("Original description");
+
+        assertThatThrownBy(() -> permissionService.update(id, request))
+                .isInstanceOf(ConstraintViolationException.class)
+                .hasMessageContaining("name");
+
+        assertThat(existing.getName()).isEqualTo("Read catalog");
+        assertThat(existing.getDescription()).isEqualTo("Original description");
+        verifyNoInteractions(permissionRepository, rolePermissionRepository);
+    }
+
+    private static Stream<Arguments> invalidUpdateRequests() {
+        return Stream.of(
+                Arguments.of("null", new UpdatePermissionRequest(null, "Changed")),
+                Arguments.of("blank", new UpdatePermissionRequest("", "Changed")),
+                Arguments.of("whitespace-only", new UpdatePermissionRequest("   ", "Changed")),
+                Arguments.of("oversized", new UpdatePermissionRequest("n".repeat(201), "Changed"))
+        );
     }
 
     @Test
