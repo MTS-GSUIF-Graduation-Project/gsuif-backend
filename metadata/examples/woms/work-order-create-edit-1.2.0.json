@@ -1,0 +1,271 @@
+{
+  "project": {
+    "id": "60000000-0000-4000-8000-000000000001",
+    "name": "WOMS Phase 2 Demo",
+    "description": "Illustrative Work Order Management System metadata dataset; the GSUIF framework remains domain-neutral."
+  },
+  "page": {
+    "id": "60000000-0000-4000-8000-000000000020",
+    "projectId": "60000000-0000-4000-8000-000000000001",
+    "name": "Create or edit work order",
+    "route": "/demo/woms/work-orders/edit",
+    "components": [
+      {
+        "id": "61000000-0000-4000-8000-000000000011",
+        "type": "form",
+        "label": "Work order editor",
+        "position": {
+          "row": 0,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 2
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "workOrder",
+        "formConfig": {
+          "submitLabel": "Save work order"
+        }
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000012",
+        "type": "text-field",
+        "label": "Order number",
+        "position": {
+          "row": 2,
+          "col": 0
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "orderNumber"
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000013",
+        "type": "date-field",
+        "label": "Due date",
+        "position": {
+          "row": 2,
+          "col": 6
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "dueDate"
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000014",
+        "type": "navigation",
+        "label": "Work order navigation",
+        "position": {
+          "row": 3,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "navigationConfig": {
+          "items": [
+            {
+              "label": "Back to search",
+              "route": "/demo/woms/work-orders"
+            }
+          ]
+        }
+      }
+    ],
+    "apiBindings": [
+      {
+        "id": "62000000-0000-4000-8000-000000000011",
+        "name": "createWorkOrder",
+        "httpMethod": "POST",
+        "endpointUrl": "/api/demo/woms/work-orders",
+        "headers": {},
+        "requestMapping": {
+          "body": {
+            "orderNumber": "orderNumber",
+            "dueDate": "dueDate"
+          }
+        },
+        "responseMapping": {
+          "item": "body"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000011"
+        ],
+        "parentComponentId": "61000000-0000-4000-8000-000000000011",
+        "childComponentIds": [
+          "61000000-0000-4000-8000-000000000012",
+          "61000000-0000-4000-8000-000000000013"
+        ]
+      },
+      {
+        "id": "62000000-0000-4000-8000-000000000012",
+        "name": "updateWorkOrder",
+        "httpMethod": "PUT",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          },
+          "body": {
+            "orderNumber": "orderNumber",
+            "dueDate": "dueDate"
+          }
+        },
+        "responseMapping": {
+          "item": "body"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000011"
+        ]
+      }
+    ]
+  },
+  "metadataVersion": {
+    "id": "63000000-0000-4000-8000-000000000020",
+    "projectId": "60000000-0000-4000-8000-000000000001",
+    "pageId": "60000000-0000-4000-8000-000000000020",
+    "version": 1,
+    "schemaVersion": "1.2.0",
+    "isCurrent": true,
+    "snapshot": {
+      "components": [
+        {
+          "id": "61000000-0000-4000-8000-000000000011",
+          "type": "form",
+          "label": "Work order editor",
+          "position": {
+            "row": 0,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 2
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "workOrder",
+          "formConfig": {
+            "submitLabel": "Save work order"
+          }
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000012",
+          "type": "text-field",
+          "label": "Order number",
+          "position": {
+            "row": 2,
+            "col": 0
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "orderNumber"
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000013",
+          "type": "date-field",
+          "label": "Due date",
+          "position": {
+            "row": 2,
+            "col": 6
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "dueDate"
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000014",
+          "type": "navigation",
+          "label": "Work order navigation",
+          "position": {
+            "row": 3,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "navigationConfig": {
+            "items": [
+              {
+                "label": "Back to search",
+                "route": "/demo/woms/work-orders"
+              }
+            ]
+          }
+        }
+      ],
+      "apiBindings": [
+        {
+          "id": "62000000-0000-4000-8000-000000000011",
+          "name": "createWorkOrder",
+          "httpMethod": "POST",
+          "endpointUrl": "/api/demo/woms/work-orders",
+          "headers": {},
+          "requestMapping": {
+            "body": {
+              "orderNumber": "orderNumber",
+              "dueDate": "dueDate"
+            }
+          },
+          "responseMapping": {
+            "item": "body"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000011"
+          ],
+          "parentComponentId": "61000000-0000-4000-8000-000000000011",
+          "childComponentIds": [
+            "61000000-0000-4000-8000-000000000012",
+            "61000000-0000-4000-8000-000000000013"
+          ]
+        },
+        {
+          "id": "62000000-0000-4000-8000-000000000012",
+          "name": "updateWorkOrder",
+          "httpMethod": "PUT",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            },
+            "body": {
+              "orderNumber": "orderNumber",
+              "dueDate": "dueDate"
+            }
+          },
+          "responseMapping": {
+            "item": "body"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000011"
+          ]
+        }
+      ]
+    }
+  }
+}
