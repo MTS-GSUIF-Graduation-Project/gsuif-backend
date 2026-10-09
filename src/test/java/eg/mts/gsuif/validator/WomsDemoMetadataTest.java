@@ -9,12 +9,18 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class WomsDemoMetadataTest {
+    private static final Path FIXTURE_DIRECTORY = Path.of(
+            System.getProperty("woms.fixture.dir", "metadata/examples/woms"));
+    private static final Path DEMO_README = Path.of(
+            System.getProperty("woms.demo.readme", "demo/README.md"));
     private static final List<String> FIXTURES = List.of(
             "work-order-search-1.2.0.json",
             "work-order-create-edit-1.2.0.json",
@@ -97,6 +103,63 @@ class WomsDemoMetadataTest {
     }
 
     @Test
+    void composesSearchQueryFromRenderableComponentValues() throws Exception {
+        JsonNode bundle = load("work-order-search-1.2.0.json");
+        Map<String, String> values = Map.of(
+                "query", "pump",
+                "status", "OPEN",
+                "page", "3");
+
+        for (JsonNode scope : List.of(bundle.path("page"), bundle.path("metadataVersion").path("snapshot"))) {
+            JsonNode search = binding(scope.path("apiBindings"), "searchWorkOrders");
+
+            assertThat(composeRequestPart(scope, search, "query", values))
+                    .containsExactly(
+                            Map.entry("status", "OPEN"),
+                            Map.entry("query", "pump"),
+                            Map.entry("page", "3"));
+        }
+    }
+
+    @Test
+    void resolvesEditorLoadAndUpdateAgainstTheSameSelectedId() throws Exception {
+        JsonNode bundle = load("work-order-create-edit-1.2.0.json");
+        Map<String, String> context = Map.of("id", "WO-42");
+
+        for (JsonNode scope : List.of(bundle.path("page"), bundle.path("metadataVersion").path("snapshot"))) {
+            JsonNode load = binding(scope.path("apiBindings"), "loadWorkOrderForEdit");
+            JsonNode update = binding(scope.path("apiBindings"), "updateWorkOrder");
+
+            assertThat(resolveEndpoint(load, context))
+                    .isEqualTo("/api/demo/woms/work-orders/WO-42");
+            assertThat(resolveEndpoint(update, context))
+                    .isEqualTo("/api/demo/woms/work-orders/WO-42");
+        }
+    }
+
+    @Test
+    void representativeListRowsCanRenderEveryLinkedTable() throws Exception {
+        JsonNode bundle = load("work-order-detail-1.2.0.json");
+        ObjectNode technicianRow = mapper.createObjectNode()
+                .put("technicianId", "TECH-7")
+                .put("technicianName", "Amina");
+        ObjectNode assignmentRow = mapper.createObjectNode()
+                .put("workOrderId", "WO-42")
+                .put("technicianId", "TECH-7");
+
+        for (JsonNode scope : List.of(bundle.path("page"), bundle.path("metadataVersion").path("snapshot"))) {
+            assertLinkedTablesCanRender(
+                    scope,
+                    binding(scope.path("apiBindings"), "listAssignedTechnicians"),
+                    technicianRow);
+            assertLinkedTablesCanRender(
+                    scope,
+                    binding(scope.path("apiBindings"), "listTechnicianAssignments"),
+                    assignmentRow);
+        }
+    }
+
+    @Test
     void documentsOneToManyTasksAndManyToManyTechnicianOperations() throws Exception {
         JsonNode bindings = load("work-order-detail-1.2.0.json").path("page").path("apiBindings");
         JsonNode tasks = binding(bindings, "listWorkOrderTasks");
@@ -148,7 +211,7 @@ class WomsDemoMetadataTest {
 
     @Test
     void demoEntryPointDocumentsFixtureLocationAndEditorInitialization() throws Exception {
-        String readme = Files.readString(Path.of("demo", "README.md"));
+        String readme = Files.readString(DEMO_README);
 
         assertThat(readme).contains("metadata/examples/woms/");
         assertThat(readme).contains("/demo/woms/...");
@@ -166,6 +229,72 @@ class WomsDemoMetadataTest {
 
         assertThat(validator.validate("1.2.0", snapshot))
                 .anyMatch(error -> error.message().contains("does not exist"));
+    }
+
+    private Map<String, String> composeRequestPart(
+            JsonNode scope,
+            JsonNode binding,
+            String part,
+            Map<String, String> values) {
+        Map<String, String> request = new LinkedHashMap<>();
+        binding.path("requestMapping").path(part).fields().forEachRemaining(entry -> {
+            String sourceField = entry.getValue().asText();
+            JsonNode source = component(scope.path("components"), sourceField);
+
+            assertThat(source.path("visibility").asBoolean())
+                    .as(sourceField + " must be visible to supply " + part)
+                    .isTrue();
+            assertThat(source.path("disabled").asBoolean())
+                    .as(sourceField + " must be enabled to supply " + part)
+                    .isFalse();
+            assertThat(values)
+                    .as("input values for " + sourceField)
+                    .containsKey(sourceField);
+            request.put(entry.getKey(), values.get(sourceField));
+        });
+        return request;
+    }
+
+    private String resolveEndpoint(JsonNode binding, Map<String, String> context) {
+        String endpoint = binding.path("endpointUrl").asText();
+        var pathMappings = binding.path("requestMapping").path("path").fields();
+        while (pathMappings.hasNext()) {
+            Map.Entry<String, JsonNode> mapping = pathMappings.next();
+            String sourceField = mapping.getValue().asText();
+
+            assertThat(context)
+                    .as("page context for " + sourceField)
+                    .containsKey(sourceField);
+            endpoint = endpoint.replace(
+                    "{" + mapping.getKey() + "}",
+                    context.get(sourceField));
+        }
+        assertThat(endpoint).doesNotContain("{", "}");
+        return endpoint;
+    }
+
+    private void assertLinkedTablesCanRender(JsonNode scope, JsonNode binding, JsonNode row) {
+        for (JsonNode linkedId : binding.path("linkedComponentIds")) {
+            JsonNode linked = componentById(scope.path("components"), linkedId.asText());
+            if (!"table".equals(linked.path("type").asText())) {
+                continue;
+            }
+            for (JsonNode column : linked.path("tableConfig").path("columns")) {
+                String fieldKey = column.path("fieldKey").asText();
+                assertThat(row.hasNonNull(fieldKey))
+                        .as(binding.path("name").asText() + " response supplies " + fieldKey)
+                        .isTrue();
+            }
+        }
+    }
+
+    private JsonNode componentById(JsonNode components, String id) {
+        for (JsonNode component : components) {
+            if (id.equals(component.path("id").asText())) {
+                return component;
+            }
+        }
+        throw new AssertionError("Missing component with id: " + id);
     }
 
     private JsonNode binding(JsonNode bindings, String name) {
@@ -187,6 +316,6 @@ class WomsDemoMetadataTest {
     }
 
     private JsonNode load(String fixture) throws Exception {
-        return mapper.readTree(new File("metadata/examples/woms/" + fixture));
+        return mapper.readTree(FIXTURE_DIRECTORY.resolve(fixture).toFile());
     }
 }
