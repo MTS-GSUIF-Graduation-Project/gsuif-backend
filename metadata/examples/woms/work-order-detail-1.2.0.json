@@ -166,11 +166,24 @@
           "list": "body.data"
         },
         "linkedComponentIds": [
-          "61000000-0000-4000-8000-000000000023",
-          "61000000-0000-4000-8000-000000000024"
-        ],
-        "parentComponentId": "61000000-0000-4000-8000-000000000023",
-        "childComponentIds": [
+          "61000000-0000-4000-8000-000000000023"
+        ]
+      },
+      {
+        "id": "62000000-0000-4000-8000-000000000026",
+        "name": "listTechnicianAssignments",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}/technician-assignments",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          }
+        },
+        "responseMapping": {
+          "list": "body.data"
+        },
+        "linkedComponentIds": [
           "61000000-0000-4000-8000-000000000024"
         ]
       },
@@ -379,11 +392,24 @@
             "list": "body.data"
           },
           "linkedComponentIds": [
-            "61000000-0000-4000-8000-000000000023",
-            "61000000-0000-4000-8000-000000000024"
-          ],
-          "parentComponentId": "61000000-0000-4000-8000-000000000023",
-          "childComponentIds": [
+            "61000000-0000-4000-8000-000000000023"
+          ]
+        },
+        {
+          "id": "62000000-0000-4000-8000-000000000026",
+          "name": "listTechnicianAssignments",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}/technician-assignments",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            }
+          },
+          "responseMapping": {
+            "list": "body.data"
+          },
+          "linkedComponentIds": [
             "61000000-0000-4000-8000-000000000024"
           ]
         },

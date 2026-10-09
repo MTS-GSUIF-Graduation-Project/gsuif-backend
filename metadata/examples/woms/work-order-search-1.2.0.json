@@ -30,6 +30,38 @@
         }
       },
       {
+        "id": "61000000-0000-4000-8000-000000000004",
+        "type": "text-field",
+        "label": "Search text",
+        "position": {
+          "row": 1,
+          "col": 0
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "query"
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000005",
+        "type": "select",
+        "label": "Status",
+        "position": {
+          "row": 1,
+          "col": 6
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "status"
+      },
+      {
         "id": "61000000-0000-4000-8000-000000000002",
         "type": "table",
         "label": "Work orders",
@@ -100,12 +132,15 @@
           "pagination": "body.totalPages"
         },
         "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000004",
+          "61000000-0000-4000-8000-000000000005",
           "61000000-0000-4000-8000-000000000002",
           "61000000-0000-4000-8000-000000000003"
         ],
-        "parentComponentId": "61000000-0000-4000-8000-000000000002",
+        "parentComponentId": "61000000-0000-4000-8000-000000000001",
         "childComponentIds": [
-          "61000000-0000-4000-8000-000000000003"
+          "61000000-0000-4000-8000-000000000004",
+          "61000000-0000-4000-8000-000000000005"
         ]
       }
     ]
@@ -137,6 +172,38 @@
           "formConfig": {
             "submitLabel": "Search"
           }
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000004",
+          "type": "text-field",
+          "label": "Search text",
+          "position": {
+            "row": 1,
+            "col": 0
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "query"
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000005",
+          "type": "select",
+          "label": "Status",
+          "position": {
+            "row": 1,
+            "col": 6
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "status"
         },
         {
           "id": "61000000-0000-4000-8000-000000000002",
@@ -209,12 +276,15 @@
             "pagination": "body.totalPages"
           },
           "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000004",
+            "61000000-0000-4000-8000-000000000005",
             "61000000-0000-4000-8000-000000000002",
             "61000000-0000-4000-8000-000000000003"
           ],
-          "parentComponentId": "61000000-0000-4000-8000-000000000002",
+          "parentComponentId": "61000000-0000-4000-8000-000000000001",
           "childComponentIds": [
-            "61000000-0000-4000-8000-000000000003"
+            "61000000-0000-4000-8000-000000000004",
+            "61000000-0000-4000-8000-000000000005"
           ]
         }
       ]

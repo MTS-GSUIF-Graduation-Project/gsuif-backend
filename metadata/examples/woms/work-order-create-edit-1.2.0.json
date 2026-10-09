@@ -87,6 +87,26 @@
     ],
     "apiBindings": [
       {
+        "id": "62000000-0000-4000-8000-000000000013",
+        "name": "loadWorkOrderForEdit",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          }
+        },
+        "responseMapping": {
+          "item": "body"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000011",
+          "61000000-0000-4000-8000-000000000012",
+          "61000000-0000-4000-8000-000000000013"
+        ]
+      },
+      {
         "id": "62000000-0000-4000-8000-000000000011",
         "name": "createWorkOrder",
         "httpMethod": "POST",
@@ -219,6 +239,26 @@
         }
       ],
       "apiBindings": [
+        {
+          "id": "62000000-0000-4000-8000-000000000013",
+          "name": "loadWorkOrderForEdit",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            }
+          },
+          "responseMapping": {
+            "item": "body"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000011",
+            "61000000-0000-4000-8000-000000000012",
+            "61000000-0000-4000-8000-000000000013"
+          ]
+        },
         {
           "id": "62000000-0000-4000-8000-000000000011",
           "name": "createWorkOrder",
