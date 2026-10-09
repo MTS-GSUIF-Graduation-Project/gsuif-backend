@@ -3,6 +3,7 @@ package eg.mts.gsuif.controller;
 import eg.mts.gsuif.dto.GenerationApiDtos;
 import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.generation.GenerationApiService;
+import eg.mts.gsuif.generation.GenerationExportService;
 import eg.mts.gsuif.generation.GenerationValidationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GenerationControllerIntegrationTest {
     @Autowired MockMvc mvc;
     @MockitoBean GenerationApiService service;
+    @MockitoBean GenerationExportService exports;
 
     @Test void generateReturnsCreatedEnvelopeAndArtifactText() throws Exception {
         UUID page = UUID.randomUUID(), run = UUID.randomUUID(), version = UUID.randomUUID();
@@ -94,5 +96,33 @@ class GenerationControllerIntegrationTest {
         mvc.perform(get("/api/v1/generation/runs/{id}", id))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.statusCode").value(404));
+    }
+
+    @Test void savedArtifactDownloadsAsBytesAndExportReturnsLocation() throws Exception {
+        UUID run = UUID.randomUUID(), project = UUID.randomUUID();
+        when(service.download(run, "src/main/java/Thing.java"))
+                .thenReturn(new GenerationApiService.DownloadedArtifact("Thing.java", "class Thing {}".getBytes()));
+        mvc.perform(get("/api/v1/generation/runs/{id}/artifacts/download", run)
+                        .param("path", "src/main/java/Thing.java"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string("class Thing {}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Content-Disposition", "attachment; filename=\"Thing.java\""));
+
+        when(exports.configure(eq(project), eq("local"), any()))
+                .thenReturn(new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                        "/api/v1/generation/projects/{projectId}/destinations/local", project)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"LOCAL_FOLDER\",\"path\":\"delivery/folder\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.type").value("LOCAL_FOLDER"))
+                .andExpect(jsonPath("$.body.path").value("delivery/folder"));
+
+        when(exports.export(run, "local")).thenReturn(new GenerationExportService.ExportLocation(
+                run, project, "local", "file:/example/run"));
+        mvc.perform(post("/api/v1/generation/runs/{id}/exports/local", run))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.runId").value(run.toString()))
+                .andExpect(jsonPath("$.body.location").value("file:/example/run"));
     }
 }

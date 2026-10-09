@@ -191,6 +191,10 @@ public class OpenApiValidationTest {
         baseExpected.put("post /api/v1/generation/generate", "generateSource");
         baseExpected.put("get /api/v1/generation/providers", "listGenerationProviders");
         baseExpected.put("get /api/v1/generation/runs/{id}", "getGenerationRun");
+        baseExpected.put("get /api/v1/generation/runs/{id}/artifacts/download", "downloadGeneratedArtifact");
+        baseExpected.put("put /api/v1/generation/projects/{projectId}/destinations/{name}", "configureGenerationExport");
+        baseExpected.put("post /api/v1/generation/runs/{id}/exports/{name}", "exportGenerationRun");
+        baseExpected.put("get /api/v1/generation/artifacts/history", "getGeneratedArtifactHistory");
 
         Map<String, String> authExpected = new HashMap<>();
         authExpected.put("post /api/auth/login", "login");
@@ -199,7 +203,7 @@ public class OpenApiValidationTest {
         baseExpected.entrySet().stream().filter(e -> e.getKey().contains("/work-orders")).forEach(e -> refExpected.put(e.getKey(), e.getValue()));
 
         Map<String, String> metaExpected = new HashMap<>();
-        baseExpected.entrySet().stream().filter(e -> e.getKey().contains("/projects") || e.getKey().contains("/pages")).forEach(e -> metaExpected.put(e.getKey(), e.getValue()));
+        baseExpected.entrySet().stream().filter(e -> e.getKey().contains("/api/v1/projects") || e.getKey().contains("/api/v1/pages")).forEach(e -> metaExpected.put(e.getKey(), e.getValue()));
 
         Map<String, String> generationExpected = new HashMap<>();
         baseExpected.entrySet().stream().filter(e -> e.getKey().contains("/generation/")).forEach(e -> generationExpected.put(e.getKey(), e.getValue()));

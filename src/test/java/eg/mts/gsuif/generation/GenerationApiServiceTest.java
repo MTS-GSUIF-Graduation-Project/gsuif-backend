@@ -37,6 +37,39 @@ class GenerationApiServiceTest {
     GenerationApiService service = new GenerationApiService(pages, versions, users, artifacts, workflow,
             runs, mock(MetadataSchemaValidator.class));
 
+    @Test void downloadRequiresSavedRunRegisteredSafePathAndVerifiedStorage() {
+        UUID id = UUID.randomUUID();
+        String path = "src/main/java/Thing.java";
+        assertThrows(ResourceNotFoundException.class, () -> service.download(id, path));
+        when(runs.findById(id)).thenReturn(Optional.of(mock(GenerationRun.class)));
+        assertThrows(GenerationValidationException.class, () -> service.download(id, "../outside"));
+        assertThrows(ResourceNotFoundException.class, () -> service.download(id, path));
+        when(runs.findFile(id, path)).thenReturn(Optional.of(mock(GeneratedArtifact.class)));
+        when(runs.readArtifact(id, path)).thenReturn("saved".getBytes(StandardCharsets.UTF_8));
+        assertArrayEquals("saved".getBytes(StandardCharsets.UTF_8), service.download(id, path).bytes());
+        when(runs.readArtifact(id, path)).thenThrow(new IllegalStateException("Stored artifact content changed"));
+        assertThrows(IllegalStateException.class, () -> service.download(id, path));
+    }
+
+    @Test void artifactHistoryTracesFileThroughRunToVersion() {
+        String path = "src/main/java/Thing.java";
+        UUID artifactId = UUID.randomUUID(), runId = UUID.randomUUID(), versionId = UUID.randomUUID();
+        var artifact = mock(GeneratedArtifact.class);
+        var run = mock(GenerationRun.class);
+        var version = mock(MetadataVersion.class);
+        when(runs.findFileHistory(path)).thenReturn(List.of(artifact));
+        when(artifact.getId()).thenReturn(artifactId);
+        when(artifact.getRelativePath()).thenReturn(path);
+        when(artifact.getGenerationRun()).thenReturn(run);
+        when(run.getId()).thenReturn(runId);
+        when(run.getMetadataVersion()).thenReturn(version);
+        when(version.getId()).thenReturn(versionId);
+        var trace = service.artifactHistory(path).getFirst();
+        assertEquals(artifactId, trace.artifactId());
+        assertEquals(runId, trace.runId());
+        assertEquals(versionId, trace.metadataVersionId());
+    }
+
     @Test void supportedTargetsMatchApprovedTeamMapping() {
         assertEquals(Set.of(Target.ENTITY), GenerationApiService.targets("ENTITY"));
         assertEquals(Set.of(Target.CONTROLLER), GenerationApiService.targets("CONTROLLER"));

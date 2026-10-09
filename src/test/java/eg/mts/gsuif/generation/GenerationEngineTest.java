@@ -394,6 +394,17 @@ class GenerationEngineTest {
         } finally { SecurityContextHolder.clearContext(); }
     }
 
+    @Test void documentedWomsFixtureGeneratesFullStack() throws Exception {
+        var metadata = mapper.readTree(java.nio.file.Files.readString(Path.of("demo/woms-sample-metadata.json")));
+        var request = mapper.readTree(java.nio.file.Files.readString(Path.of("demo/woms-generation-request.json")));
+        var specification = mapper.treeToValue(request.path("specification"), GenerationSpecification.class);
+        var result = GenerationEngine.templateOnly(builder).generate(
+                version("1.2.0", (ObjectNode) metadata.path("snapshot")), specification,
+                Set.of(Target.ENTITY, Target.CONTROLLER, Target.ANGULAR), "spring-angular");
+        assertFalse(result.artifacts().isEmpty());
+        assertTrue(result.artifacts().stream().anyMatch(a -> a.relativePath().endsWith(".html")));
+    }
+
     private ObjectNode emptySnapshot() {
         ObjectNode snapshot = mapper.createObjectNode();
         snapshot.set("components", mapper.createArrayNode()); snapshot.set("apiBindings", mapper.createArrayNode());
