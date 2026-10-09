@@ -160,6 +160,27 @@ class WomsDemoMetadataTest {
     }
 
     @Test
+    void detailSummaryIsReadOnly() throws Exception {
+        JsonNode bundle = load("work-order-detail-1.2.0.json");
+
+        for (JsonNode scope : List.of(bundle.path("page"), bundle.path("metadataVersion").path("snapshot"))) {
+            JsonNode summary = component(scope.path("components"), "workOrder");
+
+            assertThat(summary.path("disabled").asBoolean()).isTrue();
+            assertThat(summary.path("formConfig").path("submitLabel").asText()).isEqualTo("Read only");
+            assertThat(binding(scope.path("apiBindings"), "getWorkOrder").path("httpMethod").asText())
+                    .isEqualTo("GET");
+            for (JsonNode apiBinding : scope.path("apiBindings")) {
+                if (!"GET".equals(apiBinding.path("httpMethod").asText())) {
+                    assertThat(apiBinding.path("linkedComponentIds"))
+                            .extracting(JsonNode::asText)
+                            .doesNotContain(summary.path("id").asText());
+                }
+            }
+        }
+    }
+
+    @Test
     void documentsOneToManyTasksAndManyToManyTechnicianOperations() throws Exception {
         JsonNode bindings = load("work-order-detail-1.2.0.json").path("page").path("apiBindings");
         JsonNode tasks = binding(bindings, "listWorkOrderTasks");

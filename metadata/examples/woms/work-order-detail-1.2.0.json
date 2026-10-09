@@ -23,10 +23,10 @@
           "height": 2
         },
         "visibility": true,
-        "disabled": false,
+        "disabled": true,
         "fieldKey": "workOrder",
         "formConfig": {
-          "submitLabel": "Update status"
+          "submitLabel": "Read only"
         }
       },
       {
@@ -249,10 +249,10 @@
             "height": 2
           },
           "visibility": true,
-          "disabled": false,
+          "disabled": true,
           "fieldKey": "workOrder",
           "formConfig": {
-            "submitLabel": "Update status"
+            "submitLabel": "Read only"
           }
         },
         {
