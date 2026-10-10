@@ -103,16 +103,21 @@ class GenerationControllerIntegrationTest {
                 .andExpect(jsonPath("$.statusCode").value(404));
     }
 
-    @Test void omittedDestinationTypeReturnsValidationEnvelope() throws Exception {
+    @Test void invalidDestinationTypesReturnValidationEnvelope() throws Exception {
         UUID project = UUID.randomUUID();
         when(exports.configure(eq(project), eq("missing-type"), any(GenerationExportService.DestinationConfig.class)))
                 .thenThrow(new GenerationValidationException(List.of("destination.type: unsupported value")));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
-                        "/api/v1/generation/projects/{projectId}/destinations/missing-type", project)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"path\":\"safe/path\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.statusCode").value(400))
-                .andExpect(jsonPath("$.errors._global").value("destination.type: unsupported value"));
+        for (String body : List.of("{\"path\":\"safe/path\"}",
+                "{\"type\":null,\"path\":\"safe/path\"}",
+                "{\"type\":\"  \",\"path\":\"safe/path\"}",
+                "{\"type\":\"UNKNOWN\",\"path\":\"safe/path\"}")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                            "/api/v1/generation/projects/{projectId}/destinations/missing-type", project)
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.statusCode").value(400))
+                    .andExpect(jsonPath("$.errors._global").value("destination.type: unsupported value"));
+        }
     }
 
     @Test void savedArtifactDownloadsAsBytesAndExportReturnsLocation() throws Exception {

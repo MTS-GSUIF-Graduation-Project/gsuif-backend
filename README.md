@@ -49,10 +49,11 @@ the title and status controls and the results table. The explicit specification
 in [demo/woms-generation-request.json](demo/woms-generation-request.json)
 supplies entity fields, operation roles, and table columns. The Angular template
 renders controls and a table; it does not wire them to a running API. The
-[Angular consumer guide](docs/generation/scrum-31-angular-consumer.md) explains
-what the generated files include and what an application must supply.
+[Angular consumer guide](docs/generation/scrum-31-angular-consumer.md) gives
+commands to download, compile, and display the generated controls and table.
 
-Prerequisites: Java 21, PostgreSQL, Maven wrapper, `curl`, `jq`, and `psql`.
+Prerequisites: Java 21, PostgreSQL, Maven wrapper, Node.js and npm for the
+Angular preview, `curl`, `jq`, and `psql`.
 From a clean checkout, create a disposable local database as a PostgreSQL
 administrator:
 
@@ -61,7 +62,12 @@ psql -U postgres -d postgres -c "CREATE ROLE gsuif_user LOGIN PASSWORD 'gsuif_pa
 psql -U postgres -d postgres -c "CREATE DATABASE gsuif_db OWNER gsuif_user"
 ```
 
-Start the API with `./mvnw spring-boot:run`. Once local Hibernate schema
+Start the API with `./mvnw spring-boot:run -Dspring-boot.run.profiles=local`
+(`mvnw.cmd` on Windows). The `local` profile uses PostgreSQL and the development
+security settings; the `prod` profile needs separate database and JWT settings
+and disables Swagger. With the API running, open
+`http://localhost:8080/swagger-ui/index.html` to inspect its endpoints or
+`http://localhost:8080/v3/api-docs` for the OpenAPI document. Once local Hibernate schema
 setup completes, seed the login from another terminal:
 
 ```sh
@@ -107,11 +113,7 @@ curl -fsS -H "$AUTH" "$BASE/api/v1/pages/$PAGE/metadata/current" | jq -e --arg v
 jq --arg page "$PAGE" '.pageId = $page' demo/woms-generation-request.json > /tmp/woms-generation-request.json
 RUN=$(curl -fsS -H "$AUTH" -H 'Content-Type: application/json' --data-binary @/tmp/woms-generation-request.json "$BASE/api/v1/generation/generate" | jq -er --arg version "$VERSION" 'select(.body.metadataVersionId == $version and .body.status == "SUCCESS") | .body.runId')
 
-# 7. Confirm compile and test exits and select a registered generated file. The
-response's `validationScope.passedTargets` reports Java compilation and generated
-consumer behavior tests. For a full-stack run, `notValidatedTargets` includes
-`ANGULAR`: the server validates Angular syntax and templates in its pinned harness
-tests, but does not run Angular checks for each generated consumer at runtime.
+# 7. Confirm compile and test exits and select a registered generated file.
 DETAILS=$(curl -fsS -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN")
 printf '%s' "$DETAILS" | jq -e --arg version "$VERSION" 'select(.body.status == "SUCCESS" and .body.compileExitCode == 0 and .body.testExitCode == 0 and .body.metadataVersionId == $version and (.body.artifacts | length) > 0 and (.body.validationScope.passedTargets | index("JAVA_COMPILE")) != null and (.body.validationScope.passedTargets | index("JAVA_CONSUMER_TESTS")) != null and (.body.validationScope.notValidatedTargets | index("ANGULAR")) != null)'
 FILE=$(printf '%s' "$DETAILS" | jq -er '.body.artifacts[0].relativePath')
@@ -131,6 +133,11 @@ curl -fsS -X POST -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN/exports/local" |
 curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/json' -d '{"type":"ZIP","path":"delivery/archive"}' "$BASE/api/v1/generation/projects/$PROJECT/destinations/zip" | jq -e 'select(.body.type == "ZIP" and .body.path == "delivery/archive")'
 curl -fsS -X POST -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN/exports/zip" | jq -e --arg run "$RUN" 'select(.body.runId == $run and (.body.location | endswith(".zip")))'
 ```
+
+`validationScope.passedTargets` reports Java compilation and generated consumer
+behavior tests. For a full-stack run, `notValidatedTargets` includes `ANGULAR`:
+the server validates Angular syntax and templates in its pinned harness tests,
+but does not run Angular checks for each generated consumer at runtime.
 
 Export attempts are logged with run, project, and destination. Repeating an
 export to the same destination returns an explicit collision error and leaves

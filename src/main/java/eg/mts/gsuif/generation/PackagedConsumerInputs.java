@@ -54,9 +54,36 @@ final class PackagedConsumerInputs {
                 """.formatted(base, base, entity, entity, entity, entity, entity,
                         entity, entity, entity);
         inputs.put(destinationRoot + "service/" + entity + "Service.java", service.getBytes(StandardCharsets.UTF_8));
-        String testPath = "src/test/java/" + base.replace('.', '/') + "/generation/GeneratedControllerBehaviorTest.java";
-        inputs.put(testPath, behaviorTest(base, entity, createOperationId(contract)).getBytes(StandardCharsets.UTF_8));
+        String testRoot = "src/test/java/" + base.replace('.', '/') + "/generation/";
+        if (targets.contains(Target.ENTITY)) {
+            inputs.put(testRoot + "GeneratedEntityBehaviorTest.java",
+                    entityBehaviorTest(base, specification.entity().className()).getBytes(StandardCharsets.UTF_8));
+        }
+        if (targets.contains(Target.CONTROLLER)) {
+            inputs.put(testRoot + "GeneratedControllerBehaviorTest.java",
+                    behaviorTest(base, entity, createOperationId(contract)).getBytes(StandardCharsets.UTF_8));
+        }
         return Map.copyOf(inputs);
+    }
+
+    private static String entityBehaviorTest(String base, String entity) {
+        return """
+                package %s.generation;
+                import %s.entity.%s;
+                import jakarta.persistence.Entity;
+                import org.junit.jupiter.api.Test;
+                import static org.junit.jupiter.api.Assertions.*;
+                class GeneratedEntityBehaviorTest {
+                    @Test void transientIdentityAndJpaMapping() {
+                        var first = new %s();
+                        var second = new %s();
+                        assertTrue(%s.class.isAnnotationPresent(Entity.class));
+                        assertEquals(first, first);
+                        assertNotEquals(first, second);
+                        assertNull(first.getId());
+                    }
+                }
+                """.formatted(base, base, entity, entity, entity, entity);
     }
 
     private static String createOperationId(String contract) {
