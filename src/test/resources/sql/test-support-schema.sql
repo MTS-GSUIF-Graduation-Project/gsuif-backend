@@ -45,14 +45,17 @@ INSERT INTO gsuif_user_role (user_id, role_id, created_at, updated_at, created_b
 ('00000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system'),
 ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system');
 
-INSERT INTO gsuif_permission (id, code, name, created_at, updated_at, created_by, last_modified_by) VALUES
-('00000000-0000-0000-0000-000000000101', 'ENTITY_ACCESS:GsuifProject', 'Test project access', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system'),
-('00000000-0000-0000-0000-000000000102', 'ENTITY_ACCESS:GsuifPage', 'Test page access', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system'),
-('00000000-0000-0000-0000-000000000103', 'ENTITY_ACCESS:WorkOrder', 'Test work order access', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system'),
-('00000000-0000-0000-0000-000000000104', 'ENTITY_ACCESS:MetadataVersion', 'Test metadata version access', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system');
-
-INSERT INTO gsuif_role_permission (role_id, permission_id, created_at, updated_at, created_by, last_modified_by) VALUES
-('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000101', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system'),
-('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000102', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system'),
-('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000103', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system'),
-('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000104', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system');
+-- V6 creates the permission rows before this test-only role is seeded. Grant the
+-- migrated permissions to the test ADMIN role without duplicating production data.
+INSERT INTO gsuif_role_permission
+    (role_id, permission_id, created_at, updated_at, created_by, last_modified_by)
+SELECT r.id, p.id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system', 'system'
+FROM gsuif_role r
+CROSS JOIN gsuif_permission p
+WHERE r.name = 'ROLE_ADMIN'
+  AND p.code LIKE 'ENTITY_ACCESS:%'
+  AND NOT EXISTS (
+      SELECT 1 FROM gsuif_role_permission existing
+      WHERE existing.role_id = r.id
+        AND existing.permission_id = p.id
+  );

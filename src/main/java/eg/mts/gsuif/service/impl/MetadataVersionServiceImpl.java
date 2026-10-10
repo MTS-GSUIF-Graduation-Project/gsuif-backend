@@ -73,6 +73,7 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     @Loggable
     public MetadataVersionDto create(UUID pageId, CreateMetadataVersionRequest request) {
         Authentication authentication = requireAccess();
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
         com.fasterxml.jackson.databind.JsonNode standardSnapshot = null;
         String serializedSnapshot = null;
         if (request.snapshot() != null) {
@@ -136,6 +137,7 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     @Loggable
     public MetadataVersionDto getCurrent(UUID pageId) {
         Authentication authentication = requireAccess();
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
         GsuifPage page = pageRepository.findById(pageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Page not found with id: " + pageId));
         UUID currentId = page.getCurrentMetadataVersionId();
@@ -152,6 +154,7 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     @Loggable
     public MetadataVersionDto selectCurrent(UUID pageId, UUID versionId) {
         Authentication authentication = requireAccess();
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
         GsuifPage page = pageRepository.findByIdWithLock(pageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Page not found with id: " + pageId));
         MetadataVersion version = metadataVersionRepository.findByIdAndPageId(versionId, pageId)

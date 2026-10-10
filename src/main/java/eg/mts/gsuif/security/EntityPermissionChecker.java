@@ -20,6 +20,10 @@ import java.util.stream.Collectors;
  * Entity access uses {@code ENTITY_ACCESS:{SimpleEntityName}}. Field denial uses
  * {@code FIELD_DENY:{SimpleEntityName}:{fieldName}}; every matching field is removed
  * from the response DTO by the calling service.
+ *
+ * <p>For SCRUM-61, {@code FIELD_DENY} applies to read-path DTO responses only.
+ * Write-path field enforcement is outside SCRUM-61 and is tracked by OQ-12 as part
+ * of the Phase 2 authorization scope.
  */
 @Service
 @Transactional(readOnly = true)

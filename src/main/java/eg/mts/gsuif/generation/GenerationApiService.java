@@ -1,6 +1,7 @@
 package eg.mts.gsuif.generation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eg.mts.gsuif.aspect.Loggable;
 import eg.mts.gsuif.dto.GenerationApiDtos;
 import eg.mts.gsuif.entity.GsuifPage;
 import eg.mts.gsuif.entity.GsuifUser;
@@ -11,8 +12,11 @@ import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifUserRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,20 +35,29 @@ public class GenerationApiService {
     private final GenerationWorkflow workflow;
     private final GenerationRunService runs;
     private final TemplateOnlyProvider provider;
+    private final EntityPermissionChecker permissionChecker;
 
     public GenerationApiService(GsuifPageRepository pages, MetadataVersionRepository versions,
             GsuifUserRepository users, GeneratedArtifactRepository artifacts,
-            GenerationWorkflow workflow, GenerationRunService runs, MetadataSchemaValidator schemaValidator) {
+            GenerationWorkflow workflow, GenerationRunService runs, MetadataSchemaValidator schemaValidator,
+            EntityPermissionChecker permissionChecker) {
         this.pages = pages;
         this.versions = versions;
         this.users = users;
         this.artifacts = artifacts;
         this.workflow = workflow;
         this.runs = runs;
+        this.permissionChecker = permissionChecker;
         this.provider = new TemplateOnlyProvider(new GenerationContextBuilder(new ObjectMapper(), schemaValidator));
     }
 
+    /**
+     * Generates code from the selected immutable metadata snapshot.
+     * Field-deny masking is not applied to snapshot during generation; snapshot is required for code production.
+     * Field masking applies only to read-path DTO responses.
+     */
     @Transactional
+    @Loggable
     public GenerationApiDtos.CreatedRun generate(GenerationApiDtos.GenerateRequest request, String username) {
         Set<Target> targets = targets(request.generationType());
         if (request.specification() == null) {
@@ -53,6 +66,9 @@ public class GenerationApiService {
         if (username == null || username.isBlank()) {
             throw new InsufficientAuthenticationException("Authentication required");
         }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
+        permissionChecker.requireEntityAccess("MetadataVersion", authentication);
         GsuifUser user = users.findByUsername(username)
                 .orElseThrow(() -> new InsufficientAuthenticationException("Authenticated user not found"));
         GsuifPage page = pages.findById(request.pageId())
@@ -72,12 +88,16 @@ public class GenerationApiService {
                 completed.run().getStatus().name(), version.getId(), generated);
     }
 
+    @Loggable
     public List<GenerationApiDtos.Provider> providers() {
         return List.of(new GenerationApiDtos.Provider(provider.getProviderName(), provider.isAvailable()));
     }
 
     @Transactional(readOnly = true)
+    @Loggable
     public GenerationApiDtos.RunDetails run(UUID id) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("MetadataVersion", authentication);
         var run = runs.findById(id).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
         var linked = artifacts.findAllByGenerationRunIdOrderByRelativePathAsc(id).stream()
                 .map(a -> new GenerationApiDtos.LinkedArtifact(a.getId(), a.getArtifactName(),

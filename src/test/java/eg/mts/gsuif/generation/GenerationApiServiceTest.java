@@ -12,6 +12,7 @@ import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifUserRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import org.junit.jupiter.api.Test;
 
@@ -34,8 +35,9 @@ class GenerationApiServiceTest {
     GeneratedArtifactRepository artifacts = mock(GeneratedArtifactRepository.class);
     GenerationWorkflow workflow = mock(GenerationWorkflow.class);
     GenerationRunService runs = mock(GenerationRunService.class);
+    EntityPermissionChecker permissionChecker = mock(EntityPermissionChecker.class);
     GenerationApiService service = new GenerationApiService(pages, versions, users, artifacts, workflow,
-            runs, mock(MetadataSchemaValidator.class));
+            runs, mock(MetadataSchemaValidator.class), permissionChecker);
 
     @Test void supportedTargetsMatchApprovedTeamMapping() {
         assertEquals(Set.of(Target.ENTITY), GenerationApiService.targets("ENTITY"));
