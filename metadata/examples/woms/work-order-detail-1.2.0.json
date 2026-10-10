@@ -1,0 +1,457 @@
+{
+  "project": {
+    "id": "60000000-0000-4000-8000-000000000001",
+    "name": "WOMS Phase 2 Demo",
+    "description": "Illustrative Work Order Management System metadata dataset; the GSUIF framework remains domain-neutral."
+  },
+  "page": {
+    "id": "60000000-0000-4000-8000-000000000030",
+    "projectId": "60000000-0000-4000-8000-000000000001",
+    "name": "Work order detail",
+    "route": "/demo/woms/work-orders/{id}",
+    "components": [
+      {
+        "id": "61000000-0000-4000-8000-000000000021",
+        "type": "form",
+        "label": "Work order summary",
+        "position": {
+          "row": 0,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 2
+        },
+        "visibility": true,
+        "disabled": true,
+        "fieldKey": "workOrder",
+        "formConfig": {
+          "submitLabel": "Read only"
+        }
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000022",
+        "type": "table",
+        "label": "Work order tasks",
+        "position": {
+          "row": 2,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 4
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "tasks",
+        "tableConfig": {
+          "columns": [
+            {
+              "fieldKey": "taskName",
+              "label": "Task"
+            },
+            {
+              "fieldKey": "status",
+              "label": "Status"
+            }
+          ]
+        }
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000023",
+        "type": "table",
+        "label": "Assigned technicians",
+        "position": {
+          "row": 6,
+          "col": 0
+        },
+        "size": {
+          "width": 6,
+          "height": 4
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "technicians",
+        "tableConfig": {
+          "columns": [
+            {
+              "fieldKey": "technicianName",
+              "label": "Technician"
+            }
+          ]
+        }
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000024",
+        "type": "table",
+        "label": "Work order technician assignments",
+        "position": {
+          "row": 6,
+          "col": 6
+        },
+        "size": {
+          "width": 6,
+          "height": 4
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "assignments",
+        "tableConfig": {
+          "columns": [
+            {
+              "fieldKey": "workOrderId",
+              "label": "Work order"
+            },
+            {
+              "fieldKey": "technicianId",
+              "label": "Technician"
+            }
+          ]
+        }
+      }
+    ],
+    "apiBindings": [
+      {
+        "id": "62000000-0000-4000-8000-000000000021",
+        "name": "getWorkOrder",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          }
+        },
+        "responseMapping": {
+          "item": "body"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000021"
+        ]
+      },
+      {
+        "id": "62000000-0000-4000-8000-000000000022",
+        "name": "listWorkOrderTasks",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}/tasks",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          }
+        },
+        "responseMapping": {
+          "list": "body.data"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000022"
+        ],
+        "parentComponentId": "61000000-0000-4000-8000-000000000021",
+        "childComponentIds": [
+          "61000000-0000-4000-8000-000000000022"
+        ]
+      },
+      {
+        "id": "62000000-0000-4000-8000-000000000023",
+        "name": "listAssignedTechnicians",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}/technicians",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          }
+        },
+        "responseMapping": {
+          "list": "body.data"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000023"
+        ]
+      },
+      {
+        "id": "62000000-0000-4000-8000-000000000026",
+        "name": "listTechnicianAssignments",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}/technician-assignments",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          }
+        },
+        "responseMapping": {
+          "list": "body.data"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000024"
+        ]
+      },
+      {
+        "id": "62000000-0000-4000-8000-000000000024",
+        "name": "assignTechnicianToWorkOrder",
+        "httpMethod": "POST",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}/technicians",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id"
+          },
+          "body": {
+            "technicianId": "technicianId"
+          }
+        },
+        "responseMapping": {
+          "item": "body"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000024"
+        ]
+      },
+      {
+        "id": "62000000-0000-4000-8000-000000000025",
+        "name": "removeTechnicianFromWorkOrder",
+        "httpMethod": "DELETE",
+        "endpointUrl": "/api/demo/woms/work-orders/{id}/technicians/{technicianId}",
+        "headers": {},
+        "requestMapping": {
+          "path": {
+            "id": "id",
+            "technicianId": "technicianId"
+          }
+        },
+        "responseMapping": {},
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000024"
+        ]
+      }
+    ]
+  },
+  "metadataVersion": {
+    "id": "63000000-0000-4000-8000-000000000030",
+    "projectId": "60000000-0000-4000-8000-000000000001",
+    "pageId": "60000000-0000-4000-8000-000000000030",
+    "version": 1,
+    "schemaVersion": "1.2.0",
+    "isCurrent": true,
+    "snapshot": {
+      "components": [
+        {
+          "id": "61000000-0000-4000-8000-000000000021",
+          "type": "form",
+          "label": "Work order summary",
+          "position": {
+            "row": 0,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 2
+          },
+          "visibility": true,
+          "disabled": true,
+          "fieldKey": "workOrder",
+          "formConfig": {
+            "submitLabel": "Read only"
+          }
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000022",
+          "type": "table",
+          "label": "Work order tasks",
+          "position": {
+            "row": 2,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 4
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "tasks",
+          "tableConfig": {
+            "columns": [
+              {
+                "fieldKey": "taskName",
+                "label": "Task"
+              },
+              {
+                "fieldKey": "status",
+                "label": "Status"
+              }
+            ]
+          }
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000023",
+          "type": "table",
+          "label": "Assigned technicians",
+          "position": {
+            "row": 6,
+            "col": 0
+          },
+          "size": {
+            "width": 6,
+            "height": 4
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "technicians",
+          "tableConfig": {
+            "columns": [
+              {
+                "fieldKey": "technicianName",
+                "label": "Technician"
+              }
+            ]
+          }
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000024",
+          "type": "table",
+          "label": "Work order technician assignments",
+          "position": {
+            "row": 6,
+            "col": 6
+          },
+          "size": {
+            "width": 6,
+            "height": 4
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "assignments",
+          "tableConfig": {
+            "columns": [
+              {
+                "fieldKey": "workOrderId",
+                "label": "Work order"
+              },
+              {
+                "fieldKey": "technicianId",
+                "label": "Technician"
+              }
+            ]
+          }
+        }
+      ],
+      "apiBindings": [
+        {
+          "id": "62000000-0000-4000-8000-000000000021",
+          "name": "getWorkOrder",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            }
+          },
+          "responseMapping": {
+            "item": "body"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000021"
+          ]
+        },
+        {
+          "id": "62000000-0000-4000-8000-000000000022",
+          "name": "listWorkOrderTasks",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}/tasks",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            }
+          },
+          "responseMapping": {
+            "list": "body.data"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000022"
+          ],
+          "parentComponentId": "61000000-0000-4000-8000-000000000021",
+          "childComponentIds": [
+            "61000000-0000-4000-8000-000000000022"
+          ]
+        },
+        {
+          "id": "62000000-0000-4000-8000-000000000023",
+          "name": "listAssignedTechnicians",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}/technicians",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            }
+          },
+          "responseMapping": {
+            "list": "body.data"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000023"
+          ]
+        },
+        {
+          "id": "62000000-0000-4000-8000-000000000026",
+          "name": "listTechnicianAssignments",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}/technician-assignments",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            }
+          },
+          "responseMapping": {
+            "list": "body.data"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000024"
+          ]
+        },
+        {
+          "id": "62000000-0000-4000-8000-000000000024",
+          "name": "assignTechnicianToWorkOrder",
+          "httpMethod": "POST",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}/technicians",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id"
+            },
+            "body": {
+              "technicianId": "technicianId"
+            }
+          },
+          "responseMapping": {
+            "item": "body"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000024"
+          ]
+        },
+        {
+          "id": "62000000-0000-4000-8000-000000000025",
+          "name": "removeTechnicianFromWorkOrder",
+          "httpMethod": "DELETE",
+          "endpointUrl": "/api/demo/woms/work-orders/{id}/technicians/{technicianId}",
+          "headers": {},
+          "requestMapping": {
+            "path": {
+              "id": "id",
+              "technicianId": "technicianId"
+            }
+          },
+          "responseMapping": {},
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000024"
+          ]
+        }
+      ]
+    }
+  }
+}

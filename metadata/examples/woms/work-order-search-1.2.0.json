@@ -1,0 +1,293 @@
+{
+  "project": {
+    "id": "60000000-0000-4000-8000-000000000001",
+    "name": "WOMS Phase 2 Demo",
+    "description": "Illustrative Work Order Management System metadata dataset; the GSUIF framework remains domain-neutral."
+  },
+  "page": {
+    "id": "60000000-0000-4000-8000-000000000010",
+    "projectId": "60000000-0000-4000-8000-000000000001",
+    "name": "Work order search",
+    "route": "/demo/woms/work-orders",
+    "components": [
+      {
+        "id": "61000000-0000-4000-8000-000000000001",
+        "type": "form",
+        "label": "Work order filters",
+        "position": {
+          "row": 0,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 2
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "filters",
+        "formConfig": {
+          "submitLabel": "Search"
+        }
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000004",
+        "type": "text-field",
+        "label": "Search text",
+        "position": {
+          "row": 1,
+          "col": 0
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "query"
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000005",
+        "type": "select",
+        "label": "Status",
+        "position": {
+          "row": 1,
+          "col": 6
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "status"
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000002",
+        "type": "table",
+        "label": "Work orders",
+        "position": {
+          "row": 2,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 6
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "workOrders",
+        "tableConfig": {
+          "columns": [
+            {
+              "fieldKey": "orderNumber",
+              "label": "Order number"
+            },
+            {
+              "fieldKey": "status",
+              "label": "Status"
+            },
+            {
+              "fieldKey": "dueDate",
+              "label": "Due date"
+            }
+          ]
+        }
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000003",
+        "type": "pagination",
+        "label": "Work order pages",
+        "position": {
+          "row": 8,
+          "col": 0
+        },
+        "size": {
+          "width": 12,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "page",
+        "paginationConfig": {
+          "pageSize": 20
+        }
+      }
+    ],
+    "apiBindings": [
+      {
+        "id": "62000000-0000-4000-8000-000000000001",
+        "name": "searchWorkOrders",
+        "httpMethod": "GET",
+        "endpointUrl": "/api/demo/woms/work-orders",
+        "headers": {},
+        "requestMapping": {
+          "query": {
+            "status": "status",
+            "query": "query",
+            "page": "page"
+          }
+        },
+        "responseMapping": {
+          "list": "body.data",
+          "pagination": "body.totalPages"
+        },
+        "linkedComponentIds": [
+          "61000000-0000-4000-8000-000000000004",
+          "61000000-0000-4000-8000-000000000005",
+          "61000000-0000-4000-8000-000000000002",
+          "61000000-0000-4000-8000-000000000003"
+        ],
+        "parentComponentId": "61000000-0000-4000-8000-000000000001",
+        "childComponentIds": [
+          "61000000-0000-4000-8000-000000000004",
+          "61000000-0000-4000-8000-000000000005"
+        ]
+      }
+    ]
+  },
+  "metadataVersion": {
+    "id": "63000000-0000-4000-8000-000000000010",
+    "projectId": "60000000-0000-4000-8000-000000000001",
+    "pageId": "60000000-0000-4000-8000-000000000010",
+    "version": 1,
+    "schemaVersion": "1.2.0",
+    "isCurrent": true,
+    "snapshot": {
+      "components": [
+        {
+          "id": "61000000-0000-4000-8000-000000000001",
+          "type": "form",
+          "label": "Work order filters",
+          "position": {
+            "row": 0,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 2
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "filters",
+          "formConfig": {
+            "submitLabel": "Search"
+          }
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000004",
+          "type": "text-field",
+          "label": "Search text",
+          "position": {
+            "row": 1,
+            "col": 0
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "query"
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000005",
+          "type": "select",
+          "label": "Status",
+          "position": {
+            "row": 1,
+            "col": 6
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "status"
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000002",
+          "type": "table",
+          "label": "Work orders",
+          "position": {
+            "row": 2,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 6
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "workOrders",
+          "tableConfig": {
+            "columns": [
+              {
+                "fieldKey": "orderNumber",
+                "label": "Order number"
+              },
+              {
+                "fieldKey": "status",
+                "label": "Status"
+              },
+              {
+                "fieldKey": "dueDate",
+                "label": "Due date"
+              }
+            ]
+          }
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000003",
+          "type": "pagination",
+          "label": "Work order pages",
+          "position": {
+            "row": 8,
+            "col": 0
+          },
+          "size": {
+            "width": 12,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "page",
+          "paginationConfig": {
+            "pageSize": 20
+          }
+        }
+      ],
+      "apiBindings": [
+        {
+          "id": "62000000-0000-4000-8000-000000000001",
+          "name": "searchWorkOrders",
+          "httpMethod": "GET",
+          "endpointUrl": "/api/demo/woms/work-orders",
+          "headers": {},
+          "requestMapping": {
+            "query": {
+              "status": "status",
+              "query": "query",
+              "page": "page"
+            }
+          },
+          "responseMapping": {
+            "list": "body.data",
+            "pagination": "body.totalPages"
+          },
+          "linkedComponentIds": [
+            "61000000-0000-4000-8000-000000000004",
+            "61000000-0000-4000-8000-000000000005",
+            "61000000-0000-4000-8000-000000000002",
+            "61000000-0000-4000-8000-000000000003"
+          ],
+          "parentComponentId": "61000000-0000-4000-8000-000000000001",
+          "childComponentIds": [
+            "61000000-0000-4000-8000-000000000004",
+            "61000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ]
+    }
+  }
+}

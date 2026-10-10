@@ -33,7 +33,15 @@ const schemaFiles = [
   "metadata-version-1.2.0.schema.json",
 ];
 
-const exampleFiles = ["simple.json", "one-to-many.json", "many-to-many.json", "many-to-many-1.2.0.json"];
+const exampleFiles = [
+  "simple.json",
+  "one-to-many.json",
+  "many-to-many.json",
+  "many-to-many-1.2.0.json",
+  "woms/work-order-search-1.2.0.json",
+  "woms/work-order-create-edit-1.2.0.json",
+  "woms/work-order-detail-1.2.0.json",
+];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
