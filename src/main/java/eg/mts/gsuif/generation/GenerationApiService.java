@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,14 +63,18 @@ public class GenerationApiService {
         MetadataVersion version = versions.findByIdAndPageId(versionId, request.pageId())
                 .orElseThrow(() -> new ResourceNotFoundException("Selected metadata version not found"));
         var completed = workflow.generateAndRecord(UUID.randomUUID(), version, user,
-                request.specification(), targets, "spring-angular", Map.of());
+                request.specification(), targets, "spring-angular",
+                PackagedConsumerInputs.forBuild(request.specification(), targets));
         List<GenerationApiDtos.TextArtifact> generated = completed.result().artifacts().stream()
                 .map(a -> new GenerationApiDtos.TextArtifact(a.relativePath(),
                         new String(a.bytes(), StandardCharsets.UTF_8), a.sha256(),
                         a.templateVersion(), a.catalogVersion()))
                 .toList();
+        var validationScope = validationScope(completed.result().artifacts().stream()
+                .map(GenerationResult.Artifact::relativePath).toList(),
+                completed.run().getStatus().name(), completed.run().getCompileExitCode(), completed.run().getTestExitCode());
         return new GenerationApiDtos.CreatedRun(completed.run().getId(),
-                completed.run().getStatus().name(), version.getId(), generated);
+                completed.run().getStatus().name(), version.getId(), generated, validationScope);
     }
 
     public List<GenerationApiDtos.Provider> providers() {
@@ -83,9 +88,49 @@ public class GenerationApiService {
                 .map(a -> new GenerationApiDtos.LinkedArtifact(a.getId(), a.getArtifactName(),
                         a.getArtifactType(), a.getRelativePath(), a.getTemplateVersion()))
                 .toList();
+        var validationScope = validationScope(linked.stream()
+                .map(GenerationApiDtos.LinkedArtifact::relativePath).toList(),
+                run.getStatus().name(), run.getCompileExitCode(), run.getTestExitCode());
         return new GenerationApiDtos.RunDetails(run.getId(), run.getStatus().name(),
                 run.getCreatedAt(), run.getUpdatedAt(), run.getMetadataVersion().getId(), linked,
-                run.getCompileExitCode(), run.getCompileOutput(), run.getTestExitCode(), run.getTestOutput());
+                run.getCompileExitCode(), run.getCompileOutput(), run.getTestExitCode(), run.getTestOutput(), validationScope);
+    }
+
+    private static GenerationApiDtos.ValidationScope validationScope(List<String> paths, String status,
+            Integer compileExitCode, Integer testExitCode) {
+        List<String> passed = new java.util.ArrayList<>();
+        if (compileExitCode != null && compileExitCode == 0) passed.add("JAVA_COMPILE");
+        if ("SUCCESS".equals(status) && compileExitCode != null && compileExitCode == 0
+                && testExitCode != null && testExitCode == 0)
+            passed.add("JAVA_CONSUMER_TESTS");
+        boolean angular = paths.stream().anyMatch(path -> path != null && path.startsWith("src/app/generated/"));
+        return new GenerationApiDtos.ValidationScope(passed, angular ? List.of("ANGULAR") : List.of());
+    }
+    @Transactional(readOnly = true)
+    public DownloadedArtifact download(UUID runId, String path) {
+        runs.findById(runId).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
+        validateArtifactPath(path);
+        if (runs.findFile(runId, path).isEmpty())
+            throw new ResourceNotFoundException("Artifact not registered for run");
+        return new DownloadedArtifact(Path.of(path).getFileName().toString(), runs.readArtifact(runId, path));
+    }
+
+    public record DownloadedArtifact(String fileName, byte[] bytes) { }
+
+    @Transactional(readOnly = true)
+    public List<ArtifactTrace> artifactHistory(String path) {
+        validateArtifactPath(path);
+        return runs.findFileHistory(path).stream()
+                .map(a -> new ArtifactTrace(a.getId(), a.getRelativePath(),
+                        a.getGenerationRun().getId(), a.getGenerationRun().getMetadataVersion().getId()))
+                .toList();
+    }
+
+    public record ArtifactTrace(UUID artifactId, String relativePath, UUID runId, UUID metadataVersionId) { }
+
+    private static void validateArtifactPath(String path) {
+        try { GenerationArtifactStore.safeRelative(path); }
+        catch (IllegalArgumentException ex) { throw new GenerationValidationException(List.of("path: unsafe artifact path")); }
     }
 
     static Set<Target> targets(String generationType) {

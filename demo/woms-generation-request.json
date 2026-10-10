@@ -1,0 +1,39 @@
+{
+  "pageId": "00000000-0000-0000-0000-000000000000",
+  "generationType": "FULL_STACK",
+  "specification": {
+    "specVersion": "1.0.0",
+    "basePackage": "com.example.fixture",
+    "entity": {
+      "className": "AssetTicket",
+      "tableName": "asset_ticket",
+      "fields": [
+        {"name":"title","columnName":"title","javaType":"String","nullable":false,"columnLength":100},
+        {"name":"status","columnName":"status","javaType":"AssetTicketStatus","nullable":false,"enumType":"AssetTicketStatus"}
+      ],
+      "enversAudited": false
+    },
+    "openApi": {
+      "contractId": "asset-ticket-api",
+      "contractVersion": "1.0.0",
+      "bindingOperations": {
+        "00000000-0000-0000-0000-000000000001": "listAssetTickets",
+        "00000000-0000-0000-0000-000000000002": "createAssetTicket",
+        "00000000-0000-0000-0000-000000000003": "getAssetTicketById",
+        "00000000-0000-0000-0000-000000000004": "updateAssetTicket",
+        "00000000-0000-0000-0000-000000000005": "deleteAssetTicket"
+      }
+    },
+    "operationRoles": {
+      "listAssetTickets": ["ROLE_ADMIN", "ROLE_USER"],
+      "createAssetTicket": ["ROLE_ADMIN", "ROLE_USER"],
+      "getAssetTicketById": ["ROLE_ADMIN", "ROLE_USER"],
+      "updateAssetTicket": ["ROLE_ADMIN", "ROLE_USER"],
+      "deleteAssetTicket": ["ROLE_ADMIN", "ROLE_USER"]
+    },
+    "angular": {
+      "className": "AssetTicket",
+      "tableColumns": {"00000000-0000-0000-0000-000000000012": ["id", "title", "status"]}
+    }
+  }
+}

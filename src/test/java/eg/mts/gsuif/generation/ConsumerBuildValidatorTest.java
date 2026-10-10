@@ -64,6 +64,18 @@ class ConsumerBuildValidatorTest {
         assertTrue(build.compile().output().contains("Generated Java sources are missing"));
     }
 
+    @Test void requiresConsumerBehaviorTestSourceBeforeRunningMaven() {
+        var calls = new AtomicInteger();
+        var validator = new ConsumerBuildValidator(temporaryDirectory, (project, goal) -> {
+            calls.incrementAndGet();
+            return new ConsumerBuildValidator.CommandResult(0, "BUILD SUCCESS");
+        });
+        var build = validator.validate(javaResult(), Map.of());
+        assertFalse(build.passed());
+        assertTrue(build.compile().output().contains("Generated consumer behavioral tests are missing"));
+        assertEquals(0, calls.get());
+    }
+
     @Test void rejectsBuildControlAndPrebuiltInputsBeforeRunningMaven() {
         for (String path : List.of(".mvn/maven.config", "target/classes/example/Generated.class",
                 "src/main/resources/example/Generated.class", "src/test/resources/library.jar")) {
@@ -89,6 +101,7 @@ class ConsumerBuildValidatorTest {
             assertTrue(Files.exists(project.resolve("src/test/java/example/GeneratedTest.java")));
             assertTrue(Files.exists(project.resolve("src/main/resources/application.properties")));
             assertTrue(Files.exists(project.resolve("src/test/resources/sample.txt")));
+            if (goal.equals("test")) writeReport(project, 1, 0);
             return new ConsumerBuildValidator.CommandResult(0, "BUILD SUCCESS");
         });
         var mixed = new GenerationResult(List.of(javaArtifact(), artifact("src/app/generated/widget.component.ts")),
@@ -106,6 +119,27 @@ class ConsumerBuildValidatorTest {
         assertFalse(rejected.passed());
         assertTrue(rejected.compile().output().contains("Unsupported consumer input path"));
         assertEquals(2, calls.get());
+    }
+
+    @Test void zeroExitRequiresAnExecutedSurefireTest() {
+        for (int[] counts : List.of(new int[] {-1, -1}, new int[] {0, 0}, new int[] {1, 1})) {
+            var validator = new ConsumerBuildValidator(temporaryDirectory, (project, goal) -> {
+                if (goal.equals("test") && counts[0] >= 0) writeReport(project, counts[0], counts[1]);
+                return new ConsumerBuildValidator.CommandResult(0, "BUILD SUCCESS");
+            });
+            var build = validator.validate(javaResult(), Map.of(
+                    "src/test/java/example/GeneratedTest.java", bytes("package example; class GeneratedTest {}")));
+            assertFalse(build.passed());
+            assertNull(build.test().exitCode());
+            assertTrue(build.test().output().contains("not executed"));
+        }
+    }
+
+    static void writeReport(Path project, int tests, int skipped) throws java.io.IOException {
+        Path reports = project.resolve("target/surefire-reports");
+        Files.createDirectories(reports);
+        Files.writeString(reports.resolve("TEST-example.GeneratedTest.xml"),
+                "<testsuite tests=\"" + tests + "\" skipped=\"" + skipped + "\"/>");
     }
 
     private GenerationResult javaResult() {

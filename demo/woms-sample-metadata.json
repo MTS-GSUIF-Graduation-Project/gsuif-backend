@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.2.0",
+  "snapshot": {
+    "components": [
+      {"id":"00000000-0000-0000-0000-000000000010","type":"text-field","label":"Ticket title","fieldKey":"title","position":{"row":0,"col":0},"size":{"width":6,"height":1},"visibility":true,"disabled":false},
+      {"id":"00000000-0000-0000-0000-000000000011","type":"select","label":"Status","fieldKey":"status","position":{"row":0,"col":6},"size":{"width":6,"height":1},"visibility":true,"disabled":false},
+      {"id":"00000000-0000-0000-0000-000000000012","type":"table","label":"Asset tickets","position":{"row":1,"col":0},"size":{"width":12,"height":4},"visibility":true,"disabled":false}
+    ],
+    "apiBindings": [
+      {"id":"00000000-0000-0000-0000-000000000001","name":"listAssetTickets","httpMethod":"GET","endpointUrl":"/api/v1/asset-tickets","headers":{},"requestMapping":{"query":{"status":"status"}},"responseMapping":{"list":"body.data"},"linkedComponentIds":["00000000-0000-0000-0000-000000000010","00000000-0000-0000-0000-000000000011","00000000-0000-0000-0000-000000000012"]},
+      {"id":"00000000-0000-0000-0000-000000000002","name":"createAssetTicket","httpMethod":"POST","endpointUrl":"/api/v1/asset-tickets","headers":{},"requestMapping":{"body":{"title":"title","status":"status"}},"responseMapping":{"item":"body"}},
+      {"id":"00000000-0000-0000-0000-000000000003","name":"getAssetTicketById","httpMethod":"GET","endpointUrl":"/api/v1/asset-tickets/{id}","headers":{},"requestMapping":{"path":{"id":"id"}},"responseMapping":{"item":"body"}},
+      {"id":"00000000-0000-0000-0000-000000000004","name":"updateAssetTicket","httpMethod":"PUT","endpointUrl":"/api/v1/asset-tickets/{id}","headers":{},"requestMapping":{"path":{"id":"id"},"body":{"title":"title","status":"status"}},"responseMapping":{"item":"body"}},
+      {"id":"00000000-0000-0000-0000-000000000005","name":"deleteAssetTicket","httpMethod":"DELETE","endpointUrl":"/api/v1/asset-tickets/{id}","headers":{},"requestMapping":{"path":{"id":"id"}},"responseMapping":{"item":"body"}}
+    ]
+  }
+}

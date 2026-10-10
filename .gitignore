@@ -49,6 +49,10 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# Pilot local validation caches
+/.pilot-cache/
+/.pilot-tmp/
+
 # OS files
 .DS_Store
 Thumbs.db

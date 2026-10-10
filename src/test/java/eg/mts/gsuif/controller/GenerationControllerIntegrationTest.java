@@ -3,6 +3,7 @@ package eg.mts.gsuif.controller;
 import eg.mts.gsuif.dto.GenerationApiDtos;
 import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.generation.GenerationApiService;
+import eg.mts.gsuif.generation.GenerationExportService;
 import eg.mts.gsuif.generation.GenerationValidationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,12 +35,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GenerationControllerIntegrationTest {
     @Autowired MockMvc mvc;
     @MockitoBean GenerationApiService service;
+    @MockitoBean GenerationExportService exports;
 
     @Test void generateReturnsCreatedEnvelopeAndArtifactText() throws Exception {
         UUID page = UUID.randomUUID(), run = UUID.randomUUID(), version = UUID.randomUUID();
         when(service.generate(any(), eq("esraa.abdelrazek"))).thenReturn(new GenerationApiDtos.CreatedRun(
                 run, "SUCCESS", version, List.of(new GenerationApiDtos.TextArtifact(
-                "src/main/java/example/Thing.java", "class Thing {}", "abc", "1.0.0", "1.0.0"))));
+                "src/main/java/example/Thing.java", "class Thing {}", "abc", "1.0.0", "1.0.0")),
+                new GenerationApiDtos.ValidationScope(List.of("JAVA_COMPILE", "JAVA_CONSUMER_TESTS"), List.of("ANGULAR"))));
         mvc.perform(post("/api/v1/generation/generate").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"pageId\":\"" + page + "\",\"generationType\":\"ENTITY\",\"specification\":{\"specVersion\":\"1.0.0\"}}"))
                 .andExpect(status().isCreated())
@@ -48,7 +51,9 @@ class GenerationControllerIntegrationTest {
                 .andExpect(jsonPath("$.body.runId").value(run.toString()))
                 .andExpect(jsonPath("$.body.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.body.artifacts[0].content").value("class Thing {}"))
-                .andExpect(jsonPath("$.body.artifacts[0].sha256").value("abc"));
+                .andExpect(jsonPath("$.body.artifacts[0].sha256").value("abc"))
+                .andExpect(jsonPath("$.body.validationScope.passedTargets[0]").value("JAVA_COMPILE"))
+                .andExpect(jsonPath("$.body.validationScope.notValidatedTargets[0]").value("ANGULAR"));
     }
 
     @Test void missingSpecificationIsRejectedBeforeService() throws Exception {
@@ -75,7 +80,7 @@ class GenerationControllerIntegrationTest {
         when(service.run(id)).thenReturn(new GenerationApiDtos.RunDetails(id, "BUILD_FAILED",
                 Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T00:00:01Z"), version,
                 List.of(new GenerationApiDtos.LinkedArtifact(artifact, "Thing.java", "java-source", "Thing.java", "1.0.0")),
-                1, "compile error", null, null));
+                1, "compile error", null, null, new GenerationApiDtos.ValidationScope(List.of(), List.of("ANGULAR"))));
         mvc.perform(get("/api/v1/generation/providers"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.body[0].name").value("TemplateOnlyProvider"))
@@ -85,7 +90,9 @@ class GenerationControllerIntegrationTest {
                 .andExpect(jsonPath("$.body.status").value("BUILD_FAILED"))
                 .andExpect(jsonPath("$.body.metadataVersionId").value(version.toString()))
                 .andExpect(jsonPath("$.body.artifacts[0].id").value(artifact.toString()))
-                .andExpect(jsonPath("$.body.compileExitCode").value(1));
+                .andExpect(jsonPath("$.body.compileExitCode").value(1))
+                .andExpect(jsonPath("$.body.validationScope.passedTargets").isEmpty())
+                .andExpect(jsonPath("$.body.validationScope.notValidatedTargets[0]").value("ANGULAR"));
     }
 
     @Test void unknownRunReturns404Envelope() throws Exception {
@@ -94,5 +101,50 @@ class GenerationControllerIntegrationTest {
         mvc.perform(get("/api/v1/generation/runs/{id}", id))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.statusCode").value(404));
+    }
+
+    @Test void invalidDestinationTypesReturnValidationEnvelope() throws Exception {
+        UUID project = UUID.randomUUID();
+        when(exports.configure(eq(project), eq("missing-type"), any(GenerationExportService.DestinationConfig.class)))
+                .thenThrow(new GenerationValidationException(List.of("destination.type: unsupported value")));
+        for (String body : List.of("{\"path\":\"safe/path\"}",
+                "{\"type\":null,\"path\":\"safe/path\"}",
+                "{\"type\":\"  \",\"path\":\"safe/path\"}",
+                "{\"type\":\"UNKNOWN\",\"path\":\"safe/path\"}")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                            "/api/v1/generation/projects/{projectId}/destinations/missing-type", project)
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.statusCode").value(400))
+                    .andExpect(jsonPath("$.errors._global").value("destination.type: unsupported value"));
+        }
+    }
+
+    @Test void savedArtifactDownloadsAsBytesAndExportReturnsLocation() throws Exception {
+        UUID run = UUID.randomUUID(), project = UUID.randomUUID();
+        when(service.download(run, "src/main/java/Thing.java"))
+                .thenReturn(new GenerationApiService.DownloadedArtifact("Thing.java", "class Thing {}".getBytes()));
+        mvc.perform(get("/api/v1/generation/runs/{id}/artifacts/download", run)
+                        .param("path", "src/main/java/Thing.java"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string("class Thing {}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Content-Disposition", "attachment; filename=\"Thing.java\""));
+
+        when(exports.configure(eq(project), eq("local"), any()))
+                .thenReturn(new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                        "/api/v1/generation/projects/{projectId}/destinations/local", project)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"LOCAL_FOLDER\",\"path\":\"delivery/folder\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.type").value("LOCAL_FOLDER"))
+                .andExpect(jsonPath("$.body.path").value("delivery/folder"));
+
+        when(exports.export(run, "local")).thenReturn(new GenerationExportService.ExportLocation(
+                run, project, "local", "file:/example/run"));
+        mvc.perform(post("/api/v1/generation/runs/{id}/exports/local", run))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.runId").value(run.toString()))
+                .andExpect(jsonPath("$.body.location").value("file:/example/run"));
     }
 }
