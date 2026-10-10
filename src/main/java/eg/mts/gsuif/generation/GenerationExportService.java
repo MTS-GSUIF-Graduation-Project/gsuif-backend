@@ -49,8 +49,7 @@ public class GenerationExportService {
     public DestinationConfig configure(UUID projectId, String name, DestinationConfig config) {
         safeName(name);
         if (!projects.existsById(projectId)) throw new ResourceNotFoundException("Project not found");
-        if (config == null || !destinations.containsKey(config.type()))
-            throw new GenerationValidationException(List.of("destination.type: unsupported value"));
+        destinationFor(config);
         configuredPath(config);
         Path file = configurationFile(projectId, name);
         try {
@@ -69,8 +68,7 @@ public class GenerationExportService {
         var run = runs.findById(runId).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
         UUID projectId = run.getMetadataVersion().getPage().getProject().getId();
         DestinationConfig config = readConfiguration(projectId, name);
-        var destination = destinations.get(config.type());
-        if (destination == null) throw new GenerationValidationException(List.of("destination.type: unsupported value"));
+        var destination = destinationFor(config);
         Map<String, byte[]> saved = new LinkedHashMap<>();
         for (var artifact : artifacts.findAllByGenerationRunIdOrderByRelativePathAsc(runId)) {
             String path = artifact.getRelativePath();
@@ -108,6 +106,14 @@ public class GenerationExportService {
 
     private Path configurationFile(UUID projectId, String name) {
         return root.resolve("config").resolve(projectId.toString()).resolve(name + ".json");
+    }
+
+    private ExportDestination destinationFor(DestinationConfig config) {
+        if (config == null || config.type() == null || config.type().isBlank())
+            throw new GenerationValidationException(List.of("destination.type: unsupported value"));
+        ExportDestination destination = destinations.get(config.type());
+        if (destination == null) throw new GenerationValidationException(List.of("destination.type: unsupported value"));
+        return destination;
     }
 
     private static Path configuredPath(DestinationConfig config) {

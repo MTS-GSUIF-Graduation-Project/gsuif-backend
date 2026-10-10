@@ -73,4 +73,24 @@ class GenerationExportServiceTest {
                 () -> service.export(UUID.randomUUID(), "local"));
         verify(runs, times(3)).readArtifact(runId, path);
     }
+
+    @Test void invalidDestinationTypesReturnValidationErrorsWithoutWritingConfiguration() {
+        UUID projectId = UUID.randomUUID();
+        var projects = mock(GsuifProjectRepository.class);
+        when(projects.existsById(projectId)).thenReturn(true);
+        var service = new GenerationExportService(temp.toString(), mock(GenerationRunService.class),
+                mock(GeneratedArtifactRepository.class), projects);
+        assertThrows(GenerationValidationException.class, () -> service.configure(projectId, "null-config", null));
+        assertThrows(GenerationValidationException.class, () -> service.configure(projectId, "null-type",
+                new GenerationExportService.DestinationConfig(null, "safe/path")));
+        assertThrows(GenerationValidationException.class, () -> service.configure(projectId, "blank-type",
+                new GenerationExportService.DestinationConfig(" ", "safe/path")));
+        assertThrows(GenerationValidationException.class, () -> service.configure(projectId, "unsupported-type",
+                new GenerationExportService.DestinationConfig("REMOTE", "safe/path")));
+        Path configDirectory = temp.resolve("config").resolve(projectId.toString());
+        assertFalse(Files.exists(configDirectory.resolve("null-config.json")));
+        assertFalse(Files.exists(configDirectory.resolve("null-type.json")));
+        assertFalse(Files.exists(configDirectory.resolve("blank-type.json")));
+        assertFalse(Files.exists(configDirectory.resolve("unsupported-type.json")));
+    }
 }

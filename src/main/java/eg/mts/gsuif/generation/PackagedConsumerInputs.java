@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.yaml.snakeyaml.Yaml;
 
 /** Build inputs for the selected packaged OpenAPI interface and DTOs. */
 final class PackagedConsumerInputs {
@@ -53,9 +54,56 @@ final class PackagedConsumerInputs {
                 """.formatted(base, base, entity, entity, entity, entity, entity,
                         entity, entity, entity);
         inputs.put(destinationRoot + "service/" + entity + "Service.java", service.getBytes(StandardCharsets.UTF_8));
+        String testPath = "src/test/java/" + base.replace('.', '/') + "/generation/GeneratedControllerBehaviorTest.java";
+        inputs.put(testPath, behaviorTest(base, entity, createOperationId(contract)).getBytes(StandardCharsets.UTF_8));
         return Map.copyOf(inputs);
     }
 
+    private static String createOperationId(String contract) {
+        String path = "/openapi/" + contract + ".yaml";
+        try (var stream = PackagedConsumerInputs.class.getResourceAsStream(path)) {
+            if (stream == null) throw new IllegalStateException("Packaged OpenAPI contract is missing: " + path);
+            Map<?, ?> root = new Yaml().load(stream);
+            if (root.get("paths") instanceof Map<?, ?> paths) {
+                for (Object value : paths.values()) {
+                    if (value instanceof Map<?, ?> pathItem && pathItem.get("post") instanceof Map<?, ?> post
+                            && post.get("operationId") instanceof String operationId
+                            && operationId.matches("[a-z][A-Za-z0-9]*")) return operationId;
+                }
+            }
+            throw new IllegalStateException("OpenAPI contract lacks a valid POST operationId: " + path);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not read packaged OpenAPI contract: " + path, ex);
+        }
+    }
+
+    private static String behaviorTest(String base, String entity, String operationId) {
+        return """
+                package %s.generation;
+                import %s.controller.%sController;
+                import %s.dto.Create%sRequest;
+                import %s.dto.%sDto;
+                import %s.service.%sService;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.http.HttpStatus;
+                import static org.junit.jupiter.api.Assertions.*;
+                import static org.mockito.Mockito.*;
+                class GeneratedControllerBehaviorTest {
+                    @Test void createDelegatesAndReturnsCreatedBody() {
+                        var service = mock(%sService.class);
+                        var request = new Create%sRequest();
+                        var expected = new %sDto();
+                        when(service.create(request)).thenReturn(expected);
+                        var controller = new %sController(service);
+                        var response = controller.%s(request);
+                        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+                        assertSame(expected, response.getBody().body());
+                        verify(service).create(request);
+                    }
+                }
+                """.formatted(base, base, entity, base, entity, base, entity, base, entity,
+                        entity, entity, entity, entity, operationId);
+    }
     private static byte[] resource(String contract, String name, String base) {
         String path = "/consumer-contracts/" + contract + "/" + name;
         try (var stream = PackagedConsumerInputs.class.getResourceAsStream(path)) {

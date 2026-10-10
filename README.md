@@ -48,7 +48,9 @@ three map `{id}` from `id` and their responses from `body`. Binding 1 links
 the title and status controls and the results table. The explicit specification
 in [demo/woms-generation-request.json](demo/woms-generation-request.json)
 supplies entity fields, operation roles, and table columns. The Angular template
-renders controls and a table; it does not wire them to a running API.
+renders controls and a table; it does not wire them to a running API. The
+[Angular consumer guide](docs/generation/scrum-31-angular-consumer.md) explains
+what the generated files include and what an application must supply.
 
 Prerequisites: Java 21, PostgreSQL, Maven wrapper, `curl`, `jq`, and `psql`.
 From a clean checkout, create a disposable local database as a PostgreSQL
@@ -105,9 +107,13 @@ curl -fsS -H "$AUTH" "$BASE/api/v1/pages/$PAGE/metadata/current" | jq -e --arg v
 jq --arg page "$PAGE" '.pageId = $page' demo/woms-generation-request.json > /tmp/woms-generation-request.json
 RUN=$(curl -fsS -H "$AUTH" -H 'Content-Type: application/json' --data-binary @/tmp/woms-generation-request.json "$BASE/api/v1/generation/generate" | jq -er --arg version "$VERSION" 'select(.body.metadataVersionId == $version and .body.status == "SUCCESS") | .body.runId')
 
-# 7. Confirm compile and test exits and select a registered generated file.
+# 7. Confirm compile and test exits and select a registered generated file. The
+response's `validationScope.passedTargets` reports Java compilation and generated
+consumer behavior tests. For a full-stack run, `notValidatedTargets` includes
+`ANGULAR`: the server validates Angular syntax and templates in its pinned harness
+tests, but does not run Angular checks for each generated consumer at runtime.
 DETAILS=$(curl -fsS -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN")
-printf '%s' "$DETAILS" | jq -e --arg version "$VERSION" 'select(.body.status == "SUCCESS" and .body.compileExitCode == 0 and .body.testExitCode == 0 and .body.metadataVersionId == $version and (.body.artifacts | length) > 0)'
+printf '%s' "$DETAILS" | jq -e --arg version "$VERSION" 'select(.body.status == "SUCCESS" and .body.compileExitCode == 0 and .body.testExitCode == 0 and .body.metadataVersionId == $version and (.body.artifacts | length) > 0 and (.body.validationScope.passedTargets | index("JAVA_COMPILE")) != null and (.body.validationScope.passedTargets | index("JAVA_CONSUMER_TESTS")) != null and (.body.validationScope.notValidatedTargets | index("ANGULAR")) != null)'
 FILE=$(printf '%s' "$DETAILS" | jq -er '.body.artifacts[0].relativePath')
 
 # 8. Query the registry path history and verify run -> immutable version.

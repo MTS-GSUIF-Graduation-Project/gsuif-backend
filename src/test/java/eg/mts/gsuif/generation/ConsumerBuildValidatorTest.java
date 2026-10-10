@@ -64,6 +64,18 @@ class ConsumerBuildValidatorTest {
         assertTrue(build.compile().output().contains("Generated Java sources are missing"));
     }
 
+    @Test void requiresConsumerBehaviorTestSourceBeforeRunningMaven() {
+        var calls = new AtomicInteger();
+        var validator = new ConsumerBuildValidator(temporaryDirectory, (project, goal) -> {
+            calls.incrementAndGet();
+            return new ConsumerBuildValidator.CommandResult(0, "BUILD SUCCESS");
+        });
+        var build = validator.validate(javaResult(), Map.of());
+        assertFalse(build.passed());
+        assertTrue(build.compile().output().contains("Generated consumer behavioral tests are missing"));
+        assertEquals(0, calls.get());
+    }
+
     @Test void rejectsBuildControlAndPrebuiltInputsBeforeRunningMaven() {
         for (String path : List.of(".mvn/maven.config", "target/classes/example/Generated.class",
                 "src/main/resources/example/Generated.class", "src/test/resources/library.jar")) {

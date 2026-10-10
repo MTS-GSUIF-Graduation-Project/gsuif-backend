@@ -105,16 +105,22 @@ class GenerationApiServiceTest {
         when(version.getId()).thenReturn(versionId);
         when(run.getId()).thenReturn(runId);
         when(run.getStatus()).thenReturn(GenerationRunStatus.SUCCESS);
-        var generated = new GenerationResult.Artifact("Thing.java", "class Thing {}".getBytes(StandardCharsets.UTF_8),
+        when(run.getCompileExitCode()).thenReturn(0);
+        when(run.getTestExitCode()).thenReturn(0);
+        var generated = new GenerationResult.Artifact("src/main/java/Thing.java", "class Thing {}".getBytes(StandardCharsets.UTF_8),
                 "abc", "1.0.0", "1.0.0");
+        var angular = new GenerationResult.Artifact("src/app/generated/thing.component.ts", "export class ThingComponent {}".getBytes(StandardCharsets.UTF_8),
+                "def", "1.0.0", "1.0.0");
         when(workflow.generateAndRecord(any(UUID.class), same(version), same(user), any(),
                 eq(Set.of(Target.ENTITY)), eq("spring-angular"), eq(Map.of())))
-                .thenReturn(new GenerationWorkflow.CompletedAttempt(new GenerationResult(List.of(generated), List.of()), run));
+                .thenReturn(new GenerationWorkflow.CompletedAttempt(new GenerationResult(List.of(generated, angular), List.of()), run));
         var result = service.generate(new eg.mts.gsuif.dto.GenerationApiDtos.GenerateRequest(pageId, "ENTITY", specification()), "esraa");
         assertEquals(runId, result.runId());
         assertEquals("SUCCESS", result.status());
         assertEquals(versionId, result.metadataVersionId());
         assertEquals("class Thing {}", result.artifacts().getFirst().content());
+        assertEquals(List.of("JAVA_COMPILE", "JAVA_CONSUMER_TESTS"), result.validationScope().passedTargets());
+        assertEquals(List.of("ANGULAR"), result.validationScope().notValidatedTargets());
     }
 
     @Test void runLookupReturnsRegistryAndPersistedBuildDiagnostics() {
@@ -134,13 +140,15 @@ class GenerationApiServiceTest {
         when(run.getTestExitCode()).thenReturn((Integer) null);
         when(artifacts.findAllByGenerationRunIdOrderByRelativePathAsc(id)).thenReturn(List.of(artifact));
         when(artifact.getId()).thenReturn(artifactId);
-        when(artifact.getRelativePath()).thenReturn("Thing.java");
+        when(artifact.getRelativePath()).thenReturn("src/app/generated/thing.component.ts");
         var detail = service.run(id);
         assertEquals("BUILD_FAILED", detail.status());
         assertEquals(versionId, detail.metadataVersionId());
         assertEquals(artifactId, detail.artifacts().getFirst().id());
         assertEquals("compile error", detail.compileOutput());
         assertNull(detail.testExitCode());
+        assertTrue(detail.validationScope().passedTargets().isEmpty());
+        assertEquals(List.of("ANGULAR"), detail.validationScope().notValidatedTargets());
         assertThrows(ResourceNotFoundException.class, () -> service.run(UUID.randomUUID()));
     }
 

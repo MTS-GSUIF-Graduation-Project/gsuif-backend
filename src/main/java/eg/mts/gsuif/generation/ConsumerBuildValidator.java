@@ -77,6 +77,8 @@ public final class ConsumerBuildValidator {
                 if (!isConsumerInput(path)) throw new IllegalArgumentException("Unsupported consumer input path: " + path);
                 stage(project, path, input.getValue(), staged);
             }
+            if (!hasConsumerTestSource(project, staged))
+                return failure(null, "Generated consumer behavioral tests are missing");
             Files.writeString(project.resolve("pom.xml"), result.consumerBuild().mavenPom("com.example", "generated-consumer"));
             compile = runner.run(project, "compile");
             if (!compile.passed()) return new BuildResult(compile, null);
@@ -120,6 +122,11 @@ public final class ConsumerBuildValidator {
         return value.startsWith("src/app/generated/") && (value.endsWith(".ts") || value.endsWith(".html"));
     }
 
+    private static boolean hasConsumerTestSource(Path project, Set<Path> staged) {
+        return staged.stream().map(project::relativize).map(path -> path.toString().replace('\\', '/'))
+                .anyMatch(path -> path.startsWith("src/test/java/") && path.endsWith(".java"));
+    }
+
     private static void stage(Path root, Path relative, byte[] bytes, Set<Path> staged) throws IOException {
         if (bytes == null) throw new IllegalArgumentException("Consumer input bytes are missing: " + relative);
         Path destination = root.resolve(relative).normalize();
@@ -136,6 +143,7 @@ public final class ConsumerBuildValidator {
                 : Path.of(System.getProperty("user.dir"), System.getProperty("os.name").startsWith("Windows")
                 ? "mvnw.cmd" : "mvnw").toString();
         List<String> command = new ArrayList<>(List.of(executable, "-B", "-f", project.resolve("pom.xml").toAbsolutePath().toString(), goal));
+        if ("test".equals(goal)) command.add("-DfailIfNoTests=true");
         if (Boolean.getBoolean("gsuif.build.maven.offline")) command.add("-o");
         String repository = System.getProperty("maven.repo.local");
         if (repository != null && !repository.isBlank())
