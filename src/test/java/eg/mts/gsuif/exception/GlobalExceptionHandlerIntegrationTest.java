@@ -66,6 +66,11 @@ public class GlobalExceptionHandlerIntegrationTest {
         public String genericError() {
             throw new RuntimeException("Test generic exception");
         }
+
+        @GetMapping("/access-denied")
+        public String accessDenied() {
+            throw new org.springframework.security.access.AccessDeniedException("Entity access denied: test");
+        }
         
         @PostMapping("/unsupported-media")
         public String unsupportedMedia(@RequestBody TestRequest request) {
@@ -251,6 +256,19 @@ public class GlobalExceptionHandlerIntegrationTest {
                 .andExpect(content().string(not(containsString("RuntimeException"))))
                 .andExpect(content().string(not(containsString("java.lang"))))
                 .andExpect(content().string(not(containsString("stackTrace"))));
+    }
+
+    @Test
+    @WithMockUser
+    void testServiceAccessDenied_Returns403WithFiveFieldEnvelope() throws Exception {
+        mockMvc.perform(get("/api/test-exception/access-denied"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$", aMapWithSize(5)))
+                .andExpect(jsonPath("$.status").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.clientMessage").value("Access denied"))
+                .andExpect(jsonPath("$.statusCode").value(403))
+                .andExpect(jsonPath("$.body").isEmpty())
+                .andExpect(jsonPath("$.errors").isEmpty());
     }
 
     @Test

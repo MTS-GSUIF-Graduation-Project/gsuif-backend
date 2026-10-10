@@ -11,6 +11,7 @@ import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
 import eg.mts.gsuif.service.impl.GsuifProjectServiceImpl;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,12 +40,14 @@ class GsuifProjectServiceTest {
 
     @Mock
     private GsuifPageRepository pageRepository;
+    @Mock
+    private EntityPermissionChecker permissionChecker;
 
     private GsuifProjectService projectService;
 
     @BeforeEach
     void setUp() {
-        projectService = new GsuifProjectServiceImpl(projectRepository, pageRepository);
+        projectService = new GsuifProjectServiceImpl(projectRepository, pageRepository, permissionChecker);
     }
 
     @Test
