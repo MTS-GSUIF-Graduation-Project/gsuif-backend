@@ -14,6 +14,9 @@ import java.util.Objects;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 
 /**
  * Stages a standalone consumer and validates Java output with sequential Maven goals.
@@ -82,7 +85,11 @@ public final class ConsumerBuildValidator {
             Files.writeString(project.resolve("pom.xml"), result.consumerBuild().mavenPom("com.example", "generated-consumer"));
             compile = runner.run(project, "compile");
             if (!compile.passed()) return new BuildResult(compile, null);
-            return new BuildResult(compile, runner.run(project, "test"));
+            CommandResult test = runner.run(project, "test");
+            if (!test.passed()) return new BuildResult(compile, test);
+            if (executedTests(project) == 0)
+                return failure(compile, "Generated consumer behavioral tests were not executed (no unskipped Surefire tests)");
+            return new BuildResult(compile, test);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             return failure(compile, "Build validation interrupted");
@@ -125,6 +132,36 @@ public final class ConsumerBuildValidator {
     private static boolean hasConsumerTestSource(Path project, Set<Path> staged) {
         return staged.stream().map(project::relativize).map(path -> path.toString().replace('\\', '/'))
                 .anyMatch(path -> path.startsWith("src/test/java/") && path.endsWith(".java"));
+    }
+
+    private static int executedTests(Path project) throws IOException {
+        Path reports = project.resolve("target/surefire-reports");
+        if (!Files.isDirectory(reports)) return 0;
+        int executed = 0;
+        try (var files = Files.list(reports)) {
+            for (Path report : files.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().matches("TEST-.*\\.xml")).toList()) {
+                XMLInputFactory factory = XMLInputFactory.newFactory();
+                factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+                factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+                try (var input = Files.newInputStream(report)) {
+                    XMLStreamReader xml = factory.createXMLStreamReader(input);
+                    try {
+                        while (xml.hasNext() && xml.next() != javax.xml.stream.XMLStreamConstants.START_ELEMENT) { }
+                        if (!xml.isStartElement() || !"testsuite".equals(xml.getLocalName()))
+                            throw new IOException("Invalid Surefire report: " + report.getFileName());
+                        int tests = Integer.parseInt(xml.getAttributeValue(null, "tests"));
+                        int skipped = Integer.parseInt(xml.getAttributeValue(null, "skipped"));
+                        if (tests < 0 || skipped < 0 || skipped > tests)
+                            throw new IOException("Invalid Surefire test counts: " + report.getFileName());
+                        executed = Math.addExact(executed, tests - skipped);
+                    } finally { xml.close(); }
+                } catch (XMLStreamException | IllegalArgumentException | ArithmeticException ex) {
+                    throw new IOException("Invalid Surefire report: " + report.getFileName(), ex);
+                }
+            }
+        }
+        return executed;
     }
 
     private static void stage(Path root, Path relative, byte[] bytes, Set<Path> staged) throws IOException {

@@ -72,7 +72,7 @@ public class GenerationApiService {
                 .toList();
         var validationScope = validationScope(completed.result().artifacts().stream()
                 .map(GenerationResult.Artifact::relativePath).toList(),
-                completed.run().getCompileExitCode(), completed.run().getTestExitCode());
+                completed.run().getStatus().name(), completed.run().getCompileExitCode(), completed.run().getTestExitCode());
         return new GenerationApiDtos.CreatedRun(completed.run().getId(),
                 completed.run().getStatus().name(), version.getId(), generated, validationScope);
     }
@@ -90,17 +90,18 @@ public class GenerationApiService {
                 .toList();
         var validationScope = validationScope(linked.stream()
                 .map(GenerationApiDtos.LinkedArtifact::relativePath).toList(),
-                run.getCompileExitCode(), run.getTestExitCode());
+                run.getStatus().name(), run.getCompileExitCode(), run.getTestExitCode());
         return new GenerationApiDtos.RunDetails(run.getId(), run.getStatus().name(),
                 run.getCreatedAt(), run.getUpdatedAt(), run.getMetadataVersion().getId(), linked,
                 run.getCompileExitCode(), run.getCompileOutput(), run.getTestExitCode(), run.getTestOutput(), validationScope);
     }
 
-    private static GenerationApiDtos.ValidationScope validationScope(List<String> paths,
+    private static GenerationApiDtos.ValidationScope validationScope(List<String> paths, String status,
             Integer compileExitCode, Integer testExitCode) {
         List<String> passed = new java.util.ArrayList<>();
         if (compileExitCode != null && compileExitCode == 0) passed.add("JAVA_COMPILE");
-        if (compileExitCode != null && compileExitCode == 0 && testExitCode != null && testExitCode == 0)
+        if ("SUCCESS".equals(status) && compileExitCode != null && compileExitCode == 0
+                && testExitCode != null && testExitCode == 0)
             passed.add("JAVA_CONSUMER_TESTS");
         boolean angular = paths.stream().anyMatch(path -> path != null && path.startsWith("src/app/generated/"));
         return new GenerationApiDtos.ValidationScope(passed, angular ? List.of("ANGULAR") : List.of());
