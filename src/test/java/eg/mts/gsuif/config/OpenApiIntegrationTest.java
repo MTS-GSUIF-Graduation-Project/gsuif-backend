@@ -88,7 +88,11 @@ public class OpenApiIntegrationTest {
         JsonNode generationDocs = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs/generation-api"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertEquals(Set.of("POST /api/v1/generation/generate", "GET /api/v1/generation/providers",
-                "GET /api/v1/generation/runs/{id}"), getOperations(generationDocs));
+                "GET /api/v1/generation/runs/{id}",
+                "GET /api/v1/generation/runs/{id}/artifacts/download",
+                "PUT /api/v1/generation/projects/{projectId}/destinations/{name}",
+                "POST /api/v1/generation/runs/{id}/exports/{name}",
+                "GET /api/v1/generation/artifacts/history"), getOperations(generationDocs));
         assertAllOperationsProtected(generationDocs);
         assertFalse(generationDocs.at("/paths/~1api~1v1~1generation~1generate/post/requestBody/content/application~1json/schema")
                 .isMissingNode(), "Generate request schema missing");

@@ -232,7 +232,10 @@ class GenerationWorkflowTransactionIntegrationTest {
     private GenerationRunService service(GenerationArtifactStore store) {
         return new GenerationRunService(runRepository, artifactRepository,
                 new ConsumerBuildValidator(Path.of("target", "generation-build-tests"),
-                        (project, goal) -> new ConsumerBuildValidator.CommandResult(0, "passed")), store);
+                        (project, goal) -> {
+                            if (goal.equals("test")) ConsumerBuildValidatorTest.writeReport(project, 1, 0);
+                            return new ConsumerBuildValidator.CommandResult(0, "passed");
+                        }), store);
     }
 
     private GenerationResult sample() {

@@ -8,6 +8,7 @@ import eg.mts.gsuif.entity.MetadataVersion;
 import eg.mts.gsuif.generation.GenerationContext.Target;
 import eg.mts.gsuif.generation.GenerationSpecification.*;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
+import freemarker.template.Configuration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.yaml.snakeyaml.Yaml;
@@ -19,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.io.StringWriter;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -270,6 +272,38 @@ class GenerationEngineTest {
                 .diagnostics().stream().anyMatch(d -> d.contains("unsupported Angular component")));
     }
 
+    @Test void angularTemplatesCompileMultipleDropdownsWithDistinctFieldNames() throws Exception {
+        var templates = new Configuration(Configuration.VERSION_2_3_34);
+        templates.setClassForTemplateLoading(TemplateOnlyProvider.class, "/");
+        Map<String, Object> model = Map.of(
+                "className", "DropdownFixture", "kebab", "dropdown-fixture",
+                "properties", List.of(
+                        Map.of("name", "status", "type", "string", "optional", ""),
+                        Map.of("name", "resolutionCode", "type", "string", "optional", "")),
+                "controls", List.of(
+                        Map.of("type", "select", "key", "status", "label", "Status"),
+                        Map.of("type", "select", "key", "resolutionCode", "label", "Resolution")),
+                "options", Map.of("status", List.of("OPEN", "CLOSED"),
+                        "resolutionCode", List.of("FIXED", "REJECTED")));
+        String typescript = renderAngularTemplate(templates, "angular-component.ts.ftl", model);
+        String html = renderAngularTemplate(templates, "angular-component.html.ftl", model);
+        assertTrue(html.contains("options['status']"));
+        assertTrue(html.contains("options['resolutionCode']"));
+        assertTrue(typescript.contains("resolutionCode: ['FIXED', 'REJECTED']"));
+        stageAngularForCompilation(new GenerationResult(List.of(
+                new GenerationResult.Artifact("src/app/generated/dropdown-fixture.component.ts",
+                        typescript.getBytes(StandardCharsets.UTF_8), "", "1.0.0", "1.0.0"),
+                new GenerationResult.Artifact("src/app/generated/dropdown-fixture.component.html",
+                        html.getBytes(StandardCharsets.UTF_8), "", "1.0.0", "1.0.0")), List.of()));
+    }
+
+    private static String renderAngularTemplate(Configuration templates, String name, Map<String, Object> model)
+            throws Exception {
+        var output = new StringWriter();
+        templates.getTemplate("templates/freemarker/" + name).process(model, output);
+        return output.toString();
+    }
+
     @Test void cleanAssetTicketConsumerCompilesWithMethodSecurityEnabled() throws Exception {
         compileConsumer("AssetTicket", "asset-ticket-api", "openapi-fixture");
     }
@@ -392,6 +426,52 @@ class GenerationEngineTest {
                 assertInstanceOf(AccessDeniedException.class, denied.getCause());
             }
         } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test void documentedWomsFixtureGeneratesFullStack() throws Exception {
+        var metadata = mapper.readTree(java.nio.file.Files.readString(Path.of("demo/woms-sample-metadata.json")));
+        var request = mapper.readTree(java.nio.file.Files.readString(Path.of("demo/woms-generation-request.json")));
+        var specification = mapper.treeToValue(request.path("specification"), GenerationSpecification.class);
+        var result = GenerationEngine.templateOnly(builder).generate(
+                version("1.2.0", (ObjectNode) metadata.path("snapshot")), specification,
+                Set.of(Target.ENTITY, Target.CONTROLLER, Target.ANGULAR), "spring-angular");
+        assertFalse(result.artifacts().isEmpty());
+        assertTrue(result.artifacts().stream().anyMatch(a -> a.relativePath().endsWith(".html")));
+    }
+
+    @Test void packagedConsumerTestsFollowGeneratedTargetsForBothContracts() throws Exception {
+        for (String entity : List.of("AssetTicket", "ServiceRequest")) {
+            String contract = entity.equals("AssetTicket") ? "asset-ticket-api" : "service-request-api";
+            ObjectNode snapshot = bindings(entity);
+            Map<UUID, String> selected = new LinkedHashMap<>();
+            Map<String, Set<SupportedRole>> roles = new LinkedHashMap<>();
+            for (int i = 0; i < 5; i++) {
+                String operation = switch (i) {
+                    case 0 -> "list" + entity + "s";
+                    case 1 -> "create" + entity;
+                    case 2 -> "get" + entity + "ById";
+                    case 3 -> "update" + entity;
+                    default -> "delete" + entity;
+                };
+                selected.put(new UUID(0, i + 1), operation);
+                roles.put(operation, Set.of(SupportedRole.ROLE_USER));
+            }
+            var specification = spec(entity, contract, selected, roles);
+            for (Set<Target> targets : List.of(Set.of(Target.ENTITY), Set.of(Target.CONTROLLER),
+                    Set.of(Target.ENTITY, Target.CONTROLLER, Target.ANGULAR))) {
+                var inputs = PackagedConsumerInputs.forBuild(specification, targets);
+                assertEquals(targets.contains(Target.ENTITY), inputs.keySet().stream()
+                        .anyMatch(path -> path.endsWith("GeneratedEntityBehaviorTest.java")), entity + targets);
+                assertEquals(targets.contains(Target.CONTROLLER), inputs.keySet().stream()
+                        .anyMatch(path -> path.endsWith("GeneratedControllerBehaviorTest.java")), entity + targets);
+                var generated = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot),
+                        specification, targets, "spring-angular");
+                var build = new ConsumerBuildValidator(temporaryDirectory.resolve("consumer-builds"))
+                        .validate(generated, inputs);
+                assertTrue(build.passed(), entity + targets + ": " + build.compile().output()
+                        + "\n" + (build.test() == null ? "" : build.test().output()));
+            }
+        }
     }
 
     private ObjectNode emptySnapshot() {
