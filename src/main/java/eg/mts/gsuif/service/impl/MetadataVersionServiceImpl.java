@@ -12,6 +12,7 @@ import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.service.MetadataVersionService;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.exception.MetadataValidationException;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import eg.mts.gsuif.validator.MetadataBusinessValidator;
@@ -23,11 +24,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @Transactional(readOnly = true)
@@ -48,23 +52,27 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     private final ObjectMapper objectMapper;
     private final MetadataSchemaValidator schemaValidator;
     private final MetadataBusinessValidator businessValidator;
+    private final EntityPermissionChecker permissionChecker;
 
     public MetadataVersionServiceImpl(MetadataVersionRepository metadataVersionRepository,
                                       GsuifPageRepository pageRepository,
                                       ObjectMapper objectMapper,
                                       MetadataSchemaValidator schemaValidator,
-                                      MetadataBusinessValidator businessValidator) {
+                                      MetadataBusinessValidator businessValidator,
+                                      EntityPermissionChecker permissionChecker) {
         this.metadataVersionRepository = metadataVersionRepository;
         this.pageRepository = pageRepository;
         this.objectMapper = objectMapper;
         this.schemaValidator = schemaValidator;
         this.businessValidator = businessValidator;
+        this.permissionChecker = permissionChecker;
     }
 
     @Override
     @Transactional
     @Loggable
     public MetadataVersionDto create(UUID pageId, CreateMetadataVersionRequest request) {
+        Authentication authentication = requireAccess();
         com.fasterxml.jackson.databind.JsonNode standardSnapshot = null;
         String serializedSnapshot = null;
         if (request.snapshot() != null) {
@@ -111,21 +119,23 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
         page.setCurrentMetadataVersionId(newVersion.getId());
         pageRepository.save(page);
 
-        return toDto(newVersion);
+        return toDto(newVersion, deniedFields(authentication));
     }
 
     @Override
     @Loggable
     public MetadataVersionDto getLatest(UUID pageId) {
+        Authentication authentication = requireAccess();
         verifyPageExists(pageId);
         return metadataVersionRepository.findFirstByPageIdOrderByVersionDesc(pageId)
-                .map(this::toDto)
+                .map(entity -> toDto(entity, deniedFields(authentication)))
                 .orElseThrow(() -> new ResourceNotFoundException("No metadata versions found for page id: " + pageId));
     }
 
     @Override
     @Loggable
     public MetadataVersionDto getCurrent(UUID pageId) {
+        Authentication authentication = requireAccess();
         GsuifPage page = pageRepository.findById(pageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Page not found with id: " + pageId));
         UUID currentId = page.getCurrentMetadataVersionId();
@@ -133,7 +143,7 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
             throw new ResourceNotFoundException("No current metadata version for page id: " + pageId);
         }
         return metadataVersionRepository.findByIdAndPageId(currentId, pageId)
-                .map(this::toDto)
+                .map(entity -> toDto(entity, deniedFields(authentication)))
                 .orElseThrow(() -> new ResourceNotFoundException("Current metadata version not found for page id: " + pageId));
     }
 
@@ -141,6 +151,7 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     @Transactional
     @Loggable
     public MetadataVersionDto selectCurrent(UUID pageId, UUID versionId) {
+        Authentication authentication = requireAccess();
         GsuifPage page = pageRepository.findByIdWithLock(pageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Page not found with id: " + pageId));
         MetadataVersion version = metadataVersionRepository.findByIdAndPageId(versionId, pageId)
@@ -150,15 +161,16 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
             page.setCurrentMetadataVersionId(versionId);
             pageRepository.save(page);
         }
-        return toDto(version);
+        return toDto(version, deniedFields(authentication));
     }
 
     @Override
     @Loggable
     public MetadataVersionDto getById(UUID pageId, UUID versionId) {
+        Authentication authentication = requireAccess();
         verifyPageExists(pageId);
         return metadataVersionRepository.findByIdAndPageId(versionId, pageId)
-                .map(this::toDto)
+                .map(entity -> toDto(entity, deniedFields(authentication)))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Metadata version not found with id: " + versionId + " for page: " + pageId));
     }
@@ -166,6 +178,8 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
     @Override
     @Loggable
     public PagedBody<MetadataVersionDto> getAll(UUID pageId, Pageable pageable) {
+        Authentication authentication = requireAccess();
+        Set<String> deniedFields = deniedFields(authentication);
         verifyPageExists(pageId);
 
         int pageNumber = pageable.isPaged() ? Math.max(0, pageable.getPageNumber()) : 0;
@@ -178,7 +192,7 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
 
         Pageable cappedPageable = PageRequest.of(pageNumber, pageSize, sort);
         Page<MetadataVersion> page = metadataVersionRepository.findAllByPageId(pageId, cappedPageable);
-        return PagedBody.of(page.map(this::toDto));
+        return PagedBody.of(page.map(entity -> toDto(entity, deniedFields)));
     }
 
     private void verifyPageExists(UUID pageId) {
@@ -187,20 +201,31 @@ public class MetadataVersionServiceImpl implements MetadataVersionService {
         }
     }
 
-    private MetadataVersionDto toDto(MetadataVersion entity) {
+    private Authentication requireAccess() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("MetadataVersion", authentication);
+        return authentication;
+    }
+
+    private Set<String> deniedFields(Authentication authentication) {
+        return permissionChecker.getDeniedFields("MetadataVersion", authentication);
+    }
+
+    private MetadataVersionDto toDto(MetadataVersion entity, Set<String> deniedFields) {
         try {
             return new MetadataVersionDto(
-                    entity.getId(),
-                    entity.getPage().getId(),
-                    entity.getPage().getProject().getId(),
-                    entity.getVersion(),
-                    entity.getSchemaVersion(),
-                    entity.getId().equals(entity.getPage().getCurrentMetadataVersionId()),
-                    objectMapper.readTree(entity.getSnapshot()),
-                    entity.getCreatedAt(),
-                    entity.getUpdatedAt(),
-                    entity.getCreatedBy(),
-                    entity.getLastModifiedBy()
+                    deniedFields.contains("id") ? null : entity.getId(),
+                    deniedFields.contains("pageId") ? null : entity.getPage().getId(),
+                    deniedFields.contains("projectId") ? null : entity.getPage().getProject().getId(),
+                    deniedFields.contains("version") ? null : entity.getVersion(),
+                    deniedFields.contains("schemaVersion") ? null : entity.getSchemaVersion(),
+                    deniedFields.contains("isCurrent") ? null
+                            : entity.getId().equals(entity.getPage().getCurrentMetadataVersionId()),
+                    deniedFields.contains("snapshot") ? null : objectMapper.readTree(entity.getSnapshot()),
+                    deniedFields.contains("createdAt") ? null : entity.getCreatedAt(),
+                    deniedFields.contains("updatedAt") ? null : entity.getUpdatedAt(),
+                    deniedFields.contains("createdBy") ? null : entity.getCreatedBy(),
+                    deniedFields.contains("lastModifiedBy") ? null : entity.getLastModifiedBy()
             );
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize snapshot from DB", e);

@@ -5,6 +5,7 @@ import eg.mts.gsuif.entity.*;
 import eg.mts.gsuif.exception.*;
 import eg.mts.gsuif.repository.*;
 import eg.mts.gsuif.service.impl.GsuifPageServiceImpl;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -32,6 +33,7 @@ class RouteBusinessServiceTest {
         try (var c = context(pages)) {
             c.registerBean(GsuifProjectRepository.class, () -> projects);
             c.registerBean(MetadataVersionRepository.class, () -> versions);
+            c.registerBean(EntityPermissionChecker.class, () -> mock(EntityPermissionChecker.class));
             c.registerBean(GsuifPageServiceImpl.class);
             c.refresh();
             var service = c.getBean(GsuifPageServiceImpl.class);
@@ -55,6 +57,7 @@ class RouteBusinessServiceTest {
         try (var c = context(pages)) {
             c.registerBean(GsuifProjectRepository.class, () -> projects);
             c.registerBean(MetadataVersionRepository.class, () -> versions);
+            c.registerBean(EntityPermissionChecker.class, () -> mock(EntityPermissionChecker.class));
             c.registerBean(GsuifPageServiceImpl.class);
             MetadataBusinessDiscoveryTest.register(c, "additionalPageRule", "AdditionalPageRule", true, calls);
             c.refresh();

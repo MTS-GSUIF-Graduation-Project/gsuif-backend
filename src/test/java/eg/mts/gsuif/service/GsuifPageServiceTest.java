@@ -13,6 +13,7 @@ import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.service.impl.GsuifPageServiceImpl;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +45,8 @@ class GsuifPageServiceTest {
 
     @Mock
     private MetadataVersionRepository metadataVersionRepository;
+    @Mock
+    private EntityPermissionChecker permissionChecker;
 
     private GsuifPageService pageService;
 
@@ -54,7 +57,7 @@ class GsuifPageServiceTest {
     void setUp() {
         pageService = new GsuifPageServiceImpl(projectRepository, pageRepository, metadataVersionRepository,
                 new eg.mts.gsuif.validator.MetadataBusinessValidator(List.of(
-                        new eg.mts.gsuif.validator.RouteUniquenessRule(pageRepository))));
+                        new eg.mts.gsuif.validator.RouteUniquenessRule(pageRepository))), permissionChecker);
         projectId = UUID.randomUUID();
         pageId = UUID.randomUUID();
     }

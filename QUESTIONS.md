@@ -8,6 +8,7 @@ This document tracks project questions that require clarification or confirmatio
 |----|----------|---------|----------|--------|--------|
 | OQ-05 | What exactly constitutes a passing Phase 1 submission? | Demo preparation and documentation scope | HIGH | OPEN | V3.2 |
 | OQ-07 | Must WOMS be the formal Phase 2 demonstration application? | Phase 2 scope | MEDIUM | OPEN | V3.2 |
+| OQ-11 | SCRUM-61 introduces entity-level and field-level permission enforcement although DEC-017 defers advanced authorization. The team has approved SCRUM-61 as In Progress; should DEC-017 be superseded or narrowed when this work is accepted? | Authorization scope and DEC-017 | HIGH | OPEN | SCRUM-61 (team-approved In Progress) |
 
 These remaining questions were sent to the supervisor on **2026-09-09** (T-12 / SCRUM-41).
 

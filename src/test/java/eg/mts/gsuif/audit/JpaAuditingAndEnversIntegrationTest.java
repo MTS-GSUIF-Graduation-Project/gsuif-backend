@@ -29,7 +29,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "gsuif.security.mode=dev")
 @ActiveProfiles("test")
 class JpaAuditingAndEnversIntegrationTest {
 

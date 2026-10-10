@@ -31,7 +31,7 @@ import java.util.concurrent.TimeoutException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@SpringBootTest
+@SpringBootTest(properties = "gsuif.security.mode=dev")
 @ActiveProfiles("test")
 class MetadataVersionIntegrationTest {
 
