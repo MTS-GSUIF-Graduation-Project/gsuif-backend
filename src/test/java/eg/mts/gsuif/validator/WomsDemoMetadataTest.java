@@ -21,6 +21,8 @@ class WomsDemoMetadataTest {
             System.getProperty("woms.fixture.dir", "metadata/examples/woms"));
     private static final Path DEMO_README = Path.of(
             System.getProperty("woms.demo.readme", "demo/README.md"));
+    private static final Path WOMS_README = Path.of(
+            System.getProperty("woms.readme", "metadata/examples/woms/README.md"));
     private static final List<String> FIXTURES = List.of(
             "work-order-search-1.2.0.json",
             "work-order-create-edit-1.2.0.json",
@@ -93,6 +95,7 @@ class WomsDemoMetadataTest {
             assertThat(load.path("endpointUrl")).isEqualTo(update.path("endpointUrl"));
             assertThat(load.path("requestMapping").path("path").path("id").asText()).isEqualTo("id");
             assertThat(update.path("requestMapping").path("path").path("id").asText()).isEqualTo("id");
+            assertThat(componentFieldKeys(scope.path("components"))).doesNotContain("id");
             assertThat(load.path("responseMapping").path("item").asText()).isEqualTo("body");
             assertThat(load.path("linkedComponentIds")).extracting(JsonNode::asText)
                     .contains(
@@ -160,23 +163,173 @@ class WomsDemoMetadataTest {
     }
 
     @Test
-    void detailSummaryIsReadOnly() throws Exception {
+    void detailSummaryRendersReadOnlyWorkOrderFields() throws Exception {
         JsonNode bundle = load("work-order-detail-1.2.0.json");
+        ObjectNode workOrder = mapper.createObjectNode()
+                .put("orderNumber", "WO-42")
+                .put("status", "OPEN")
+                .put("dueDate", "2026-10-11");
 
-        for (JsonNode scope : List.of(bundle.path("page"), bundle.path("metadataVersion").path("snapshot"))) {
-            JsonNode summary = component(scope.path("components"), "workOrder");
+        for (JsonNode scope : scopes(bundle)) {
+            JsonNode getWorkOrder = binding(scope.path("apiBindings"), "getWorkOrder");
 
-            assertThat(summary.path("disabled").asBoolean()).isTrue();
-            assertThat(summary.path("formConfig").path("submitLabel").asText()).isEqualTo("Read only");
-            assertThat(binding(scope.path("apiBindings"), "getWorkOrder").path("httpMethod").asText())
-                    .isEqualTo("GET");
+            assertThat(getWorkOrder.path("responseMapping").path("item").asText()).isEqualTo("body");
+            Map<String, String> displayed = new LinkedHashMap<>();
+            for (JsonNode linkedId : getWorkOrder.path("linkedComponentIds")) {
+                JsonNode field = componentById(scope.path("components"), linkedId.asText());
+
+                assertThat(field.path("visibility").asBoolean()).as(field.path("fieldKey").asText()).isTrue();
+                assertThat(field.path("disabled").asBoolean()).as(field.path("fieldKey").asText()).isTrue();
+                assertThat(field.has("formConfig")).isFalse();
+                String fieldKey = field.path("fieldKey").asText();
+                assertThat(workOrder.hasNonNull(fieldKey))
+                        .as("work-order response supplies " + fieldKey)
+                        .isTrue();
+                displayed.put(fieldKey, workOrder.path(fieldKey).asText());
+            }
+            assertThat(displayed).containsExactly(
+                    Map.entry("orderNumber", "WO-42"),
+                    Map.entry("status", "OPEN"),
+                    Map.entry("dueDate", "2026-10-11"));
+            assertThat(component(scope.path("components"), "orderNumber").path("type").asText()).isEqualTo("text-field");
+            assertThat(component(scope.path("components"), "status").path("type").asText()).isEqualTo("text-field");
+            assertThat(component(scope.path("components"), "dueDate").path("type").asText()).isEqualTo("date-field");
             for (JsonNode apiBinding : scope.path("apiBindings")) {
                 if (!"GET".equals(apiBinding.path("httpMethod").asText())) {
                     assertThat(apiBinding.path("linkedComponentIds"))
                             .extracting(JsonNode::asText)
-                            .doesNotContain(summary.path("id").asText());
+                            .doesNotContain(
+                                    "61000000-0000-4000-8000-000000000021",
+                                    "61000000-0000-4000-8000-000000000025",
+                                    "61000000-0000-4000-8000-000000000026");
                 }
             }
+        }
+    }
+
+    @Test
+    void assignTechnicianObtainsTechnicianIdFromSelect() throws Exception {
+        JsonNode bundle = load("work-order-detail-1.2.0.json");
+        Map<String, String> values = Map.of("technicianToAssign", "TECH-9");
+
+        for (JsonNode scope : scopes(bundle)) {
+            JsonNode assign = binding(scope.path("apiBindings"), "assignTechnicianToWorkOrder");
+            JsonNode source = referencedComponent(scope, assign, "technicianToAssign");
+
+            assertThat(source.path("type").asText()).isEqualTo("select");
+            assertThat(source.path("visibility").asBoolean()).isTrue();
+            assertThat(source.path("disabled").asBoolean()).isFalse();
+            assertThat(source.has("options")).isFalse();
+            assertThat(source.has("selectConfig")).isFalse();
+            assertThat(assign.path("parentComponentId").asText())
+                    .isEqualTo("61000000-0000-4000-8000-000000000024");
+            assertThat(assign.path("childComponentIds")).extracting(JsonNode::asText)
+                    .containsExactly(source.path("id").asText());
+            assertThat(composeRequestPart(scope, assign, "body", values))
+                    .containsExactly(Map.entry("technicianId", "TECH-9"));
+        }
+    }
+
+    @Test
+    void removeTechnicianUsesSelectedAssignmentId() throws Exception {
+        JsonNode bundle = load("work-order-detail-1.2.0.json");
+        ObjectNode selectedAssignment = mapper.createObjectNode()
+                .put("workOrderId", "WO-42")
+                .put("technicianId", "TECH-7");
+        Map<String, String> pageContext = Map.of("id", "WO-42");
+
+        for (JsonNode scope : scopes(bundle)) {
+            JsonNode remove = binding(scope.path("apiBindings"), "removeTechnicianFromWorkOrder");
+            JsonNode assignments = componentById(
+                    scope.path("components"), "61000000-0000-4000-8000-000000000024");
+            Set<String> columns = new HashSet<>();
+            assignments.path("tableConfig").path("columns")
+                    .forEach(column -> columns.add(column.path("fieldKey").asText()));
+
+            assertThat(remove.path("linkedComponentIds")).extracting(JsonNode::asText)
+                    .containsExactly(assignments.path("id").asText());
+            assertThat(remove.path("requestMapping").path("path").path("technicianId").asText())
+                    .isEqualTo("technicianId");
+            assertThat(columns).contains("technicianId");
+            assertThat(componentFieldKeys(scope.path("components"))).doesNotContain("technicianId");
+
+            String endpoint = remove.path("endpointUrl").asText();
+            var pathMappings = remove.path("requestMapping").path("path").fields();
+            while (pathMappings.hasNext()) {
+                Map.Entry<String, JsonNode> mapping = pathMappings.next();
+                String source = mapping.getValue().asText();
+                String value;
+                if (columns.contains(source)) {
+                    assertThat(selectedAssignment.hasNonNull(source))
+                            .as("selected assignment supplies " + source)
+                            .isTrue();
+                    value = selectedAssignment.path(source).asText();
+                } else {
+                    assertThat(pageContext).as("detail page context for " + source).containsKey(source);
+                    value = pageContext.get(source);
+                }
+                endpoint = endpoint.replace("{" + mapping.getKey() + "}", value);
+            }
+            assertThat(endpoint).isEqualTo("/api/demo/woms/work-orders/WO-42/technicians/TECH-7");
+        }
+    }
+
+    @Test
+    void createAndEditRequestFieldsComeFromEditorComponents() throws Exception {
+        JsonNode bundle = load("work-order-create-edit-1.2.0.json");
+        Map<String, String> values = Map.of(
+                "orderNumber", "WO-15",
+                "dueDate", "2026-12-01");
+        ObjectNode loaded = mapper.createObjectNode()
+                .put("orderNumber", "WO-15")
+                .put("dueDate", "2026-12-01");
+
+        for (JsonNode scope : scopes(bundle)) {
+            JsonNode create = binding(scope.path("apiBindings"), "createWorkOrder");
+            JsonNode update = binding(scope.path("apiBindings"), "updateWorkOrder");
+            JsonNode load = binding(scope.path("apiBindings"), "loadWorkOrderForEdit");
+
+            assertThat(componentFieldKeys(scope.path("components"))).doesNotContain("id");
+            assertThat(create.path("requestMapping").has("path")).isFalse();
+            assertThat(load.path("requestMapping").path("path").path("id").asText()).isEqualTo("id");
+            assertThat(update.path("requestMapping").path("path").path("id").asText()).isEqualTo("id");
+            assertThat(load.path("endpointUrl")).isEqualTo(update.path("endpointUrl"));
+
+            JsonNode orderNumber = referencedComponent(scope, create, "orderNumber");
+            JsonNode dueDate = referencedComponent(scope, create, "dueDate");
+            assertThat(orderNumber.path("visibility").asBoolean()).isTrue();
+            assertThat(dueDate.path("visibility").asBoolean()).isTrue();
+            assertThat(orderNumber.path("disabled").asBoolean()).isFalse();
+            assertThat(dueDate.path("disabled").asBoolean()).isFalse();
+            assertThat(create.path("childComponentIds")).extracting(JsonNode::asText)
+                    .containsExactly(orderNumber.path("id").asText(), dueDate.path("id").asText());
+            assertThat(referencedComponent(scope, update, "orderNumber").path("id"))
+                    .isEqualTo(orderNumber.path("id"));
+            assertThat(referencedComponent(scope, update, "dueDate").path("id"))
+                    .isEqualTo(dueDate.path("id"));
+            assertThat(composeRequestPart(scope, create, "body", values)).containsExactly(
+                    Map.entry("orderNumber", "WO-15"),
+                    Map.entry("dueDate", "2026-12-01"));
+            assertThat(composeRequestPart(scope, update, "body", values)).containsExactly(
+                    Map.entry("orderNumber", "WO-15"),
+                    Map.entry("dueDate", "2026-12-01"));
+
+            Map<String, String> displayed = new LinkedHashMap<>();
+            for (JsonNode linkedId : load.path("linkedComponentIds")) {
+                JsonNode linked = componentById(scope.path("components"), linkedId.asText());
+                String fieldKey = linked.path("fieldKey").asText();
+                if ("workOrder".equals(fieldKey)) {
+                    assertThat(linked.path("type").asText()).isEqualTo("form");
+                    continue;
+                }
+                assertThat(loaded.hasNonNull(fieldKey))
+                        .as("edit response supplies " + fieldKey)
+                        .isTrue();
+                displayed.put(fieldKey, loaded.path(fieldKey).asText());
+            }
+            assertThat(displayed).containsExactly(
+                    Map.entry("orderNumber", "WO-15"),
+                    Map.entry("dueDate", "2026-12-01"));
         }
     }
 
@@ -241,6 +394,19 @@ class WomsDemoMetadataTest {
     }
 
     @Test
+    void documentsIllustrativeContractsAndUnspecifiedRuntimeBehavior() throws Exception {
+        String readme = Files.readString(WOMS_README);
+
+        assertThat(readme).contains("formConfig.submitLabel always labels a built-in submit action");
+        assertThat(readme).contains("technicianToAssign");
+        assertThat(readme).contains("selected assignment row");
+        assertThat(readme).contains("The editor has no component whose fieldKey is id");
+        assertThat(readme).contains("does not reference a technician catalog API");
+        assertThat(readme).contains("The Save work order label does not choose POST or PUT");
+        assertThat(readme).contains("no runtime implementation");
+    }
+
+    @Test
     void rejectsBrokenComponentReferenceInDemoSnapshot() throws Exception {
         ObjectNode snapshot = (ObjectNode) load("work-order-detail-1.2.0.json")
                 .path("metadataVersion").path("snapshot").deepCopy();
@@ -250,6 +416,43 @@ class WomsDemoMetadataTest {
 
         assertThat(validator.validate("1.2.0", snapshot))
                 .anyMatch(error -> error.message().contains("does not exist"));
+    }
+
+    private List<JsonNode> scopes(JsonNode bundle) {
+        return List.of(bundle.path("page"), bundle.path("metadataVersion").path("snapshot"));
+    }
+
+    private Set<String> componentFieldKeys(JsonNode components) {
+        Set<String> fieldKeys = new HashSet<>();
+        for (JsonNode component : components) {
+            if (component.hasNonNull("fieldKey")) {
+                fieldKeys.add(component.path("fieldKey").asText());
+            }
+        }
+        return fieldKeys;
+    }
+
+    private JsonNode referencedComponent(JsonNode scope, JsonNode binding, String fieldKey) {
+        Set<String> referenced = new HashSet<>();
+        binding.path("linkedComponentIds").forEach(id -> referenced.add(id.asText()));
+        binding.path("childComponentIds").forEach(id -> referenced.add(id.asText()));
+        JsonNode found = null;
+        for (JsonNode component : scope.path("components")) {
+            if (!fieldKey.equals(component.path("fieldKey").asText())) {
+                continue;
+            }
+            if (!referenced.contains(component.path("id").asText())) {
+                continue;
+            }
+            if (found != null) {
+                throw new AssertionError("Multiple metadata sources for " + fieldKey);
+            }
+            found = component;
+        }
+        if (found == null) {
+            throw new AssertionError("Binding does not reference a component for " + fieldKey);
+        }
+        return found;
     }
 
     private Map<String, String> composeRequestPart(

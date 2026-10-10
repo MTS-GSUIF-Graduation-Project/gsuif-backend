@@ -12,22 +12,51 @@
     "components": [
       {
         "id": "61000000-0000-4000-8000-000000000021",
-        "type": "form",
-        "label": "Work order summary",
+        "type": "text-field",
+        "label": "Order number",
         "position": {
           "row": 0,
           "col": 0
         },
         "size": {
-          "width": 12,
-          "height": 2
+          "width": 4,
+          "height": 1
         },
         "visibility": true,
         "disabled": true,
-        "fieldKey": "workOrder",
-        "formConfig": {
-          "submitLabel": "Read only"
-        }
+        "fieldKey": "orderNumber"
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000025",
+        "type": "text-field",
+        "label": "Status",
+        "position": {
+          "row": 0,
+          "col": 4
+        },
+        "size": {
+          "width": 4,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": true,
+        "fieldKey": "status"
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000026",
+        "type": "date-field",
+        "label": "Due date",
+        "position": {
+          "row": 0,
+          "col": 8
+        },
+        "size": {
+          "width": 4,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": true,
+        "fieldKey": "dueDate"
       },
       {
         "id": "61000000-0000-4000-8000-000000000022",
@@ -108,6 +137,22 @@
             }
           ]
         }
+      },
+      {
+        "id": "61000000-0000-4000-8000-000000000027",
+        "type": "select",
+        "label": "Technician to assign",
+        "position": {
+          "row": 10,
+          "col": 6
+        },
+        "size": {
+          "width": 6,
+          "height": 1
+        },
+        "visibility": true,
+        "disabled": false,
+        "fieldKey": "technicianToAssign"
       }
     ],
     "apiBindings": [
@@ -126,7 +171,9 @@
           "item": "body"
         },
         "linkedComponentIds": [
-          "61000000-0000-4000-8000-000000000021"
+          "61000000-0000-4000-8000-000000000021",
+          "61000000-0000-4000-8000-000000000025",
+          "61000000-0000-4000-8000-000000000026"
         ]
       },
       {
@@ -198,14 +245,19 @@
             "id": "id"
           },
           "body": {
-            "technicianId": "technicianId"
+            "technicianId": "technicianToAssign"
           }
         },
         "responseMapping": {
           "item": "body"
         },
         "linkedComponentIds": [
-          "61000000-0000-4000-8000-000000000024"
+          "61000000-0000-4000-8000-000000000024",
+          "61000000-0000-4000-8000-000000000027"
+        ],
+        "parentComponentId": "61000000-0000-4000-8000-000000000024",
+        "childComponentIds": [
+          "61000000-0000-4000-8000-000000000027"
         ]
       },
       {
@@ -238,22 +290,51 @@
       "components": [
         {
           "id": "61000000-0000-4000-8000-000000000021",
-          "type": "form",
-          "label": "Work order summary",
+          "type": "text-field",
+          "label": "Order number",
           "position": {
             "row": 0,
             "col": 0
           },
           "size": {
-            "width": 12,
-            "height": 2
+            "width": 4,
+            "height": 1
           },
           "visibility": true,
           "disabled": true,
-          "fieldKey": "workOrder",
-          "formConfig": {
-            "submitLabel": "Read only"
-          }
+          "fieldKey": "orderNumber"
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000025",
+          "type": "text-field",
+          "label": "Status",
+          "position": {
+            "row": 0,
+            "col": 4
+          },
+          "size": {
+            "width": 4,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": true,
+          "fieldKey": "status"
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000026",
+          "type": "date-field",
+          "label": "Due date",
+          "position": {
+            "row": 0,
+            "col": 8
+          },
+          "size": {
+            "width": 4,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": true,
+          "fieldKey": "dueDate"
         },
         {
           "id": "61000000-0000-4000-8000-000000000022",
@@ -334,6 +415,22 @@
               }
             ]
           }
+        },
+        {
+          "id": "61000000-0000-4000-8000-000000000027",
+          "type": "select",
+          "label": "Technician to assign",
+          "position": {
+            "row": 10,
+            "col": 6
+          },
+          "size": {
+            "width": 6,
+            "height": 1
+          },
+          "visibility": true,
+          "disabled": false,
+          "fieldKey": "technicianToAssign"
         }
       ],
       "apiBindings": [
@@ -352,7 +449,9 @@
             "item": "body"
           },
           "linkedComponentIds": [
-            "61000000-0000-4000-8000-000000000021"
+            "61000000-0000-4000-8000-000000000021",
+            "61000000-0000-4000-8000-000000000025",
+            "61000000-0000-4000-8000-000000000026"
           ]
         },
         {
@@ -424,14 +523,19 @@
               "id": "id"
             },
             "body": {
-              "technicianId": "technicianId"
+              "technicianId": "technicianToAssign"
             }
           },
           "responseMapping": {
             "item": "body"
           },
           "linkedComponentIds": [
-            "61000000-0000-4000-8000-000000000024"
+            "61000000-0000-4000-8000-000000000024",
+            "61000000-0000-4000-8000-000000000027"
+          ],
+          "parentComponentId": "61000000-0000-4000-8000-000000000024",
+          "childComponentIds": [
+            "61000000-0000-4000-8000-000000000027"
           ]
         },
         {
