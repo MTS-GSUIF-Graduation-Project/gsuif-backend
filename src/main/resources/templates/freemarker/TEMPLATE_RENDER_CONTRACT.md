@@ -522,3 +522,21 @@ No role expression or logging policy has been approved, so the controller emits
 neither `@PreAuthorize` nor `@Loggable`. This sample establishes no general CRUD,
 arbitrary OpenAPI-contract, role-policy, or consumer-export compatibility.
 The catalog remains `PLANNED` until the broader handoff is implemented and reviewed.
+
+## SCRUM-63 Angular component extension
+
+The packaged `TemplateOnlyProvider` and the catalog-selected Angular templates render
+selected 1.1.0 and 1.2.0 `form`, `table`, `navigation`, `modal`, and `pagination` components.
+Form markup displays `formConfig.submitLabel`; configured tables preserve column
+order, labels, and DTO field keys, while legacy tables still use
+`specification.angular.tableColumns`. Navigation uses relative routes from
+`navigationConfig.items`; modal uses `Component.label` as its title; pagination
+exposes `paginationConfig.pageSize` as structural metadata. Labels and routes are
+escaped for HTML output. No submit handler, data loader, modal trigger, or page
+coupling is implied by these structures.
+
+`GenerationContextBuilder` validates selected table keys against the selected DTO
+and retains the selected list binding requirement. The schema validates required
+configuration fields. `GenerationEngineTest` checks the generated structures and
+compiles the Angular artifacts with the pinned strict harness during Maven tests.
+The runtime Java consumer build validation covers Java artifacts only.

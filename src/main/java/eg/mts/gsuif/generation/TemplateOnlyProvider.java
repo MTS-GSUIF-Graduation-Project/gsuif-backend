@@ -99,12 +99,39 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
             if (!selectedComponents.contains(c.path("id").asText())) continue;
             String type = c.path("type").asText();
             String key = c.path("fieldKey").asText();
-            if (!List.of("text-field", "select", "date-field", "table").contains(type))
+            if (!List.of("text-field", "select", "date-field", "form", "table", "navigation", "modal", "pagination").contains(type))
                 throw new GenerationValidationException(List.of("snapshot.components[" + i + "].type: unsupported Angular component"));
             if ("table".equals(type)) {
-                java.util.UUID tableId = java.util.UUID.fromString(c.path("id").asText());
-                List<String> columns = s.angular().tableColumns().get(tableId);
+                List<Map<String, String>> columns = new ArrayList<>();
+                if (c.has("tableConfig")) {
+                    for (JsonNode column : c.path("tableConfig").path("columns"))
+                        columns.add(Map.of("key", column.path("fieldKey").asText(), "label", column.path("label").asText()));
+                } else {
+                    java.util.UUID tableId = java.util.UUID.fromString(c.path("id").asText());
+                    for (String keyName : s.angular().tableColumns().get(tableId))
+                        columns.add(Map.of("key", keyName, "label", keyName));
+                }
                 controls.add(Map.of("type", type, "columns", columns));
+                continue;
+            }
+            if ("form".equals(type)) {
+                controls.add(Map.of("type", type, "label", c.path("label").asText(),
+                        "submitLabel", c.path("formConfig").path("submitLabel").asText()));
+                continue;
+            }
+            if ("navigation".equals(type)) {
+                List<Map<String, String>> items = new ArrayList<>();
+                for (JsonNode item : c.path("navigationConfig").path("items"))
+                    items.add(Map.of("label", item.path("label").asText(), "route", item.path("route").asText()));
+                controls.add(Map.of("type", type, "items", items));
+                continue;
+            }
+            if ("modal".equals(type)) {
+                controls.add(Map.of("type", type, "label", c.path("label").asText()));
+                continue;
+            }
+            if ("pagination".equals(type)) {
+                controls.add(Map.of("type", type, "pageSize", c.path("paginationConfig").path("pageSize").asInt()));
                 continue;
             }
             FieldSpec f = fields.get(key);

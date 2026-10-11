@@ -40,7 +40,8 @@ public final class GenerationContextBuilder {
         if (targets == null || targets.isEmpty() || targets.stream().anyMatch(Objects::isNull)) errors.add("context.targets: expected supported nonempty targets");
         if (!"spring-angular".equals(framework)) errors.add("context.framework: expected spring-angular");
         if (spec == null) errors.add("specification: required");
-        Map<String, Object> api = spec == null ? Map.of() : validateSpecification(spec, snapshot, targets, errors);
+        Map<String, Object> api = spec == null ? Map.of() : validateSpecification(spec, snapshot, targets,
+                version == null ? null : version.getSchemaVersion(), errors);
         if (!errors.isEmpty()) throw new GenerationValidationException(errors);
 
         Map<String, Object> entity = new LinkedHashMap<>();
@@ -67,7 +68,8 @@ public final class GenerationContextBuilder {
         return build(version, spec, EnumSet.allOf(Target.class), "spring-angular");
     }
 
-    private Map<String, Object> validateSpecification(GenerationSpecification s, JsonNode snapshot, Set<Target> targets, List<String> errors) {
+    private Map<String, Object> validateSpecification(GenerationSpecification s, JsonNode snapshot, Set<Target> targets,
+                                                       String schemaVersion, List<String> errors) {
         if (!"1.0.0".equals(s.specVersion())) errors.add("specification.specVersion: supported version is 1.0.0");
         if (!identifier(s.basePackage(), "[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+")) errors.add("specification.basePackage: invalid Java package");
         EntitySpec entity = s.entity();
@@ -149,12 +151,12 @@ public final class GenerationContextBuilder {
         else {
             if (!identifier(s.angular().className(), "[A-Z][A-Za-z0-9]*")) errors.add("specification.angular.className: invalid class name");
             if (s.angular().tableColumns() == null) errors.add("specification.angular.tableColumns: required");
-            if (snapshot != null && targets != null && targets.contains(Target.ANGULAR)) validateAngular(s, snapshot, contract, errors);
+            if (snapshot != null && targets != null && targets.contains(Target.ANGULAR)) validateAngular(s, snapshot, contract, schemaVersion, errors);
         }
         return api;
     }
 
-    private void validateAngular(GenerationSpecification s, JsonNode snapshot, Contract contract, List<String> errors) {
+    private void validateAngular(GenerationSpecification s, JsonNode snapshot, Contract contract, String schemaVersion, List<String> errors) {
         if (contract == null || s.entity() == null || s.entity().fields() == null || s.angular().tableColumns() == null) return;
         Map<String, FieldSpec> fields = new HashMap<>();
         for (FieldSpec field : s.entity().fields()) if (field != null && field.name() != null) fields.put(field.name(), field);
@@ -167,9 +169,9 @@ public final class GenerationContextBuilder {
             JsonNode component = components.get(i); String p = "snapshot.components[" + i + "]";
             if (selectedOperations != null && !selectedComponents.contains(component.path("id").asText())) continue;
             String type = component.path("type").asText(); String key = component.path("fieldKey").asText();
-            if (!Set.of("text-field", "select", "date-field", "table").contains(type)) { errors.add(p + ".type: unsupported Angular component"); continue; }
-            if (component.has("tableConfig")) {
-                errors.add(p + ".tableConfig: configured-table generation is deferred");
+            if (!Set.of("text-field", "select", "date-field", "form", "table", "navigation", "modal", "pagination").contains(type)) { errors.add(p + ".type: unsupported Angular component"); continue; }
+            if (!Set.of("1.1.0", "1.2.0").contains(schemaVersion) && Set.of("form", "navigation", "modal", "pagination").contains(type)) {
+                errors.add(p + ".type: unsupported Angular component for schema " + schemaVersion);
                 continue;
             }
             boolean selectedLink = false;
@@ -184,9 +186,19 @@ public final class GenerationContextBuilder {
             if ("table".equals(type)) {
                 UUID id;
                 try { id = UUID.fromString(component.path("id").asText()); } catch (Exception ex) { errors.add(p + ".id: invalid UUID"); continue; }
-                tables.add(id); List<String> columns = s.angular().tableColumns().get(id);
-                if (columns == null || columns.isEmpty() || columns.stream().anyMatch(Objects::isNull) || new HashSet<>(columns).size() != columns.size()) errors.add(p + ".tableColumns: nonempty distinct columns required");
-                else for (int j = 0; j < columns.size(); j++) if (!identifier(columns.get(j), "[a-z][A-Za-z0-9]*") || !dto.containsKey(columns.get(j))) errors.add(p + ".tableColumns[" + j + "]: absent from DTO or invalid property");
+                if (component.has("tableConfig")) {
+                    JsonNode columns = component.path("tableConfig").path("columns");
+                    Set<String> seen = new HashSet<>();
+                    for (int j = 0; j < columns.size(); j++) {
+                        String column = columns.get(j).path("fieldKey").asText();
+                        if (!identifier(column, "[a-z][A-Za-z0-9]*") || !dto.containsKey(column) || !seen.add(column))
+                            errors.add(p + ".tableConfig.columns[" + j + "].fieldKey: absent from DTO, invalid or duplicate property");
+                    }
+                } else {
+                    tables.add(id); List<String> columns = s.angular().tableColumns().get(id);
+                    if (columns == null || columns.isEmpty() || columns.stream().anyMatch(Objects::isNull) || new HashSet<>(columns).size() != columns.size()) errors.add(p + ".tableColumns: nonempty distinct columns required");
+                    else for (int j = 0; j < columns.size(); j++) if (!identifier(columns.get(j), "[a-z][A-Za-z0-9]*") || !dto.containsKey(columns.get(j))) errors.add(p + ".tableColumns[" + j + "]: absent from DTO or invalid property");
+                }
                 boolean linked = false;
                 for (JsonNode binding : bindings) {
                     if (selectedOperations == null) break;
@@ -199,6 +211,7 @@ public final class GenerationContextBuilder {
                 if (!linked) errors.add(p + ": table requires selected list binding");
                 continue;
             }
+            if (Set.of("form", "navigation", "modal", "pagination").contains(type)) continue;
             FieldSpec field = fields.get(key); Map<String, Object> property = nested(dto, key);
             if (field == null || property.isEmpty()) { errors.add(p + ".fieldKey: absent from entity and DTO"); continue; }
             String ref = refName(property.get("$ref"));

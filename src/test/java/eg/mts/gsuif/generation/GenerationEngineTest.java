@@ -260,16 +260,65 @@ class GenerationEngineTest {
         stageAngularForCompilation(result);
         ObjectNode configured = (ObjectNode) snapshot.withArray("components").get(2);
         configured.putObject("tableConfig").putArray("columns").addObject().put("fieldKey", "title").put("label", "Title");
-        var configuredFailure = assertThrows(GenerationValidationException.class,
-                () -> GenerationEngine.templateOnly(builder).generate(version("1.1.0", snapshot), spec,
-                        Set.of(Target.ANGULAR), "spring-angular"));
-        assertTrue(configuredFailure.diagnostics().stream().anyMatch(d -> d.contains("components[2].tableConfig")
-                && d.contains("deferred")), configuredFailure.diagnostics().toString());
+        configured.with("tableConfig").withArray("columns").addObject().put("fieldKey", "id").put("label", "Identifier");
+        var configuredSpec = new GenerationSpecification(spec.specVersion(), spec.basePackage(), spec.entity(),
+                spec.openApi(), spec.operationRoles(), new AngularSpec("AssetTicket", Map.of()));
+        for (String schema : List.of("1.1.0", "1.2.0")) {
+            var configuredResult = GenerationEngine.templateOnly(builder).generate(version(schema, snapshot), configuredSpec,
+                    Set.of(Target.ANGULAR), "spring-angular");
+            String configuredHtml = new String(configuredResult.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+            assertTrue(configuredHtml.contains("<th ngNonBindable>Title</th>"), schema);
+            assertTrue(configuredHtml.contains("row.title"), schema);
+            assertTrue(configuredHtml.indexOf("row.title") < configuredHtml.indexOf("row.id"), schema);
+            assertTrue(configuredHtml.contains("<th ngNonBindable>Identifier</th>"), schema);
+            stageAngularForCompilation(configuredResult);
+        }
+        ((ObjectNode) configured.path("tableConfig").path("columns").get(0)).put("fieldKey", "missing");
+        assertTrue(assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), configuredSpec, Set.of(Target.ANGULAR), "spring-angular"))
+                .diagnostics().stream().anyMatch(d -> d.contains("components[2].tableConfig.columns[0].fieldKey")));
         configured.remove("tableConfig");
         ((ObjectNode) snapshot.withArray("components").get(0)).put("type", "navigation");
         assertTrue(assertThrows(GenerationValidationException.class,
                 () -> builder.build(version("1.0.0", snapshot), spec, Set.of(Target.ANGULAR), "spring-angular"))
                 .diagnostics().stream().anyMatch(d -> d.contains("unsupported Angular component")));
+    }
+
+    @Test void extendedComponentsRenderApprovedStructureAndCompile() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        String[] types = {"form", "navigation", "modal", "pagination"};
+        for (int i = 0; i < types.length; i++) {
+            ObjectNode component = snapshot.withArray("components").addObject();
+            UUID id = new UUID(0, i + 20);
+            component.put("id", id.toString()); component.put("type", types[i]);
+            component.put("label", "Title {{ value }} <draft>");
+            component.putObject("position").put("row", i).put("col", 0);
+            component.putObject("size").put("width", 6).put("height", 1);
+            component.put("visibility", true); component.put("disabled", false);
+            ((ObjectNode) snapshot.withArray("apiBindings").get(0)).withArray("linkedComponentIds").add(id.toString());
+            switch (types[i]) {
+                case "form" -> component.putObject("formConfig").put("submitLabel", "Save <now>");
+                case "navigation" -> component.putObject("navigationConfig").putArray("items")
+                        .addObject().put("label", "Tickets <all>").put("route", "/tickets?kind=a&view=b");
+                case "pagination" -> component.putObject("paginationConfig").put("pageSize", 25);
+                default -> { }
+            }
+        }
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
+                Map.of("listAssetTickets", EnumSet.of(SupportedRole.ROLE_USER)));
+        for (String schema : List.of("1.1.0", "1.2.0")) {
+            var result = GenerationEngine.templateOnly(builder).generate(version(schema, snapshot), specification,
+                    Set.of(Target.ANGULAR), "spring-angular");
+            String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+            assertTrue(html.contains("<form>"), schema);
+            assertTrue(html.contains("Save &lt;now&gt;"), schema);
+            assertTrue(html.contains("href=\"/tickets?kind=a&amp;view=b\""), schema);
+            assertTrue(html.contains("Tickets &lt;all&gt;"), schema);
+            assertTrue(html.contains("role=\"dialog\""), schema);
+            assertTrue(html.contains("<h2 ngNonBindable>Title {{ value }} &lt;draft&gt;</h2>"), schema);
+            assertTrue(html.contains("data-page-size=\"25\""), schema);
+            stageAngularForCompilation(result);
+        }
     }
 
     @Test void angularTemplatesCompileMultipleDropdownsWithDistinctFieldNames() throws Exception {
