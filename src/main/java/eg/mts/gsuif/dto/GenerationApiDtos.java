@@ -18,8 +18,15 @@ public final class GenerationApiDtos {
     public record TextArtifact(String relativePath, String content, String sha256,
                                String templateVersion, String catalogVersion) { }
 
+    public record ValidationScope(List<String> passedTargets, List<String> notValidatedTargets) {
+        public ValidationScope {
+            passedTargets = List.copyOf(passedTargets);
+            notValidatedTargets = List.copyOf(notValidatedTargets);
+        }
+    }
+
     public record CreatedRun(UUID runId, String status, UUID metadataVersionId,
-                             List<TextArtifact> artifacts) { }
+                             List<TextArtifact> artifacts, ValidationScope validationScope) { }
 
     public record Provider(String name, boolean available) { }
 
@@ -29,5 +36,5 @@ public final class GenerationApiDtos {
     public record RunDetails(UUID id, String status, Instant createdAt, Instant updatedAt,
                              UUID metadataVersionId, List<LinkedArtifact> artifacts,
                              Integer compileExitCode, String compileOutput,
-                             Integer testExitCode, String testOutput) { }
+                             Integer testExitCode, String testOutput, ValidationScope validationScope) { }
 }

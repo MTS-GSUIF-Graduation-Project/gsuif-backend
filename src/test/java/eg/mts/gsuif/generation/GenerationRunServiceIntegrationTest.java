@@ -29,7 +29,10 @@ class GenerationRunServiceIntegrationTest {
     @Autowired GeneratedArtifactRepository artifactRepository;
 
     @Test void recordsEachReturnedFileAndItsOwnVersionWithRunHistory() {
-        var service = service((project, goal) -> new ConsumerBuildValidator.CommandResult(0, goal + " passed"));
+        var service = service((project, goal) -> {
+            if (goal.equals("test")) ConsumerBuildValidatorTest.writeReport(project, 1, 0);
+            return new ConsumerBuildValidator.CommandResult(0, goal + " passed");
+        });
         var fixture = fixture();
         var first = result();
         var second = new GenerationResult.Artifact("src/main/java/example/Other.java",
@@ -157,7 +160,7 @@ class GenerationRunServiceIntegrationTest {
         assertTrue(saved.getTestOutput().contains("ASSERTION_SENTINEL"), saved.getTestOutput());
     }
 
-    @Test void successfulMavenTestGoalDoesNotRequireDiscoveredTests() {
+    @Test void missingUndiscoveredAndSkippedTestsPersistBuildFailure() {
         for (Map<String, byte[]> testInputs : List.of(
                 Map.<String, byte[]>of(),
                 Map.of("src/test/java/example/UndiscoveredCheck.java", """
@@ -175,9 +178,19 @@ class GenerationRunServiceIntegrationTest {
             UUID id = realService().validateAndRecord(UUID.randomUUID(), fixture.version(), fixture.user(), result(), testInputs).getId();
             entityManager.flush(); entityManager.clear();
             GenerationRun saved = realService().findById(id).orElseThrow();
-            assertEquals(GenerationRunStatus.SUCCESS, saved.getStatus(), saved.getCompileOutput() + "\n" + saved.getTestOutput());
-            assertEquals(0, saved.getCompileExitCode());
-            assertEquals(0, saved.getTestExitCode());
+            assertEquals(GenerationRunStatus.BUILD_FAILED, saved.getStatus(), saved.getCompileOutput() + "\n" + saved.getTestOutput());
+            if (testInputs.isEmpty()) {
+                assertNull(saved.getCompileExitCode());
+                assertTrue(saved.getCompileOutput().contains("behavioral tests are missing"), saved.getCompileOutput());
+                assertNull(saved.getTestOutput());
+            } else {
+                assertEquals(0, saved.getCompileExitCode());
+                if (saved.getTestExitCode() == null) {
+                    assertTrue(saved.getTestOutput().contains("not executed"), saved.getTestOutput());
+                } else {
+                    assertNotEquals(0, saved.getTestExitCode(), saved.getTestOutput());
+                }
+            }
         }
     }
 
@@ -188,6 +201,7 @@ class GenerationRunServiceIntegrationTest {
             assertTrue(Files.exists(project.resolve("pom.xml")));
             assertTrue(Files.exists(project.resolve("src/main/java/example/Generated.java")));
             assertTrue(Files.exists(project.resolve("src/test/java/example/GeneratedTest.java")));
+            if (goal.equals("test")) ConsumerBuildValidatorTest.writeReport(project, 1, 0);
             return new ConsumerBuildValidator.CommandResult(0, goal + " passed");
         });
         var fixture = fixture();
