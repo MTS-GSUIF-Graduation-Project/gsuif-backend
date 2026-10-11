@@ -164,6 +164,16 @@
                 <directory>src/main/resources</directory>
             </resource>
             <resource>
+                <directory>${project.build.directory}/generated-sources/openapi-fixture/src/main/java</directory>
+                <targetPath>consumer-contracts/asset-ticket-api</targetPath>
+                <includes><include>**/*.java</include></includes>
+            </resource>
+            <resource>
+                <directory>${project.build.directory}/generated-sources/openapi-second-fixture/src/main/java</directory>
+                <targetPath>consumer-contracts/service-request-api</targetPath>
+                <includes><include>**/*.java</include></includes>
+            </resource>
+            <resource>
                 <directory>${project.basedir}</directory>
                 <includes>
                     <include>components.yaml</include>

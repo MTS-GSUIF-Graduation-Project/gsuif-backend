@@ -37,6 +37,39 @@ class GenerationApiServiceTest {
     GenerationApiService service = new GenerationApiService(pages, versions, users, artifacts, workflow,
             runs, mock(MetadataSchemaValidator.class));
 
+    @Test void downloadRequiresSavedRunRegisteredSafePathAndVerifiedStorage() {
+        UUID id = UUID.randomUUID();
+        String path = "src/main/java/Thing.java";
+        assertThrows(ResourceNotFoundException.class, () -> service.download(id, path));
+        when(runs.findById(id)).thenReturn(Optional.of(mock(GenerationRun.class)));
+        assertThrows(GenerationValidationException.class, () -> service.download(id, "../outside"));
+        assertThrows(ResourceNotFoundException.class, () -> service.download(id, path));
+        when(runs.findFile(id, path)).thenReturn(Optional.of(mock(GeneratedArtifact.class)));
+        when(runs.readArtifact(id, path)).thenReturn("saved".getBytes(StandardCharsets.UTF_8));
+        assertArrayEquals("saved".getBytes(StandardCharsets.UTF_8), service.download(id, path).bytes());
+        when(runs.readArtifact(id, path)).thenThrow(new IllegalStateException("Stored artifact content changed"));
+        assertThrows(IllegalStateException.class, () -> service.download(id, path));
+    }
+
+    @Test void artifactHistoryTracesFileThroughRunToVersion() {
+        String path = "src/main/java/Thing.java";
+        UUID artifactId = UUID.randomUUID(), runId = UUID.randomUUID(), versionId = UUID.randomUUID();
+        var artifact = mock(GeneratedArtifact.class);
+        var run = mock(GenerationRun.class);
+        var version = mock(MetadataVersion.class);
+        when(runs.findFileHistory(path)).thenReturn(List.of(artifact));
+        when(artifact.getId()).thenReturn(artifactId);
+        when(artifact.getRelativePath()).thenReturn(path);
+        when(artifact.getGenerationRun()).thenReturn(run);
+        when(run.getId()).thenReturn(runId);
+        when(run.getMetadataVersion()).thenReturn(version);
+        when(version.getId()).thenReturn(versionId);
+        var trace = service.artifactHistory(path).getFirst();
+        assertEquals(artifactId, trace.artifactId());
+        assertEquals(runId, trace.runId());
+        assertEquals(versionId, trace.metadataVersionId());
+    }
+
     @Test void supportedTargetsMatchApprovedTeamMapping() {
         assertEquals(Set.of(Target.ENTITY), GenerationApiService.targets("ENTITY"));
         assertEquals(Set.of(Target.CONTROLLER), GenerationApiService.targets("CONTROLLER"));
@@ -72,16 +105,22 @@ class GenerationApiServiceTest {
         when(version.getId()).thenReturn(versionId);
         when(run.getId()).thenReturn(runId);
         when(run.getStatus()).thenReturn(GenerationRunStatus.SUCCESS);
-        var generated = new GenerationResult.Artifact("Thing.java", "class Thing {}".getBytes(StandardCharsets.UTF_8),
+        when(run.getCompileExitCode()).thenReturn(0);
+        when(run.getTestExitCode()).thenReturn(0);
+        var generated = new GenerationResult.Artifact("src/main/java/Thing.java", "class Thing {}".getBytes(StandardCharsets.UTF_8),
                 "abc", "1.0.0", "1.0.0");
+        var angular = new GenerationResult.Artifact("src/app/generated/thing.component.ts", "export class ThingComponent {}".getBytes(StandardCharsets.UTF_8),
+                "def", "1.0.0", "1.0.0");
         when(workflow.generateAndRecord(any(UUID.class), same(version), same(user), any(),
                 eq(Set.of(Target.ENTITY)), eq("spring-angular"), eq(Map.of())))
-                .thenReturn(new GenerationWorkflow.CompletedAttempt(new GenerationResult(List.of(generated), List.of()), run));
+                .thenReturn(new GenerationWorkflow.CompletedAttempt(new GenerationResult(List.of(generated, angular), List.of()), run));
         var result = service.generate(new eg.mts.gsuif.dto.GenerationApiDtos.GenerateRequest(pageId, "ENTITY", specification()), "esraa");
         assertEquals(runId, result.runId());
         assertEquals("SUCCESS", result.status());
         assertEquals(versionId, result.metadataVersionId());
         assertEquals("class Thing {}", result.artifacts().getFirst().content());
+        assertEquals(List.of("JAVA_COMPILE", "JAVA_CONSUMER_TESTS"), result.validationScope().passedTargets());
+        assertEquals(List.of("ANGULAR"), result.validationScope().notValidatedTargets());
     }
 
     @Test void runLookupReturnsRegistryAndPersistedBuildDiagnostics() {
@@ -101,13 +140,15 @@ class GenerationApiServiceTest {
         when(run.getTestExitCode()).thenReturn((Integer) null);
         when(artifacts.findAllByGenerationRunIdOrderByRelativePathAsc(id)).thenReturn(List.of(artifact));
         when(artifact.getId()).thenReturn(artifactId);
-        when(artifact.getRelativePath()).thenReturn("Thing.java");
+        when(artifact.getRelativePath()).thenReturn("src/app/generated/thing.component.ts");
         var detail = service.run(id);
         assertEquals("BUILD_FAILED", detail.status());
         assertEquals(versionId, detail.metadataVersionId());
         assertEquals(artifactId, detail.artifacts().getFirst().id());
         assertEquals("compile error", detail.compileOutput());
         assertNull(detail.testExitCode());
+        assertTrue(detail.validationScope().passedTargets().isEmpty());
+        assertEquals(List.of("ANGULAR"), detail.validationScope().notValidatedTargets());
         assertThrows(ResourceNotFoundException.class, () -> service.run(UUID.randomUUID()));
     }
 
