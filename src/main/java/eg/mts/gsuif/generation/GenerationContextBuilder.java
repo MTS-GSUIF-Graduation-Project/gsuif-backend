@@ -163,14 +163,42 @@ public final class GenerationContextBuilder {
         Map<String, Object> dto = contract.dtoProperties();
         JsonNode components = snapshot.path("components"); JsonNode bindings = snapshot.path("apiBindings");
         Map<UUID, String> selectedOperations = s.openApi().bindingOperations();
-        Set<String> selectedComponents = selectedComponentIds(snapshot, selectedOperations);
-        Set<UUID> tables = new HashSet<>();
+        Set<String> selectedComponents = selectedComponentIds(snapshot, selectedOperations, schemaVersion);
+        Map<String, Integer> ruleOwners = new HashMap<>();
+        for (int j = 0; j < bindings.size(); j++) {
+            JsonNode binding = bindings.get(j);
+            UUID bindingId;
+            try { bindingId = UUID.fromString(binding.path("id").asText()); } catch (Exception ex) { continue; }
+            if (selectedOperations == null || !selectedOperations.containsKey(bindingId) || !binding.has("visibilityRule")) continue;
+            Set<String> affected = bindingComponentIds(binding);
+            if (affected.isEmpty()) errors.add("snapshot.apiBindings[" + j + "].visibilityRule: selected binding has no referenced components");
+            for (String linked : affected) {
+                Integer previous = ruleOwners.putIfAbsent(linked, j);
+                if (previous != null)
+                    errors.add("snapshot.apiBindings[" + j + "].visibilityRule: component " + linked
+                            + " also has a visibility rule at snapshot.apiBindings[" + previous + "].visibilityRule");
+            }
+        }
+        Set<UUID> legacyTables = new HashSet<>();
+        Set<String> selectedListComponents = new HashSet<>();
+        for (JsonNode binding : bindings) {
+            UUID bindingId;
+            try { bindingId = UUID.fromString(binding.path("id").asText()); } catch (Exception ex) { continue; }
+            if (selectedOperations == null || !selectedOperations.containsKey(bindingId)) continue;
+            String operationId = selectedOperations.get(bindingId);
+            if (operationId == null) continue;
+            Operation operation = contract.operations().get(operationId);
+            if (operation != null && "list".equals(operation.kind()))
+                selectedListComponents.addAll(bindingComponentIds(binding));
+        }
+        var handlerContext = new AngularComponentHandlers.ValidationContext(s.angular(), dto, selectedListComponents, legacyTables);
         for (int i = 0; i < components.size(); i++) {
             JsonNode component = components.get(i); String p = "snapshot.components[" + i + "]";
             if (selectedOperations != null && !selectedComponents.contains(component.path("id").asText())) continue;
             String type = component.path("type").asText(); String key = component.path("fieldKey").asText();
-            if (!Set.of("text-field", "select", "date-field", "form", "table", "navigation", "modal", "pagination").contains(type)) { errors.add(p + ".type: unsupported Angular component"); continue; }
-            if (!Set.of("1.1.0", "1.2.0").contains(schemaVersion) && Set.of("form", "navigation", "modal", "pagination").contains(type)) {
+            AngularComponentHandlers.Handler handler = AngularComponentHandlers.find(type);
+            if (handler == null) { errors.add(p + " (" + component.path("id").asText() + ").type: unsupported Angular component"); continue; }
+            if (!Set.of("1.1.0", "1.2.0").contains(schemaVersion) && handler.requiresVersion11()) {
                 errors.add(p + ".type: unsupported Angular component for schema " + schemaVersion);
                 continue;
             }
@@ -179,51 +207,29 @@ public final class GenerationContextBuilder {
                 UUID bindingId;
                 try { bindingId = UUID.fromString(binding.path("id").asText()); } catch (Exception ex) { continue; }
                 if (s.openApi().bindingOperations() == null || !s.openApi().bindingOperations().containsKey(bindingId)) continue;
-                for (JsonNode linkedId : binding.path("linkedComponentIds"))
-                    if (linkedId.asText().equals(component.path("id").asText())) selectedLink = true;
+                if (bindingReferences(binding, component.path("id").asText())) selectedLink = true;
             }
-            if (!selectedLink) errors.add(p + ": selected API binding link required");
-            if ("table".equals(type)) {
-                UUID id;
-                try { id = UUID.fromString(component.path("id").asText()); } catch (Exception ex) { errors.add(p + ".id: invalid UUID"); continue; }
-                if (component.has("tableConfig")) {
-                    JsonNode columns = component.path("tableConfig").path("columns");
-                    Set<String> seen = new HashSet<>();
-                    for (int j = 0; j < columns.size(); j++) {
-                        String column = columns.get(j).path("fieldKey").asText();
-                        if (!identifier(column, "[a-z][A-Za-z0-9]*") || !dto.containsKey(column) || !seen.add(column))
-                            errors.add(p + ".tableConfig.columns[" + j + "].fieldKey: absent from DTO, invalid or duplicate property");
-                    }
-                } else {
-                    tables.add(id); List<String> columns = s.angular().tableColumns().get(id);
-                    if (columns == null || columns.isEmpty() || columns.stream().anyMatch(Objects::isNull) || new HashSet<>(columns).size() != columns.size()) errors.add(p + ".tableColumns: nonempty distinct columns required");
-                    else for (int j = 0; j < columns.size(); j++) if (!identifier(columns.get(j), "[a-z][A-Za-z0-9]*") || !dto.containsKey(columns.get(j))) errors.add(p + ".tableColumns[" + j + "]: absent from DTO or invalid property");
-                }
-                boolean linked = false;
-                for (JsonNode binding : bindings) {
-                    if (selectedOperations == null) break;
-                    UUID bindingId;
-                    try { bindingId = UUID.fromString(binding.path("id").asText()); } catch (Exception ex) { continue; }
-                    Operation op = contract.operations().get(selectedOperations.get(bindingId));
-                    if (op == null || !op.kind().equals("list")) continue;
-                    for (JsonNode linkedId : binding.path("linkedComponentIds")) if (linkedId.asText().equals(id.toString())) linked = true;
-                }
-                if (!linked) errors.add(p + ": table requires selected list binding");
-                continue;
+            if (!selectedLink && handler.needsBinding())
+                errors.add(p + " (" + component.path("id").asText() + "): selected API binding link required");
+            for (String coordinate : List.of("row", "col")) {
+                JsonNode value = component.path("position").path(coordinate);
+                if (!value.canConvertToInt() || value.intValue() == Integer.MAX_VALUE)
+                    errors.add(p + " (" + component.path("id").asText() + ").position." + coordinate
+                            + ": exceeds supported CSS grid line range");
             }
-            if (Set.of("form", "navigation", "modal", "pagination").contains(type)) continue;
+            for (String span : List.of("width", "height")) {
+                JsonNode value = component.path("size").path(span);
+                if (!value.canConvertToInt() || value.intValue() < 1)
+                    errors.add(p + " (" + component.path("id").asText() + ").size." + span
+                            + ": exceeds supported CSS grid span range");
+            }
+            handler.validate(component, p, handlerContext, errors);
+            if (!handler.requiresField()) continue;
             FieldSpec field = fields.get(key); Map<String, Object> property = nested(dto, key);
             if (field == null || property.isEmpty()) { errors.add(p + ".fieldKey: absent from entity and DTO"); continue; }
-            String ref = refName(property.get("$ref"));
-            boolean valid = switch (type) {
-                case "text-field" -> "String".equals(field.javaType()) && "string".equals(property.get("type")) && ref.isEmpty();
-                case "date-field" -> "LocalDate".equals(field.javaType()) && "date".equals(property.get("format"));
-                case "select" -> field.enumType() != null && field.enumType().equals(ref) && contract.enums().containsKey(ref);
-                default -> false;
-            };
-            if (!valid) errors.add(p + ".fieldKey: incompatible DTO type");
+            if (!handler.validField(field, property, contract.enums())) errors.add(p + ".fieldKey: incompatible DTO type");
         }
-        for (UUID id : s.angular().tableColumns().keySet()) if (!tables.contains(id)) errors.add("specification.angular.tableColumns." + id + ": unknown table");
+        for (UUID id : s.angular().tableColumns().keySet()) if (!legacyTables.contains(id)) errors.add("specification.angular.tableColumns." + id + ": unknown table");
         if (selectedOperations != null) for (String id : selectedComponents) {
             boolean present = false;
             for (JsonNode component : components) if (id.equals(component.path("id").asText())) { present = true; break; }
@@ -231,15 +237,38 @@ public final class GenerationContextBuilder {
         }
     }
 
-    static Set<String> selectedComponentIds(JsonNode snapshot, Map<UUID, String> selectedOperations) {
+    static Set<String> selectedComponentIds(JsonNode snapshot, Map<UUID, String> selectedOperations, String schemaVersion) {
         Set<String> ids = new HashSet<>();
         if (selectedOperations == null) return ids;
         for (JsonNode binding : snapshot.path("apiBindings")) {
             UUID id;
             try { id = UUID.fromString(binding.path("id").asText()); } catch (Exception ex) { continue; }
-            if (selectedOperations.containsKey(id))
-                for (JsonNode linked : binding.path("linkedComponentIds")) ids.add(linked.asText());
+            if (selectedOperations.containsKey(id)) {
+                ids.addAll(bindingComponentIds(binding));
+            }
         }
+        if (Set.of("1.1.0", "1.2.0").contains(schemaVersion)) {
+            Set<String> referenced = new HashSet<>();
+            for (JsonNode binding : snapshot.path("apiBindings")) referenced.addAll(bindingComponentIds(binding));
+            for (JsonNode component : snapshot.path("components")) {
+                // An unbound component is part of the page and must be rendered or diagnosed.
+                // Components attached only to unselected operations retain the selected-binding boundary.
+                if (!referenced.contains(component.path("id").asText()))
+                    ids.add(component.path("id").asText());
+            }
+        }
+        return ids;
+    }
+
+    private static boolean bindingReferences(JsonNode binding, String componentId) {
+        return bindingComponentIds(binding).contains(componentId);
+    }
+
+    static Set<String> bindingComponentIds(JsonNode binding) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (JsonNode linked : binding.path("linkedComponentIds")) ids.add(linked.asText());
+        if (binding.hasNonNull("parentComponentId")) ids.add(binding.path("parentComponentId").asText());
+        for (JsonNode child : binding.path("childComponentIds")) ids.add(child.asText());
         return ids;
     }
 

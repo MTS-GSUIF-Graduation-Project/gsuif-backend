@@ -526,17 +526,47 @@ The catalog remains `PLANNED` until the broader handoff is implemented and revie
 ## SCRUM-63 Angular component extension
 
 The packaged `TemplateOnlyProvider` and the catalog-selected Angular templates render
-selected 1.1.0 and 1.2.0 `form`, `table`, `navigation`, `modal`, and `pagination` components.
+1.1.0 and 1.2.0 `form`, `table`, `navigation`, `modal`, and `pagination` components.
+Form, navigation, modal, and pagination are page components and are emitted even without
+an API binding. Field controls and tables require a selected binding. Selected 1.2.0
+binding parent and child references also select components; they describe API relationships,
+not visual nesting. Each selected component is emitted once in snapshot order. The
+generated wrapper uses CSS grid; zero-based metadata row and column are converted to
+one-based CSS grid lines, and width and height become spans. The original values are
+also exposed as data attributes. Values outside supported CSS grid integer range
+receive indexed diagnostics.
+Static `visibility: false` omits markup; `disabled: true` disables form controls and
+navigation links and marks structural displays as disabled.
 Form markup displays `formConfig.submitLabel`; configured tables preserve column
 order, labels, and DTO field keys, while legacy tables still use
-`specification.angular.tableColumns`. Navigation uses relative routes from
+`specification.angular.tableColumns`. A table cannot provide both column sources;
+the generator reports a conflict. Navigation emits ordinary relative `href` links from
 `navigationConfig.items`; modal uses `Component.label` as its title; pagination
-exposes `paginationConfig.pageSize` as structural metadata. Labels and routes are
-escaped for HTML output. No submit handler, data loader, modal trigger, or page
+exposes a positive 32-bit `paginationConfig.pageSize` as structural metadata.
+Larger schema-valid values receive an indexed generation diagnostic instead of wrapping.
+Labels and routes are escaped for HTML output. Modal markup has a named dialog role,
+but does not claim an active modal state. No submit handler, data loader, modal trigger, or page
 coupling is implied by these structures.
+
+A selected binding's 1.2.0 `visibilityRule` applies to its referenced components for
+display only. Generated Angular accepts `visibilityContext` through `@Input()` with
+permissions, roles, and field values. Missing context and malformed predicates fail closed,
+including malformed descendants of `NOT`, `AND`, and `OR`. Components referenced by
+multiple selected bindings with visibility rules receive an ambiguity diagnostic.
+This input never grants API authorization.
+Numeric field values use `{ "$jsonNumber": "1.0" }` in the input's `fields` map so
+the display evaluator can distinguish JSON integer and decimal tokens. Plain JavaScript
+numbers fail closed for numeric rules because JavaScript erases that distinction.
+Decimal comparison also preserves the sign of zero, matching the Jackson evaluator.
 
 `GenerationContextBuilder` validates selected table keys against the selected DTO
 and retains the selected list binding requirement. The schema validates required
 configuration fields. `GenerationEngineTest` checks the generated structures and
 compiles the Angular artifacts with the pinned strict harness during Maven tests.
 The runtime Java consumer build validation covers Java artifacts only.
+
+To add a component, define its versioned metadata shape under `metadata/schema`,
+register a typed preparation handler, binding requirement, and semantic validation in
+`AngularComponentHandlers`, add its fragment under `templates/freemarker/angular`,
+extend the shared TypeScript template only for shared behavior, and add representative
+generation, diagnostics, and strict Angular compilation checks in `GenerationEngineTest`.

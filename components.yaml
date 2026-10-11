@@ -1039,8 +1039,8 @@ components:
 # =============================================================================
 # DEFERRED COMPONENTS AND DEFERRED GENERATION
 # Deferred capabilities are recorded here directly so they remain visible.
-# DEF-05 also remains here for its deferred generator and runtime support;
-# its five-type 1.1.0 schema capability is MANDATORY and CONFIRMED. Read each
+# DEF-05 also remains here because interactive runtime behavior is deferred;
+# its five-type 1.1.0 schema and structural generator are CONFIRMED. Read each
 # entry's schema_support and generation statuses separately.
 #
 # `standards` on a deferred entry records the checklist items that will apply
@@ -1199,10 +1199,10 @@ deferred_components:
     description: >
       Version 1.1.0 schema support for form, table, navigation, modal,
       and pagination component metadata. MANDATORY describes schema capability;
-      pages need not contain all five types. Parent-child API bindings and
-      conditional visibility remain deferred under SCRUM-58. The generator
-      emits structural Angular markup for the five types; runtime behavior
-      remains separate.
+      pages need not contain all five types. Version 1.2.0 binding relationships
+      select referenced components, and approved visibility predicates control
+      display through an Angular input. The generator emits structural Angular
+      markup for the five types; runtime behavior remains separate.
     sources:
       - {doc: DOC-08, locator: "SCRUM-12 (E9 — Metadata Extension (Phase 2))"}
       - {doc: DOC-05, locator: "DEC-019"}
@@ -1226,10 +1226,10 @@ deferred_components:
         artifacts:
           - {role: ANGULAR_TYPESCRIPT, location_type: CLASSPATH, path: templates/freemarker/angular-component.ts.ftl}
           - {role: ANGULAR_HTML, location_type: CLASSPATH, path: templates/freemarker/angular-component.html.ftl}
-      metadata_fields: [components.type, components.label, components.formConfig.submitLabel, components.tableConfig.columns, components.navigationConfig.items, components.paginationConfig.pageSize]
+      metadata_fields: [components.type, components.label, components.position, components.size, components.visibility, components.disabled, components.formConfig.submitLabel, components.tableConfig.columns, components.navigationConfig.items, components.paginationConfig.pageSize, apiBindings.visibilityRule]
       validation_rules:
         enforce_standards: true
-        note: "Selected components only; configured table keys must resolve to DTO fields. Angular output is compiled by the pinned test harness."
+        note: "Selected binding components and unbound page components; configured table keys must resolve to DTO fields. Visibility rules affect display only. Angular output is compiled by the pinned test harness."
       decision_source:
         capability_matrix: DEF-05
         decisions: [DEC-019]

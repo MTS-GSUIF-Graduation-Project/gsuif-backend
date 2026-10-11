@@ -315,10 +315,122 @@ class GenerationEngineTest {
             assertTrue(html.contains("href=\"/tickets?kind=a&amp;view=b\""), schema);
             assertTrue(html.contains("Tickets &lt;all&gt;"), schema);
             assertTrue(html.contains("role=\"dialog\""), schema);
-            assertTrue(html.contains("<h2 ngNonBindable>Title {{ value }} &lt;draft&gt;</h2>"), schema);
+            assertTrue(html.contains("ngNonBindable>Title {{ value }} &lt;draft&gt;</h2>"), schema);
             assertTrue(html.contains("data-page-size=\"25\""), schema);
+            assertTrue(html.contains("data-grid-row=\"0\""), schema);
+            assertTrue(html.contains("aria-labelledby=\"generated-title-"), schema);
+            assertFalse(html.contains("aria-modal=\"true\""), schema);
             stageAngularForCompilation(result);
         }
+    }
+
+    @Test void unboundPageComponentsAndStaticSettingsAreRendered() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        ObjectNode navigation = snapshot.withArray("components").addObject();
+        navigation.put("id", new UUID(0, 30).toString()); navigation.put("type", "navigation");
+        navigation.put("label", "Browse");
+        navigation.putObject("position").put("row", 2).put("col", 3);
+        navigation.putObject("size").put("width", 4).put("height", 1);
+        navigation.put("visibility", true); navigation.put("disabled", true);
+        navigation.putObject("navigationConfig").putArray("items").addObject()
+                .put("label", "All <tickets>").put("route", "/tickets");
+        ObjectNode modal = snapshot.withArray("components").addObject();
+        modal.put("id", new UUID(0, 31).toString()); modal.put("type", "modal"); modal.put("label", "Hidden");
+        modal.putObject("position").put("row", 3).put("col", 0);
+        modal.putObject("size").put("width", 1).put("height", 1);
+        modal.put("visibility", false); modal.put("disabled", false);
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(), Map.of());
+        var result = GenerationEngine.templateOnly(builder).generate(version("1.1.0", snapshot), specification,
+                Set.of(Target.ANGULAR), "spring-angular");
+        String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+        assertTrue(html.contains("grid-row:3 / span 1;grid-column:4 / span 4"));
+        assertTrue(html.contains("data-grid-row=\"2\" data-grid-col=\"3\" data-grid-width=\"4\""));
+        assertTrue(html.contains("All &lt;tickets&gt;"));
+        assertFalse(html.contains("href=\"/tickets\""));
+        assertFalse(html.contains("Hidden"));
+        stageAngularForCompilation(result);
+        navigation.put("type", "future-widget");
+        navigation.remove("navigationConfig");
+        var unsupported = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), specification, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(unsupported.diagnostics().stream().anyMatch(d -> d.contains("components[0]")
+                && d.contains(new UUID(0, 30).toString()) && d.contains("unsupported Angular component")),
+                unsupported.diagnostics().toString());
+    }
+
+    @Test void paginationOverflowAndColumnConflictHaveIndexedDiagnostics() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        ObjectNode pagination = snapshot.withArray("components").addObject();
+        UUID id = new UUID(0, 40);
+        pagination.put("id", id.toString()); pagination.put("type", "pagination"); pagination.put("label", "Pages");
+        pagination.putObject("position").put("row", 0).put("col", 0);
+        pagination.putObject("size").put("width", 1).put("height", 1);
+        pagination.put("visibility", true); pagination.put("disabled", false);
+        pagination.putObject("paginationConfig").put("pageSize", 2147483648L);
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(), Map.of());
+        var failure = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), specification, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(failure.diagnostics().stream().anyMatch(d -> d.contains("components[0]") && d.contains(id.toString())
+                && d.contains("paginationConfig.pageSize")), failure.diagnostics().toString());
+        pagination.with("paginationConfig").put("pageSize", 20);
+        UUID tableId = new UUID(0, 41);
+        ObjectNode table = snapshot.withArray("components").addObject();
+        table.put("id", tableId.toString()); table.put("type", "table"); table.put("label", "Tickets");
+        table.putObject("position").put("row", 1).put("col", 0);
+        table.putObject("size").put("width", 4).put("height", 2);
+        table.put("visibility", true); table.put("disabled", false);
+        table.putObject("tableConfig").putArray("columns").addObject().put("fieldKey", "title").put("label", "Title");
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).putArray("linkedComponentIds").add(tableId.toString());
+        var base = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
+                Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER)));
+        var conflicting = new GenerationSpecification(base.specVersion(), base.basePackage(), base.entity(),
+                base.openApi(), base.operationRoles(), new AngularSpec("AssetTicket", Map.of(tableId, List.of("id"))));
+        var conflict = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), conflicting, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(conflict.diagnostics().stream().anyMatch(d -> d.contains("components[1]")
+                && d.contains(tableId.toString()) && d.contains("tableConfig.columns")), conflict.diagnostics().toString());
+    }
+
+    @Test void bindingVisibilityUsesDisplayInputAndRejectsAmbiguousRules() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        UUID id = new UUID(0, 50);
+        ObjectNode field = snapshot.withArray("components").addObject();
+        field.put("id", id.toString()); field.put("type", "text-field");
+        field.put("label", "Title"); field.put("fieldKey", "title");
+        field.putObject("position").put("row", 0).put("col", 0);
+        field.putObject("size").put("width", 1).put("height", 1);
+        field.put("visibility", true); field.put("disabled", false);
+        ObjectNode first = (ObjectNode) snapshot.withArray("apiBindings").get(0);
+        first.putArray("linkedComponentIds").add(id.toString());
+        ObjectNode rule = first.putObject("visibilityRule");
+        rule.put("op", "AND");
+        rule.putArray("rules").addObject().put("op", "role").put("value", "EDITOR");
+        rule.withArray("rules").addObject().put("op", "field").put("field", "status").put("equals", "OPEN");
+        rule.withArray("rules").addObject().put("op", "field").put("field", "count").put("equals", 1.0);
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
+                Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER)));
+        var result = GenerationEngine.templateOnly(builder).generate(version("1.2.0", snapshot), specification,
+                Set.of(Target.ANGULAR), "spring-angular");
+        String ts = new String(result.artifacts().getFirst().bytes(), StandardCharsets.UTF_8);
+        String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+        assertTrue(ts.contains("@Input() visibilityContext"));
+        assertTrue(ts.contains("this.evaluateRule(this.visibilityRules[id], 0) === true"));
+        assertTrue(ts.contains("EDITOR"));
+        assertTrue(ts.contains("$jsonNumber"));
+        assertTrue(ts.contains("sameJsonNumber(number, actualNumber)"));
+        assertTrue(ts.contains("Object.is(Number(expected), Number(actual))"));
+        assertTrue(html.contains("*ngIf=\"isVisible('" + id.toString().replace("-", "") + "')\""));
+        stageAngularForCompilation(result);
+        ObjectNode second = (ObjectNode) snapshot.withArray("apiBindings").get(1);
+        second.putArray("linkedComponentIds").add(id.toString());
+        second.putObject("visibilityRule").put("op", "role").put("value", "VIEWER");
+        var both = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets",
+                new UUID(0, 2), "createAssetTicket"), Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER),
+                "createAssetTicket", Set.of(SupportedRole.ROLE_USER)));
+        var failure = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.2.0", snapshot), both, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(failure.diagnostics().stream().anyMatch(d -> d.contains("apiBindings[1].visibilityRule")
+                && d.contains(id.toString())), failure.diagnostics().toString());
     }
 
     @Test void angularTemplatesCompileMultipleDropdownsWithDistinctFieldNames() throws Exception {
@@ -330,10 +442,12 @@ class GenerationEngineTest {
                         Map.of("name", "status", "type", "string", "optional", ""),
                         Map.of("name", "resolutionCode", "type", "string", "optional", "")),
                 "controls", List.of(
-                        Map.of("type", "select", "key", "status", "label", "Status"),
-                        Map.of("type", "select", "key", "resolutionCode", "label", "Resolution")),
+                        selectTemplate(Map.of("type", "select", "key", "status", "label", "Status", "id", "status", "visible", true,
+                                "disabled", false, "row", "0", "col", "0", "width", "1", "height", "1")),
+                        selectTemplate(Map.of("type", "select", "key", "resolutionCode", "label", "Resolution", "id", "resolutionCode", "visible", true,
+                                "disabled", false, "row", "0", "col", "1", "width", "1", "height", "1"))),
                 "options", Map.of("status", List.of("OPEN", "CLOSED"),
-                        "resolutionCode", List.of("FIXED", "REJECTED")));
+                        "resolutionCode", List.of("FIXED", "REJECTED")), "rules", Map.of());
         String typescript = renderAngularTemplate(templates, "angular-component.ts.ftl", model);
         String html = renderAngularTemplate(templates, "angular-component.html.ftl", model);
         assertTrue(html.contains("options['status']"));
@@ -351,6 +465,12 @@ class GenerationEngineTest {
         var output = new StringWriter();
         templates.getTemplate("templates/freemarker/" + name).process(model, output);
         return output.toString();
+    }
+
+    private static Map<String, Object> selectTemplate(Map<String, Object> control) {
+        Map<String, Object> model = new LinkedHashMap<>(control);
+        model.put("template", "/templates/freemarker/angular/select.ftl");
+        return model;
     }
 
     @Test void cleanAssetTicketConsumerCompilesWithMethodSecurityEnabled() throws Exception {

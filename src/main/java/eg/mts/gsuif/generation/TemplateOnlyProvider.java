@@ -1,6 +1,9 @@
 package eg.mts.gsuif.generation;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import eg.mts.gsuif.generation.GenerationContext.Target;
 import eg.mts.gsuif.generation.GenerationSpecification.FieldSpec;
 import eg.mts.gsuif.generation.GenerationSpecification.SupportedRole;
@@ -90,7 +93,16 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
         GenerationSpecification s = context.specification();
         JsonNode components = context.snapshot().path("components");
         Set<String> selectedComponents = GenerationContextBuilder.selectedComponentIds(
-                context.snapshot(), s.openApi().bindingOperations());
+                context.snapshot(), s.openApi().bindingOperations(), context.metadataVersion().getSchemaVersion());
+        Map<String, String> rules = new LinkedHashMap<>();
+        ObjectMapper json = new ObjectMapper();
+        for (JsonNode binding : context.snapshot().path("apiBindings")) {
+            java.util.UUID bindingId;
+            try { bindingId = java.util.UUID.fromString(binding.path("id").asText()); } catch (Exception ex) { continue; }
+            if (!s.openApi().bindingOperations().containsKey(bindingId) || !binding.has("visibilityRule")) continue;
+            for (String linked : GenerationContextBuilder.bindingComponentIds(binding))
+                rules.put(linked.replace("-", ""), json.writeValueAsString(preserveNumericEquals(binding.path("visibilityRule"), json)));
+        }
         List<Map<String, Object>> controls = new ArrayList<>();
         Map<String, FieldSpec> fields = new HashMap<>();
         for (var f : s.entity().fields()) fields.put(f.name(), f);
@@ -98,47 +110,23 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
             JsonNode c = components.get(i);
             if (!selectedComponents.contains(c.path("id").asText())) continue;
             String type = c.path("type").asText();
-            String key = c.path("fieldKey").asText();
-            if (!List.of("text-field", "select", "date-field", "form", "table", "navigation", "modal", "pagination").contains(type))
-                throw new GenerationValidationException(List.of("snapshot.components[" + i + "].type: unsupported Angular component"));
-            if ("table".equals(type)) {
-                List<Map<String, String>> columns = new ArrayList<>();
-                if (c.has("tableConfig")) {
-                    for (JsonNode column : c.path("tableConfig").path("columns"))
-                        columns.add(Map.of("key", column.path("fieldKey").asText(), "label", column.path("label").asText()));
-                } else {
-                    java.util.UUID tableId = java.util.UUID.fromString(c.path("id").asText());
-                    for (String keyName : s.angular().tableColumns().get(tableId))
-                        columns.add(Map.of("key", keyName, "label", keyName));
-                }
-                controls.add(Map.of("type", type, "columns", columns));
-                continue;
-            }
-            if ("form".equals(type)) {
-                controls.add(Map.of("type", type, "label", c.path("label").asText(),
-                        "submitLabel", c.path("formConfig").path("submitLabel").asText()));
-                continue;
-            }
-            if ("navigation".equals(type)) {
-                List<Map<String, String>> items = new ArrayList<>();
-                for (JsonNode item : c.path("navigationConfig").path("items"))
-                    items.add(Map.of("label", item.path("label").asText(), "route", item.path("route").asText()));
-                controls.add(Map.of("type", type, "items", items));
-                continue;
-            }
-            if ("modal".equals(type)) {
-                controls.add(Map.of("type", type, "label", c.path("label").asText()));
-                continue;
-            }
-            if ("pagination".equals(type)) {
-                controls.add(Map.of("type", type, "pageSize", c.path("paginationConfig").path("pageSize").asInt()));
-                continue;
-            }
-            FieldSpec f = fields.get(key);
-            if (f == null) throw new GenerationValidationException(List.of("snapshot.components[" + i + "].fieldKey: missing DTO property"));
-            String expected = "date-field".equals(type) ? "LocalDate" : "select".equals(type) ? f.enumType() : "String";
-            if (expected == null || !expected.equals(f.javaType())) throw new GenerationValidationException(List.of("snapshot.components[" + i + "].fieldKey: incompatible DTO type"));
-            controls.add(Map.of("type", type, "key", key, "label", c.path("label").asText()));
+            Map<String, Object> control = new LinkedHashMap<>();
+            control.put("type", type);
+            control.put("id", c.path("id").asText().replace("-", ""));
+            control.put("row", c.path("position").path("row").asText());
+            control.put("col", c.path("position").path("col").asText());
+            control.put("gridRow", Integer.toString(c.path("position").path("row").intValue() + 1));
+            control.put("gridCol", Integer.toString(c.path("position").path("col").intValue() + 1));
+            control.put("width", c.path("size").path("width").asText());
+            control.put("height", c.path("size").path("height").asText());
+            control.put("disabled", c.path("disabled").asBoolean());
+            control.put("visible", c.path("visibility").asBoolean());
+            AngularComponentHandlers.Handler handler = AngularComponentHandlers.find(type);
+            if (handler == null)
+                throw new GenerationValidationException(List.of("snapshot.components[" + i + "] (" + c.path("id").asText() + ").type: unsupported Angular component"));
+            control.put("template", handler.template());
+            control.putAll(handler.prepare(c, s.angular(), fields, "snapshot.components[" + i + "]").values());
+            controls.add(control);
         }
         @SuppressWarnings("unchecked")
         Map<String, Map<String, Object>> dtoProperties = (Map<String, Map<String, Object>>) ((Map<String, Object>) context.templateModel().get("api")).get("dtoProperties");
@@ -160,10 +148,27 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
             selectedOptions.put(field.name(), values);
         }
         Map<String, Object> model = Map.of("className", s.angular().className(), "kebab", kebab,
-                "properties", properties, "controls", controls, "options", selectedOptions);
+                "properties", properties, "controls", controls, "options", selectedOptions, "rules", rules);
         String base = "src/app/generated/" + kebab;
         output.add(artifact(base + ".component.ts", render(catalog.angularTypescript().path(), model), catalog.angularTypescript().version(), catalog.version()));
         output.add(artifact(base + ".component.html", render(catalog.angularHtml().path(), model), catalog.angularHtml().version(), catalog.version()));
+    }
+
+    private static JsonNode preserveNumericEquals(JsonNode rule, ObjectMapper mapper) {
+        if (!rule.isObject()) return rule;
+        ObjectNode copy = ((ObjectNode) rule).deepCopy();
+        if ("field".equals(copy.path("op").asText()) && copy.path("equals").isNumber()) {
+            ObjectNode number = mapper.createObjectNode();
+            number.put("$jsonNumber", copy.path("equals").toString());
+            copy.set("equals", number);
+        }
+        if (copy.has("rule")) copy.set("rule", preserveNumericEquals(copy.path("rule"), mapper));
+        if (copy.path("rules").isArray()) {
+            ArrayNode children = mapper.createArrayNode();
+            for (JsonNode child : copy.path("rules")) children.add(preserveNumericEquals(child, mapper));
+            copy.set("rules", children);
+        }
+        return copy;
     }
 
     @SuppressWarnings("unchecked")
