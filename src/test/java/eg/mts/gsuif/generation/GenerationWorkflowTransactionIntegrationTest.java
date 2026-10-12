@@ -154,6 +154,16 @@ class GenerationWorkflowTransactionIntegrationTest {
                 Set.of(GenerationContext.Target.ENTITY), "spring-angular", Map.of());
         recordedRunId = first.run().getId();
 
+        String fragment = "templates/freemarker/angular/table.ftl";
+        String original = GenerationAttemptFingerprint.request(fixture.version(), fixture.user(), null,
+                Set.of(GenerationContext.Target.ENTITY), "spring-angular", Map.of());
+        String changedFragment = GenerationAttemptFingerprint.request(fixture.version(), fixture.user(), null,
+                Set.of(GenerationContext.Target.ENTITY), "spring-angular", Map.of(),
+                Map.of(fragment, "changed table fragment".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        assertNotEquals(original, changedFragment);
+        assertThrows(IllegalArgumentException.class, () -> runs.validateAndRecord(attempt,
+                fixture.version(), fixture.user(), result, Map.of(), changedFragment));
+
         assertThrows(IllegalArgumentException.class, () -> workflow.generateAndRecord(attempt,
                 fixture.version(), fixture.user(), null, Set.of(GenerationContext.Target.CONTROLLER),
                 "spring-angular", Map.of()));

@@ -14,15 +14,26 @@ import java.util.Set;
 /** Stable, length-framed fingerprint of inputs that determine a generation/build attempt. */
 final class GenerationAttemptFingerprint {
     private final MessageDigest digest;
+    private final Map<String, byte[]> resourceOverrides;
 
-    private GenerationAttemptFingerprint() {
+    private GenerationAttemptFingerprint() { this(Map.of()); }
+
+    private GenerationAttemptFingerprint(Map<String, byte[]> resourceOverrides) {
+        this.resourceOverrides = resourceOverrides;
         try { digest = MessageDigest.getInstance("SHA-256"); }
         catch (NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
 
     static String request(MetadataVersion version, GsuifUser user, GenerationSpecification spec,
             Set<GenerationContext.Target> targets, String framework, Map<String, byte[]> consumerInputs) {
-        var hash = new GenerationAttemptFingerprint();
+        return request(version, user, spec, targets, framework, consumerInputs, Map.of());
+    }
+
+    /** Allows tests to simulate a packaged resource changing between attempts. */
+    static String request(MetadataVersion version, GsuifUser user, GenerationSpecification spec,
+            Set<GenerationContext.Target> targets, String framework, Map<String, byte[]> consumerInputs,
+            Map<String, byte[]> resourceOverrides) {
+        var hash = new GenerationAttemptFingerprint(resourceOverrides);
         hash.add("generation-request-v1");
         hash.identity(version, user);
         hash.add(framework);
@@ -84,6 +95,10 @@ final class GenerationAttemptFingerprint {
         java.util.stream.Stream.of(catalog.entity().path(), catalog.controller().path(),
                 catalog.angularTypescript().path(), catalog.angularHtml().path()).distinct().sorted()
                 .forEach(hash::resource);
+        // The HTML template includes a fragment selected by each registered handler.
+        // Hash the entire packaged set so a template edit cannot reuse an old attempt.
+        AngularComponentHandlers.templatePaths().stream().map(path -> path.substring(1)).sorted().forEach(hash::resource);
+        hash.resource("templates/freemarker/angular-visibility.ts.ftl");
         java.util.stream.Stream.of("eg/mts/gsuif/dto/ApiResponse.java", "eg/mts/gsuif/dto/PagedBody.java",
                 "eg/mts/gsuif/entity/AuditableEntity.java", "eg/mts/gsuif/audit/AuditorAwareImpl.java",
                 "eg/mts/gsuif/config/JpaAuditingConfig.java")
@@ -129,6 +144,7 @@ final class GenerationAttemptFingerprint {
 
     private void resource(String path) {
         add(path);
+        if (resourceOverrides.containsKey(path)) { add(resourceOverrides.get(path)); return; }
         try (var stream = GenerationAttemptFingerprint.class.getResourceAsStream("/" + path)) {
             if (stream == null) throw new IllegalStateException("Generation input resource is missing: " + path);
             add(stream.readAllBytes());

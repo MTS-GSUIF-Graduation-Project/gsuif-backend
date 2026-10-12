@@ -554,6 +554,12 @@ permissions, roles, and field values. Missing context and malformed predicates f
 including malformed descendants of `NOT`, `AND`, and `OR`. Components referenced by
 multiple selected bindings with visibility rules receive an ambiguity diagnostic.
 This input never grants API authorization.
+`AngularModelPreparer` builds the selected Angular model; `TemplateOnlyProvider`
+renders and assembles artifacts. Each generated component imports the emitted
+`src/app/generated/angular-visibility.ts` module. A new context value is read on
+each display check, so input updates are reflected without duplicating evaluator
+code in generated components. The shared module and registered component fragments
+are included in generation attempt fingerprints.
 Ordinary finite JavaScript numbers in `fields` are compared by value when their
 integer or decimal category matches the rule. Thus an ordinary `1` does not match
 an `equals: 1.0` rule. Integer rules fail closed for numbers outside JavaScript's
@@ -565,6 +571,8 @@ of zero for either representation.
 and retains the selected list binding requirement. The schema validates required
 configuration fields. `GenerationEngineTest` checks the generated structures and
 compiles the Angular artifacts with the pinned strict harness during Maven tests.
+Its Node runtime check executes the generated visibility module against representative
+cases evaluated by `VisibilityRuleEvaluator`.
 The runtime Java consumer build validation covers Java artifacts only.
 
 To add a component, define its versioned metadata shape under `metadata/schema`,
@@ -572,6 +580,8 @@ register a typed preparation handler, binding requirement, and semantic validati
 `AngularComponentHandlers`, add its fragment under `templates/freemarker/angular`,
 extend the shared TypeScript template only for shared behavior, and add representative
 generation, diagnostics, and strict Angular compilation checks in `GenerationEngineTest`.
+Angular model preparation lives in `AngularModelPreparer`; reusable display behavior
+lives in `angular-visibility.ts.ftl`.
 
 ## Packaged API contract registration
 
