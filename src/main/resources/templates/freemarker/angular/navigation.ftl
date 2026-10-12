@@ -1,0 +1,1 @@
+<nav<#if control.disabled> aria-disabled="true"</#if>><#list control.items as item><#if control.disabled><span ngNonBindable>${item.label?html}</span><#else><a href="${item.route?html}" ngNonBindable>${item.label?html}</a></#if></#list></nav>

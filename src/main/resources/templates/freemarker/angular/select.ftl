@@ -1,0 +1,1 @@
+<label><span ngNonBindable>${control.label?html}</span><select [(ngModel)]="model.${control.key}"<#if control.disabled> disabled</#if>><option *ngFor="let option of options['${control.key?js_string}']" [value]="option">{{ option }}</option></select></label>

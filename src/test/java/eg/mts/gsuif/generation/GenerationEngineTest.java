@@ -8,6 +8,7 @@ import eg.mts.gsuif.entity.MetadataVersion;
 import eg.mts.gsuif.generation.GenerationContext.Target;
 import eg.mts.gsuif.generation.GenerationSpecification.*;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
+import eg.mts.gsuif.validator.VisibilityRuleEvaluator;
 import freemarker.template.Configuration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -149,6 +150,38 @@ class GenerationEngineTest {
         }
     }
 
+    @Test void registeredThirdContractGeneratesAndCompilesAngular() throws Exception {
+        ObjectNode snapshot = bindings("CaseRecord");
+        ObjectNode status = snapshot.withArray("components").addObject();
+        status.put("id", new UUID(0, 51).toString());
+        status.put("type", "select").put("label", "Case status").put("fieldKey", "status");
+        status.putObject("position").put("row", 0).put("col", 1);
+        status.putObject("size").put("width", 1).put("height", 1);
+        status.put("visibility", true).put("disabled", false);
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).putArray("linkedComponentIds")
+                .add(status.path("id").asText());
+        ObjectNode navigation = snapshot.withArray("components").addObject();
+        navigation.put("id", new UUID(0, 50).toString());
+        navigation.put("type", "navigation").put("label", "Cases");
+        navigation.putObject("position").put("row", 0).put("col", 0);
+        navigation.putObject("size").put("width", 1).put("height", 1);
+        navigation.put("visibility", true).put("disabled", false);
+        navigation.putObject("navigationConfig").putArray("items")
+                .addObject().put("label", "All cases").put("route", "/cases");
+        String operation = "listCaseRecords";
+        var specification = spec("CaseRecord", "case-record-api", Map.of(new UUID(0, 1), operation),
+                Map.of(operation, EnumSet.of(SupportedRole.ROLE_USER)));
+        var result = GenerationEngine.templateOnly(builder).generate(version("1.1.0", snapshot), specification,
+                Set.of(Target.ANGULAR), "spring-angular");
+        String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+        assertTrue(html.contains("href=\"/cases\""));
+        assertTrue(html.contains("All cases"));
+        assertTrue(html.contains("Case status"));
+        String typescript = new String(result.artifacts().getFirst().bytes(), StandardCharsets.UTF_8);
+        assertTrue(typescript.contains("status: ['OPEN', 'CLOSED']"));
+        stageAngularForCompilation(result);
+    }
+
     @Test void dateAngularForBothSchemaVersions() throws Exception {
         ObjectNode snapshot = bindings("ServiceRequest");
         ObjectNode date = snapshot.withArray("components").addObject();
@@ -165,7 +198,7 @@ class GenerationEngineTest {
         var spec = spec("ServiceRequest", "service-request-api", selected, roles);
         for (String schema : List.of("1.0.0", "1.1.0")) {
             var result = GenerationEngine.templateOnly(builder).generate(version(schema, snapshot), spec, Set.of(Target.ANGULAR), "spring-angular");
-            assertEquals(2, result.artifacts().size());
+            assertEquals(3, result.artifacts().size());
             String ts = new String(result.artifacts().getFirst().bytes(), StandardCharsets.UTF_8);
             assertTrue(ts.contains("id: string"));
             assertTrue(ts.contains("dueDate: string"));
@@ -212,12 +245,42 @@ class GenerationEngineTest {
                 Map.of("listAssetTickets", EnumSet.of(SupportedRole.ROLE_USER)));
         var result = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot), specification,
                 Set.of(Target.ANGULAR), "spring-angular");
-        assertEquals(2, result.artifacts().size());
+        assertEquals(3, result.artifacts().size());
         String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
         assertTrue(html.contains("type=\"text\""));
         assertTrue(html.contains("<span ngNonBindable>Title {{ missing }} &lt;draft&gt;</span>"));
         assertFalse(html.contains("Other"));
         stageAngularForCompilation(result);
+    }
+
+    @Test void selectedFieldDiagnosticsIdentifyComponentAndSnapshotPath() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        UUID id = new UUID(0, 91);
+        ObjectNode field = snapshot.withArray("components").addObject();
+        field.put("id", id.toString()); field.put("type", "text-field");
+        field.put("label", "Title"); field.put("fieldKey", "missing");
+        field.putObject("position").put("row", 0).put("col", 0);
+        field.putObject("size").put("width", 1).put("height", 1);
+        field.put("visibility", true); field.put("disabled", false);
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).putArray("linkedComponentIds").add(id.toString());
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
+                Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER)));
+        for (String key : List.of("missing", "status")) {
+            field.put("fieldKey", key);
+            var failure = assertThrows(GenerationValidationException.class,
+                    () -> builder.build(version("1.1.0", snapshot), specification, Set.of(Target.ANGULAR), "spring-angular"));
+            assertTrue(failure.diagnostics().stream().anyMatch(d -> d.contains("snapshot.components[0].fieldKey")
+                    && d.contains(id.toString())
+                    && d.contains(key.equals("missing") ? "absent from entity and DTO" : "incompatible DTO type")),
+                    failure.diagnostics().toString());
+        }
+        UUID absentId = new UUID(0, 92);
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).withArray("linkedComponentIds")
+                .set(0, mapper.getNodeFactory().textNode(absentId.toString()));
+        var absent = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), specification, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(absent.diagnostics().stream().anyMatch(d -> d.contains("snapshot.apiBindings[0].linkedComponentIds[0]")
+                && d.contains(absentId.toString()) && d.contains("absent from snapshot")), absent.diagnostics().toString());
     }
 
     @Test void angularTextSelectAndLegacyTableUseSelectedColumns() throws Exception {
@@ -249,7 +312,8 @@ class GenerationEngineTest {
                 () -> builder.build(version("1.0.0", snapshot), missingBindings, Set.of(Target.ANGULAR), "spring-angular"));
         assertTrue(missingBindingsFailure.diagnostics().stream().anyMatch(d -> d.contains("openApi.bindingOperations: required")),
                 missingBindingsFailure.diagnostics().toString());
-        assertTrue(missingBindingsFailure.diagnostics().stream().anyMatch(d -> d.contains("components[2]") && d.contains("selected list binding")),
+        assertTrue(missingBindingsFailure.diagnostics().stream().anyMatch(d -> d.contains("components[2]")
+                && d.contains(new UUID(0, 12).toString()) && d.contains("selected list binding")),
                 missingBindingsFailure.diagnostics().toString());
         var result = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot), spec, Set.of(Target.ANGULAR), "spring-angular");
         String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
@@ -260,16 +324,193 @@ class GenerationEngineTest {
         stageAngularForCompilation(result);
         ObjectNode configured = (ObjectNode) snapshot.withArray("components").get(2);
         configured.putObject("tableConfig").putArray("columns").addObject().put("fieldKey", "title").put("label", "Title");
-        var configuredFailure = assertThrows(GenerationValidationException.class,
-                () -> GenerationEngine.templateOnly(builder).generate(version("1.1.0", snapshot), spec,
-                        Set.of(Target.ANGULAR), "spring-angular"));
-        assertTrue(configuredFailure.diagnostics().stream().anyMatch(d -> d.contains("components[2].tableConfig")
-                && d.contains("deferred")), configuredFailure.diagnostics().toString());
+        configured.with("tableConfig").withArray("columns").addObject().put("fieldKey", "id").put("label", "Identifier");
+        var configuredSpec = new GenerationSpecification(spec.specVersion(), spec.basePackage(), spec.entity(),
+                spec.openApi(), spec.operationRoles(), new AngularSpec("AssetTicket", Map.of()));
+        for (String schema : List.of("1.1.0", "1.2.0")) {
+            var configuredResult = GenerationEngine.templateOnly(builder).generate(version(schema, snapshot), configuredSpec,
+                    Set.of(Target.ANGULAR), "spring-angular");
+            String configuredHtml = new String(configuredResult.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+            assertTrue(configuredHtml.contains("<th ngNonBindable>Title</th>"), schema);
+            assertTrue(configuredHtml.contains("row.title"), schema);
+            assertTrue(configuredHtml.indexOf("row.title") < configuredHtml.indexOf("row.id"), schema);
+            assertTrue(configuredHtml.contains("<th ngNonBindable>Identifier</th>"), schema);
+            stageAngularForCompilation(configuredResult);
+        }
+        ((ObjectNode) configured.path("tableConfig").path("columns").get(0)).put("fieldKey", "missing");
+        assertTrue(assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), configuredSpec, Set.of(Target.ANGULAR), "spring-angular"))
+                .diagnostics().stream().anyMatch(d -> d.contains("components[2].tableConfig.columns[0].fieldKey")
+                        && d.contains(configured.path("id").asText())));
         configured.remove("tableConfig");
         ((ObjectNode) snapshot.withArray("components").get(0)).put("type", "navigation");
         assertTrue(assertThrows(GenerationValidationException.class,
                 () -> builder.build(version("1.0.0", snapshot), spec, Set.of(Target.ANGULAR), "spring-angular"))
-                .diagnostics().stream().anyMatch(d -> d.contains("unsupported Angular component")));
+                .diagnostics().stream().anyMatch(d -> d.contains("snapshot.components[0]")
+                        && d.contains(new UUID(0, 10).toString())
+                        && d.contains(".type: unsupported Angular component for schema 1.0.0")));
+    }
+
+    @Test void extendedComponentsRenderApprovedStructureAndCompile() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        String[] types = {"form", "navigation", "modal", "pagination"};
+        for (int i = 0; i < types.length; i++) {
+            ObjectNode component = snapshot.withArray("components").addObject();
+            UUID id = new UUID(0, i + 20);
+            component.put("id", id.toString()); component.put("type", types[i]);
+            component.put("label", "Title {{ value }} <draft>");
+            component.putObject("position").put("row", i).put("col", 0);
+            component.putObject("size").put("width", 6).put("height", 1);
+            component.put("visibility", true); component.put("disabled", false);
+            ((ObjectNode) snapshot.withArray("apiBindings").get(0)).withArray("linkedComponentIds").add(id.toString());
+            switch (types[i]) {
+                case "form" -> component.putObject("formConfig").put("submitLabel", "Save <now>");
+                case "navigation" -> component.putObject("navigationConfig").putArray("items")
+                        .addObject().put("label", "Tickets <all>").put("route", "/tickets?kind=a&view=b");
+                case "pagination" -> component.putObject("paginationConfig").put("pageSize", 25);
+                default -> { }
+            }
+        }
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
+                Map.of("listAssetTickets", EnumSet.of(SupportedRole.ROLE_USER)));
+        for (String schema : List.of("1.1.0", "1.2.0")) {
+            var result = GenerationEngine.templateOnly(builder).generate(version(schema, snapshot), specification,
+                    Set.of(Target.ANGULAR), "spring-angular");
+            String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+            assertTrue(html.contains("<form>"), schema);
+            assertTrue(html.contains("Save &lt;now&gt;"), schema);
+            assertTrue(html.contains("href=\"/tickets?kind=a&amp;view=b\""), schema);
+            assertTrue(html.contains("Tickets &lt;all&gt;"), schema);
+            assertTrue(html.contains("role=\"dialog\""), schema);
+            assertTrue(html.contains("ngNonBindable>Title {{ value }} &lt;draft&gt;</h2>"), schema);
+            assertTrue(html.contains("data-page-size=\"25\""), schema);
+            assertTrue(html.contains("data-grid-row=\"0\""), schema);
+            assertTrue(html.contains("aria-labelledby=\"generated-title-"), schema);
+            assertFalse(html.contains("aria-modal=\"true\""), schema);
+            stageAngularForCompilation(result);
+        }
+    }
+
+    @Test void unboundPageComponentsAndStaticSettingsAreRendered() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        ObjectNode navigation = snapshot.withArray("components").addObject();
+        navigation.put("id", new UUID(0, 30).toString()); navigation.put("type", "navigation");
+        navigation.put("label", "Browse");
+        navigation.putObject("position").put("row", 2).put("col", 3);
+        navigation.putObject("size").put("width", 4).put("height", 1);
+        navigation.put("visibility", true); navigation.put("disabled", true);
+        navigation.putObject("navigationConfig").putArray("items").addObject()
+                .put("label", "All <tickets>").put("route", "/tickets");
+        ObjectNode modal = snapshot.withArray("components").addObject();
+        modal.put("id", new UUID(0, 31).toString()); modal.put("type", "modal"); modal.put("label", "Hidden");
+        modal.putObject("position").put("row", 3).put("col", 0);
+        modal.putObject("size").put("width", 1).put("height", 1);
+        modal.put("visibility", false); modal.put("disabled", false);
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(), Map.of());
+        var result = GenerationEngine.templateOnly(builder).generate(version("1.1.0", snapshot), specification,
+                Set.of(Target.ANGULAR), "spring-angular");
+        String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+        assertTrue(html.contains("grid-row:3 / span 1;grid-column:4 / span 4"));
+        assertTrue(html.contains("data-grid-row=\"2\" data-grid-col=\"3\" data-grid-width=\"4\""));
+        assertTrue(html.contains("All &lt;tickets&gt;"));
+        assertFalse(html.contains("href=\"/tickets\""));
+        assertFalse(html.contains("Hidden"));
+        stageAngularForCompilation(result);
+        navigation.put("type", "future-widget");
+        navigation.remove("navigationConfig");
+        var unsupported = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), specification, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(unsupported.diagnostics().stream().anyMatch(d -> d.contains("components[0]")
+                && d.contains(new UUID(0, 30).toString()) && d.contains("unsupported Angular component")),
+                unsupported.diagnostics().toString());
+    }
+
+    @Test void paginationOverflowAndColumnConflictHaveIndexedDiagnostics() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        ObjectNode pagination = snapshot.withArray("components").addObject();
+        UUID id = new UUID(0, 40);
+        pagination.put("id", id.toString()); pagination.put("type", "pagination"); pagination.put("label", "Pages");
+        pagination.putObject("position").put("row", 0).put("col", 0);
+        pagination.putObject("size").put("width", 1).put("height", 1);
+        pagination.put("visibility", true); pagination.put("disabled", false);
+        pagination.putObject("paginationConfig").put("pageSize", 2147483648L);
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(), Map.of());
+        var failure = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), specification, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(failure.diagnostics().stream().anyMatch(d -> d.contains("components[0]") && d.contains(id.toString())
+                && d.contains("paginationConfig.pageSize")), failure.diagnostics().toString());
+        pagination.with("paginationConfig").put("pageSize", 20);
+        UUID tableId = new UUID(0, 41);
+        ObjectNode table = snapshot.withArray("components").addObject();
+        table.put("id", tableId.toString()); table.put("type", "table"); table.put("label", "Tickets");
+        table.putObject("position").put("row", 1).put("col", 0);
+        table.putObject("size").put("width", 4).put("height", 2);
+        table.put("visibility", true); table.put("disabled", false);
+        table.putObject("tableConfig").putArray("columns").addObject().put("fieldKey", "title").put("label", "Title");
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).putArray("linkedComponentIds").add(tableId.toString());
+        var base = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
+                Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER)));
+        var conflicting = new GenerationSpecification(base.specVersion(), base.basePackage(), base.entity(),
+                base.openApi(), base.operationRoles(), new AngularSpec("AssetTicket", Map.of(tableId, List.of("id"))));
+        var conflict = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), conflicting, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(conflict.diagnostics().stream().anyMatch(d -> d.contains("components[1]")
+                && d.contains(tableId.toString()) && d.contains("tableConfig.columns")), conflict.diagnostics().toString());
+        table.remove("tableConfig");
+        var invalidLegacy = new GenerationSpecification(base.specVersion(), base.basePackage(), base.entity(),
+                base.openApi(), base.operationRoles(), new AngularSpec("AssetTicket", Map.of(tableId, List.of("missing"))));
+        var legacyFailure = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), invalidLegacy, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(legacyFailure.diagnostics().stream().anyMatch(d -> d.contains("snapshot.components[1]")
+                && d.contains(tableId.toString())
+                && d.contains("specification.angular.tableColumns." + tableId + "[0]")),
+                legacyFailure.diagnostics().toString());
+    }
+
+    @Test void bindingVisibilityUsesDisplayInputAndRejectsAmbiguousRules() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        UUID id = new UUID(0, 50);
+        ObjectNode field = snapshot.withArray("components").addObject();
+        field.put("id", id.toString()); field.put("type", "text-field");
+        field.put("label", "Title"); field.put("fieldKey", "title");
+        field.putObject("position").put("row", 0).put("col", 0);
+        field.putObject("size").put("width", 1).put("height", 1);
+        field.put("visibility", true); field.put("disabled", false);
+        ObjectNode first = (ObjectNode) snapshot.withArray("apiBindings").get(0);
+        first.putArray("linkedComponentIds").add(id.toString());
+        ObjectNode rule = first.putObject("visibilityRule");
+        rule.put("op", "AND");
+        rule.putArray("rules").addObject().put("op", "role").put("value", "EDITOR");
+        rule.withArray("rules").addObject().put("op", "field").put("field", "status").put("equals", "OPEN");
+        rule.withArray("rules").addObject().put("op", "field").put("field", "count").put("equals", 1);
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
+                Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER)));
+        var result = GenerationEngine.templateOnly(builder).generate(version("1.2.0", snapshot), specification,
+                Set.of(Target.ANGULAR), "spring-angular");
+        String ts = new String(result.artifacts().getFirst().bytes(), StandardCharsets.UTF_8);
+        String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+        assertTrue(ts.contains("@Input() visibilityContext"));
+        assertTrue(ts.contains("new VisibilityEvaluator(this.visibilityContext).evaluate(this.visibilityRules[id])"));
+        assertTrue(result.artifacts().stream().anyMatch(a -> a.relativePath().equals("src/app/generated/angular-visibility.ts")));
+        assertTrue(ts.contains("EDITOR"));
+        assertTrue(ts.contains("$jsonNumber"));
+        String evaluator = new String(result.artifacts().stream()
+                .filter(a -> a.relativePath().equals("src/app/generated/angular-visibility.ts"))
+                .findFirst().orElseThrow().bytes(), StandardCharsets.UTF_8);
+        assertTrue(evaluator.contains("sameJsonNumber(number, actualNumber)"));
+        assertTrue(html.contains("*ngIf=\"isVisible('" + id.toString().replace("-", "") + "')\""));
+        stageAngularForCompilation(result);
+        verifyGeneratedVisibilityRuntime();
+        ObjectNode second = (ObjectNode) snapshot.withArray("apiBindings").get(1);
+        second.putArray("linkedComponentIds").add(id.toString());
+        second.putObject("visibilityRule").put("op", "role").put("value", "VIEWER");
+        var both = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets",
+                new UUID(0, 2), "createAssetTicket"), Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER),
+                "createAssetTicket", Set.of(SupportedRole.ROLE_USER)));
+        var failure = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.2.0", snapshot), both, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(failure.diagnostics().stream().anyMatch(d -> d.contains("apiBindings[1].visibilityRule")
+                && d.contains(id.toString())), failure.diagnostics().toString());
     }
 
     @Test void angularTemplatesCompileMultipleDropdownsWithDistinctFieldNames() throws Exception {
@@ -281,10 +522,12 @@ class GenerationEngineTest {
                         Map.of("name", "status", "type", "string", "optional", ""),
                         Map.of("name", "resolutionCode", "type", "string", "optional", "")),
                 "controls", List.of(
-                        Map.of("type", "select", "key", "status", "label", "Status"),
-                        Map.of("type", "select", "key", "resolutionCode", "label", "Resolution")),
+                        selectTemplate(Map.of("type", "select", "key", "status", "label", "Status", "id", "status", "visible", true,
+                                "disabled", false, "row", "0", "col", "0", "width", "1", "height", "1")),
+                        selectTemplate(Map.of("type", "select", "key", "resolutionCode", "label", "Resolution", "id", "resolutionCode", "visible", true,
+                                "disabled", false, "row", "0", "col", "1", "width", "1", "height", "1"))),
                 "options", Map.of("status", List.of("OPEN", "CLOSED"),
-                        "resolutionCode", List.of("FIXED", "REJECTED")));
+                        "resolutionCode", List.of("FIXED", "REJECTED")), "rules", Map.of());
         String typescript = renderAngularTemplate(templates, "angular-component.ts.ftl", model);
         String html = renderAngularTemplate(templates, "angular-component.html.ftl", model);
         assertTrue(html.contains("options['status']"));
@@ -294,7 +537,10 @@ class GenerationEngineTest {
                 new GenerationResult.Artifact("src/app/generated/dropdown-fixture.component.ts",
                         typescript.getBytes(StandardCharsets.UTF_8), "", "1.0.0", "1.0.0"),
                 new GenerationResult.Artifact("src/app/generated/dropdown-fixture.component.html",
-                        html.getBytes(StandardCharsets.UTF_8), "", "1.0.0", "1.0.0")), List.of()));
+                        html.getBytes(StandardCharsets.UTF_8), "", "1.0.0", "1.0.0"),
+                new GenerationResult.Artifact("src/app/generated/angular-visibility.ts",
+                        renderAngularTemplate(templates, "angular-visibility.ts.ftl", model).getBytes(StandardCharsets.UTF_8),
+                        "", "1.0.0", "1.0.0")), List.of()));
     }
 
     private static String renderAngularTemplate(Configuration templates, String name, Map<String, Object> model)
@@ -302,6 +548,12 @@ class GenerationEngineTest {
         var output = new StringWriter();
         templates.getTemplate("templates/freemarker/" + name).process(model, output);
         return output.toString();
+    }
+
+    private static Map<String, Object> selectTemplate(Map<String, Object> control) {
+        Map<String, Object> model = new LinkedHashMap<>(control);
+        model.put("template", "/templates/freemarker/angular/select.ftl");
+        return model;
     }
 
     @Test void cleanAssetTicketConsumerCompilesWithMethodSecurityEnabled() throws Exception {
@@ -439,9 +691,10 @@ class GenerationEngineTest {
         assertTrue(result.artifacts().stream().anyMatch(a -> a.relativePath().endsWith(".html")));
     }
 
-    @Test void packagedConsumerTestsFollowGeneratedTargetsForBothContracts() throws Exception {
-        for (String entity : List.of("AssetTicket", "ServiceRequest")) {
-            String contract = entity.equals("AssetTicket") ? "asset-ticket-api" : "service-request-api";
+    @Test void packagedConsumerTestsFollowGeneratedTargetsForAllContracts() throws Exception {
+        for (String entity : List.of("AssetTicket", "ServiceRequest", "CaseRecord")) {
+            String contract = entity.equals("AssetTicket") ? "asset-ticket-api"
+                    : entity.equals("ServiceRequest") ? "service-request-api" : "case-record-api";
             ObjectNode snapshot = bindings(entity);
             Map<UUID, String> selected = new LinkedHashMap<>();
             Map<String, Set<SupportedRole>> roles = new LinkedHashMap<>();
@@ -502,9 +755,61 @@ class GenerationEngineTest {
         assertEquals(0, process.waitFor(), output);
     }
 
+    private void verifyGeneratedVisibilityRuntime() throws Exception {
+        String[][] samples = {
+                {"{\"op\":\"role\",\"value\":\"EDITOR\"}", "{\"roles\":[\"EDITOR\"],\"permissions\":[],\"fields\":{}}"},
+                {"{\"op\":\"permission\",\"value\":\"READ\"}", "{\"roles\":[],\"permissions\":[\"READ\"],\"fields\":{}}"},
+                {"{\"op\":\"NOT\",\"rule\":{\"op\":\"field\",\"field\":\"count\",\"equals\":1}}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"count\":\"OPEN\"}}"},
+                {"{\"op\":\"NOT\",\"rule\":{\"op\":\"field\",\"field\":\"status\",\"equals\":\"OPEN\"}}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"status\":1}}"},
+                {"{\"op\":\"field\",\"field\":\"count\",\"equals\":1}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"count\":1}}"},
+                {"{\"op\":\"field\",\"field\":\"count\",\"equals\":1.5}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"count\":1.5}}"},
+                {"{\"op\":\"field\",\"field\":\"count\",\"equals\":-0.0}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"count\":0.0}}"},
+                {"{\"op\":\"OR\",\"rules\":[{\"op\":\"role\",\"value\":\"EDITOR\"},{\"op\":\"permission\",\"value\":\"READ\"}]}", "{\"roles\":[],\"permissions\":[\"READ\"],\"fields\":{}}"},
+                {"{\"op\":\"AND\",\"rules\":[{\"op\":\"role\",\"value\":\"EDITOR\"},{\"op\":\"permission\",\"value\":\"READ\"}]}", "{\"roles\":[\"EDITOR\"],\"permissions\":[],\"fields\":{}}"},
+                {"{\"op\":\"NOT\",\"rule\":{\"op\":\"unknown\"}}", "{\"roles\":[],\"permissions\":[],\"fields\":{}}"},
+                {"{\"op\":\"OR\",\"rules\":[{\"op\":\"role\",\"value\":\"EDITOR\"},{\"op\":\"unknown\"}]}", "{\"roles\":[\"EDITOR\"],\"permissions\":[],\"fields\":{}}"},
+                {"{\"op\":\"role\",\"value\":\"EDITOR\"}", "null"},
+                {"{\"op\":\"field\",\"field\":\"count\",\"equals\":1}", "{\"roles\":[],\"permissions\":[],\"fields\":[]}"}
+        };
+        var cases = mapper.createArrayNode();
+        for (String[] sample : samples) {
+            var rule = mapper.readTree(sample[0]);
+            var context = mapper.readTree(sample[1]);
+            Set<String> roles = context.isNull() ? null : mapper.convertValue(context.path("roles"), new com.fasterxml.jackson.core.type.TypeReference<Set<String>>() {});
+            Set<String> permissions = context.isNull() ? null : mapper.convertValue(context.path("permissions"), new com.fasterxml.jackson.core.type.TypeReference<Set<String>>() {});
+            boolean expected = VisibilityRuleEvaluator.evaluate(rule, context.isNull() ? null
+                    : new VisibilityRuleEvaluator.Context(permissions, roles, context.path("fields")));
+            var item = cases.addObject(); item.set("rule", runtimeRule(rule)); item.set("context", context); item.put("expected", expected);
+        }
+        Path harness = Path.of("target/angular-harness");
+        Files.copy(Path.of("src/test/angular-harness/visibility-runtime.mjs"), harness.resolve("visibility-runtime.mjs"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        Path casesPath = harness.resolve("visibility-cases.json");
+        Files.writeString(casesPath, mapper.writeValueAsString(cases));
+        String node = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win") ? "node.exe" : "node";
+        Process process = new ProcessBuilder(node, "visibility-runtime.mjs", "src/app/generated/angular-visibility.ts",
+                "visibility-cases.json").directory(harness.toFile()).redirectErrorStream(true).start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, process.waitFor(), output);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode runtimeRule(com.fasterxml.jackson.databind.JsonNode rule) {
+        var copy = ((ObjectNode) rule).deepCopy();
+        if ("field".equals(copy.path("op").asText()) && copy.path("equals").isNumber())
+            copy.putObject("equals").put("$jsonNumber", rule.path("equals").toString());
+        if (copy.path("rule").isObject()) copy.set("rule", runtimeRule(copy.path("rule")));
+        if (copy.path("rules").isArray()) {
+            var children = mapper.createArrayNode();
+            for (var child : copy.path("rules")) children.add(runtimeRule(child));
+            copy.set("rules", children);
+        }
+        return copy;
+    }
+
     private ObjectNode bindings(String entity) {
         ObjectNode snapshot = emptySnapshot();
-        String path = entity.equals("AssetTicket") ? "asset-tickets" : "service-requests";
+        String path = entity.equals("AssetTicket") ? "asset-tickets"
+                : entity.equals("CaseRecord") ? "case-records" : "service-requests";
         String[] verbs = {"GET", "POST", "GET", "PUT", "DELETE"};
         for (int i = 0; i < 5; i++) {
             ObjectNode b = snapshot.withArray("apiBindings").addObject();
@@ -531,7 +836,8 @@ class GenerationEngineTest {
         fields.add(new FieldSpec("status", "status", entity + "Status", false, null, entity + "Status"));
         if (entity.equals("ServiceRequest")) fields.add(new FieldSpec("dueDate", "due_date", "LocalDate", false, null, null));
         return new GenerationSpecification("1.0.0", "com.example.fixture",
-                new EntitySpec(entity, entity.equals("ServiceRequest") ? "service_request" : "asset_ticket", fields, false),
+                new EntitySpec(entity, entity.equals("ServiceRequest") ? "service_request"
+                        : entity.equals("CaseRecord") ? "case_record" : "asset_ticket", fields, false),
                 new OpenApiSpec(contract, "1.0.0", bindings), roles, new AngularSpec(entity, Map.of()));
     }
 
