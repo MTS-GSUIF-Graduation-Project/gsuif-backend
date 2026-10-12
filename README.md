@@ -67,8 +67,9 @@ Start the API with `./mvnw spring-boot:run -Dspring-boot.run.profiles=local`
 security settings; the `prod` profile needs separate database and JWT settings
 and disables Swagger. With the API running, open
 `http://localhost:8080/swagger-ui/index.html` to inspect its endpoints or
-`http://localhost:8080/v3/api-docs` for the OpenAPI document. Once local Hibernate schema
-setup completes, seed the login from another terminal:
+`http://localhost:8080/v3/api-docs` for the OpenAPI document. Once the packaged SQL
+scripts initialize the local database and Hibernate validates it, seed the login
+from another terminal:
 
 ```sh
 PGPASSWORD=gsuif_pass psql -h localhost -U gsuif_user -d gsuif_db -f demo/woms-seed-admin.sql

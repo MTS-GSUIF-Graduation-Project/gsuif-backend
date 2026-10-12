@@ -6,9 +6,7 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      # TODO: Change ddl-auto to 'validate' once database migrations (Flyway/Liquibase) are integrated.
-      # Hibernate schema mutation (update) is only for initial local development (STD-33/persistence direction).
-      ddl-auto: update
+      ddl-auto: validate
 gsuif:
   security:
     mode: dev
