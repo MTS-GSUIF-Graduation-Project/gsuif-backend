@@ -6,20 +6,17 @@ import eg.mts.gsuif.entity.MetadataVersion;
 import eg.mts.gsuif.generation.GenerationContext.Target;
 import eg.mts.gsuif.generation.GenerationSpecification.*;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
-import org.yaml.snakeyaml.Yaml;
 
-import java.io.InputStream;
 import java.util.*;
 
 /** Resolves only packaged contracts and immutable metadata snapshots. */
 public final class GenerationContextBuilder {
-    private static final Map<String, String> CONTRACTS = Map.of(
-            "asset-ticket-api", "/openapi/asset-ticket-api.yaml",
-            "service-request-api", "/openapi/service-request-api.yaml");
     private static final Set<String> TYPES = Set.of("String", "UUID", "LocalDate", "LocalDateTime", "Integer", "Long", "BigDecimal", "Boolean");
     private static final Set<String> RESERVED = Set.of("abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null", "var", "yield", "record", "sealed", "permits");
     private final ObjectMapper mapper;
     private final MetadataSchemaValidator schemaValidator;
+    private final PackagedContractRegistry contractRegistry = new PackagedContractRegistry();
+    private final PackagedContractLoader contractLoader = new PackagedContractLoader(contractRegistry);
 
     public GenerationContextBuilder(ObjectMapper mapper, MetadataSchemaValidator schemaValidator) {
         this.mapper = Objects.requireNonNull(mapper);
@@ -95,10 +92,10 @@ public final class GenerationContextBuilder {
         }
         OpenApiSpec openApi = s.openApi();
         if (openApi == null) { errors.add("specification.openApi: required"); return Map.of(); }
-        if (openApi.contractId() == null || !CONTRACTS.containsKey(openApi.contractId())) errors.add("specification.openApi.contractId: unsupported packaged contract");
-        Contract contract = loadContract(openApi, errors);
+        if (openApi.contractId() == null || contractRegistry.resource(openApi.contractId()) == null) errors.add("specification.openApi.contractId: unsupported packaged contract");
+        PackagedContractLoader.Contract contract = contractLoader.load(openApi, errors);
         Map<String, Object> api = contract == null ? Map.of() : contract.api();
-        Map<String, Operation> operations = contract == null ? Map.of() : contract.operations();
+        Map<String, PackagedContractLoader.Operation> operations = contract == null ? Map.of() : contract.operations();
         if (contract != null && entity != null && entity.fields() != null) {
             for (int i = 0; i < entity.fields().size(); i++) {
                 FieldSpec field = entity.fields().get(i);
@@ -120,7 +117,7 @@ public final class GenerationContextBuilder {
                 if (!selected.containsKey(id)) continue;
                 if (!seenIds.add(id)) errors.add(p + ": duplicate binding ID");
                 String operationId = selected.get(id);
-                Operation operation = operationId == null ? null : operations.get(operationId);
+                PackagedContractLoader.Operation operation = operationId == null ? null : operations.get(operationId);
                 if (operation == null || !seenOperations.add(operationId)) { errors.add(p + ": missing, unknown or duplicate operation"); continue; }
                 if (!operation.verb().equals(b.path("httpMethod").asText()) || !operation.path().equals(b.path("endpointUrl").asText())) errors.add(p + ": method/path mismatch");
                 JsonNode request = b.path("requestMapping"); JsonNode response = b.path("responseMapping");
@@ -156,7 +153,7 @@ public final class GenerationContextBuilder {
         return api;
     }
 
-    private void validateAngular(GenerationSpecification s, JsonNode snapshot, Contract contract, String schemaVersion, List<String> errors) {
+    private void validateAngular(GenerationSpecification s, JsonNode snapshot, PackagedContractLoader.Contract contract, String schemaVersion, List<String> errors) {
         if (contract == null || s.entity() == null || s.entity().fields() == null || s.angular().tableColumns() == null) return;
         Map<String, FieldSpec> fields = new HashMap<>();
         for (FieldSpec field : s.entity().fields()) if (field != null && field.name() != null) fields.put(field.name(), field);
@@ -187,7 +184,7 @@ public final class GenerationContextBuilder {
             if (selectedOperations == null || !selectedOperations.containsKey(bindingId)) continue;
             String operationId = selectedOperations.get(bindingId);
             if (operationId == null) continue;
-            Operation operation = contract.operations().get(operationId);
+            PackagedContractLoader.Operation operation = contract.operations().get(operationId);
             if (operation != null && "list".equals(operation.kind()))
                 selectedListComponents.addAll(bindingComponentIds(binding));
         }
@@ -199,7 +196,8 @@ public final class GenerationContextBuilder {
             AngularComponentHandlers.Handler handler = AngularComponentHandlers.find(type);
             if (handler == null) { errors.add(p + " (" + component.path("id").asText() + ").type: unsupported Angular component"); continue; }
             if (!Set.of("1.1.0", "1.2.0").contains(schemaVersion) && handler.requiresVersion11()) {
-                errors.add(p + ".type: unsupported Angular component for schema " + schemaVersion);
+                errors.add(p + " (component " + component.path("id").asText()
+                        + ").type: unsupported Angular component for schema " + schemaVersion);
                 continue;
             }
             boolean selectedLink = false;
@@ -225,16 +223,39 @@ public final class GenerationContextBuilder {
             }
             handler.validate(component, p, handlerContext, errors);
             if (!handler.requiresField()) continue;
-            FieldSpec field = fields.get(key); Map<String, Object> property = nested(dto, key);
-            if (field == null || property.isEmpty()) { errors.add(p + ".fieldKey: absent from entity and DTO"); continue; }
-            if (!handler.validField(field, property, contract.enums())) errors.add(p + ".fieldKey: incompatible DTO type");
+            FieldSpec field = fields.get(key); Map<String, Object> property = dtoProperty(dto, key);
+            String fieldPath = p + ".fieldKey (component " + component.path("id").asText() + ")";
+            if (field == null || property.isEmpty()) { errors.add(fieldPath + ": absent from entity and DTO"); continue; }
+            if (!handler.validField(field, property, contract.enums())) errors.add(fieldPath + ": incompatible DTO type");
         }
         for (UUID id : s.angular().tableColumns().keySet()) if (!legacyTables.contains(id)) errors.add("specification.angular.tableColumns." + id + ": unknown table");
         if (selectedOperations != null) for (String id : selectedComponents) {
             boolean present = false;
             for (JsonNode component : components) if (id.equals(component.path("id").asText())) { present = true; break; }
-            if (!present) errors.add("snapshot.apiBindings.linkedComponentIds: selected component " + id + " absent from snapshot");
+            if (!present) errors.add(selectedComponentReferencePath(bindings, selectedOperations, id)
+                    + ": selected component " + id + " absent from snapshot");
         }
+    }
+
+    private static String selectedComponentReferencePath(JsonNode bindings, Map<UUID, String> selectedOperations, String componentId) {
+        for (int i = 0; i < bindings.size(); i++) {
+            JsonNode binding = bindings.get(i);
+            UUID bindingId;
+            try { bindingId = UUID.fromString(binding.path("id").asText()); }
+            catch (Exception ex) { continue; }
+            if (!selectedOperations.containsKey(bindingId)) continue;
+            JsonNode linked = binding.path("linkedComponentIds");
+            for (int j = 0; j < linked.size(); j++)
+                if (componentId.equals(linked.get(j).asText()))
+                    return "snapshot.apiBindings[" + i + "].linkedComponentIds[" + j + "]";
+            if (componentId.equals(binding.path("parentComponentId").asText()))
+                return "snapshot.apiBindings[" + i + "].parentComponentId";
+            JsonNode children = binding.path("childComponentIds");
+            for (int j = 0; j < children.size(); j++)
+                if (componentId.equals(children.get(j).asText()))
+                    return "snapshot.apiBindings[" + i + "].childComponentIds[" + j + "]";
+        }
+        return "snapshot.apiBindings";
     }
 
     static Set<String> selectedComponentIds(JsonNode snapshot, Map<UUID, String> selectedOperations, String schemaVersion) {
@@ -272,81 +293,14 @@ public final class GenerationContextBuilder {
         return ids;
     }
 
-    private record Operation(String verb, String path, String kind, String request, Set<String> requestFields) { }
-    private record Contract(Map<String, Object> api, Map<String, Operation> operations,
-                            Map<String, Object> dtoProperties, Map<String, List<String>> enums) { }
-
-    @SuppressWarnings("unchecked")
-    private Contract loadContract(OpenApiSpec spec, List<String> errors) {
-        String resource = spec.contractId() == null ? null : CONTRACTS.get(spec.contractId()); if (resource == null) return null;
-        try (InputStream in = getClass().getResourceAsStream(resource)) {
-            Map<String, Object> root = new Yaml().load(in);
-            if (!Objects.equals(spec.contractVersion(), nested(root, "info").get("version"))) errors.add("specification.openApi.contractVersion: packaged version mismatch");
-            Map<String, Object> paths = nested(root, "paths"); Map<String, Object> schemas = nested(root, "components", "schemas");
-            Map<String, Operation> operations = new LinkedHashMap<>(); Map<String, String> methods = new HashMap<>();
-            String tag = null, dto = null, page = null, status = null, create = null, update = null, dtoPackage = null;
-            for (var pathEntry : paths.entrySet()) {
-                Map<String, Object> verbs = (Map<String, Object>) pathEntry.getValue();
-                for (String verb : List.of("get", "post", "put", "delete")) if (verbs.get(verb) instanceof Map<?, ?> raw) {
-                    Map<String, Object> op = (Map<String, Object>) raw;
-                    String id = String.valueOf(op.get("operationId")); String kind = verb.equals("delete") ? "void" : id.startsWith("list") ? "list" : "item";
-                    String payload = String.valueOf(op.get("x-gsuif-payload-java-type"));
-                    String request = refName(nested(op, "requestBody", "content", "application/json", "schema").get("$ref"));
-                    String code = verb.equals("post") ? "201" : "200";
-                    String envelopeName = refName(nested(op, "responses", code, "content", "application/json", "schema").get("$ref"));
-                    Map<String, Object> envelope = nested(schemas, envelopeName);
-                    List<String> required = (List<String>) envelope.get("required");
-                    Map<String, Object> properties = nested(envelope, "properties");
-                    if (required == null || required.size() != 5 || !required.containsAll(List.of("status", "clientMessage", "statusCode", "body", "errors")) || properties.size() != 5)
-                        errors.add("contract." + id + ": invalid five-field envelope");
-                    String body = refName(nested(envelope, "properties", "body").get("$ref"));
-                    if (kind.equals("void") ? !payload.equals("java.lang.Void") : !payload.endsWith("." + body)) errors.add("contract." + id + ": payload/envelope mismatch");
-                    if (tag == null) tag = String.valueOf(((List<?>) op.get("tags")).getFirst());
-                    else if (!tag.equals(String.valueOf(((List<?>) op.get("tags")).getFirst()))) errors.add("contract." + id + ": mixed API tags");
-                    if (!kind.equals("void")) {
-                        if (dtoPackage == null) dtoPackage = payload.substring(0, payload.lastIndexOf('.'));
-                        else if (!dtoPackage.equals(payload.substring(0, payload.lastIndexOf('.')))) errors.add("contract." + id + ": mixed DTO packages");
-                        if (kind.equals("list")) page = body; else dto = body;
-                    }
-                    if (verb.equals("post")) create = request;
-                    if (verb.equals("put")) update = request;
-                    String methodKey = verb.equals("post") ? "createMethod" : verb.equals("put") ? "updateMethod" : verb.equals("delete") ? "deleteMethod" : kind.equals("list") ? "listMethod" : "getMethod";
-                    if (methods.put(methodKey, id) != null) errors.add("contract." + id + ": duplicate CRUD operation");
-                    operations.put(id, new Operation(verb.toUpperCase(Locale.ROOT), pathEntry.getKey(), kind, request,
-                            Set.copyOf(nested(nested(schemas, request), "properties").keySet())));
-                }
-            }
-            if (methods.size() != 5 || tag == null || dto == null || page == null || create == null || update == null) errors.add("contract: five CRUD operations required");
-            status = tag + "Status";
-            Map<String, List<String>> enums = new HashMap<>();
-            for (var entry : schemas.entrySet()) if (nested(schemas, entry.getKey()).get("enum") instanceof List<?> values)
-                enums.put(entry.getKey(), values.stream().map(String::valueOf).toList());
-            Map<String, Object> api = new HashMap<>();
-            api.put("dtoPackage", dtoPackage); api.put("responsePackage", "eg.mts.gsuif.dto"); api.put("statusEnumPackage", dtoPackage);
-            api.put("servicePackage", dtoPackage.substring(0, dtoPackage.lastIndexOf('.')) + ".service");
-            api.put("interfacePackage", dtoPackage.substring(0, dtoPackage.lastIndexOf('.')) + ".api");
-            api.put("dtoClass", dto); api.put("pageDtoClass", page); api.put("createRequestClass", create); api.put("updateRequestClass", update);
-            api.put("statusEnumClass", status); api.put("serviceInterface", tag + "Service"); api.put("interfaceClass", tag + "Api");
-            api.put("dtoProperties", nested(nested(schemas, dto), "properties"));
-            api.put("dtoRequired", List.copyOf((List<String>) nested(schemas, dto).get("required")));
-            api.putAll(methods);
-            return new Contract(Map.copyOf(api), Map.copyOf(operations), nested(nested(schemas, dto), "properties"), Map.copyOf(enums));
-        } catch (Exception ex) { errors.add("contract: packaged contract cannot be read: " + ex.getClass().getSimpleName()); return null; }
-    }
-
     private static boolean identifier(String value, String regex) {
         if (value == null || !value.matches(regex)) return false;
         for (String part : value.split("\\.")) if (RESERVED.contains(part)) return false;
         return true;
     }
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> nested(Map<String, Object> map, String... keys) {
-        Object current = map;
-        for (String key : keys) { if (!(current instanceof Map<?, ?> node)) return Map.of(); current = node.get(key); }
-        return current instanceof Map<?, ?> node ? (Map<String, Object>) node : Map.of();
-    }
-    private static String refName(Object ref) {
-        if (!(ref instanceof String value)) return "";
-        return value.substring(value.lastIndexOf('/') + 1);
+    private static Map<String, Object> dtoProperty(Map<String, Object> dto, String key) {
+        Object value = dto.get(key);
+        return value instanceof Map<?, ?> property ? (Map<String, Object>) property : Map.of();
     }
 }

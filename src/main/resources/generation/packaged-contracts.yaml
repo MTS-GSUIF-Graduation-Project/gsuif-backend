@@ -1,0 +1,4 @@
+contracts:
+  asset-ticket-api: /openapi/asset-ticket-api.yaml
+  service-request-api: /openapi/service-request-api.yaml
+  case-record-api: /openapi/case-record-api.yaml

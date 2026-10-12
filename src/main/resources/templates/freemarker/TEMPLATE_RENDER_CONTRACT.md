@@ -554,10 +554,12 @@ permissions, roles, and field values. Missing context and malformed predicates f
 including malformed descendants of `NOT`, `AND`, and `OR`. Components referenced by
 multiple selected bindings with visibility rules receive an ambiguity diagnostic.
 This input never grants API authorization.
-Numeric field values use `{ "$jsonNumber": "1.0" }` in the input's `fields` map so
-the display evaluator can distinguish JSON integer and decimal tokens. Plain JavaScript
-numbers fail closed for numeric rules because JavaScript erases that distinction.
-Decimal comparison also preserves the sign of zero, matching the Jackson evaluator.
+Ordinary finite JavaScript numbers in `fields` are compared by value when their
+integer or decimal category matches the rule. Thus an ordinary `1` does not match
+an `equals: 1.0` rule. Integer rules fail closed for numbers outside JavaScript's
+safe integer range. Consumers can use `{ "$jsonNumber": "1.0" }` to retain an
+original JSON numeric token such as `1.0`. Decimal comparison preserves the sign
+of zero for either representation.
 
 `GenerationContextBuilder` validates selected table keys against the selected DTO
 and retains the selected list binding requirement. The schema validates required
@@ -570,3 +572,25 @@ register a typed preparation handler, binding requirement, and semantic validati
 `AngularComponentHandlers`, add its fragment under `templates/freemarker/angular`,
 extend the shared TypeScript template only for shared behavior, and add representative
 generation, diagnostics, and strict Angular compilation checks in `GenerationEngineTest`.
+
+## Packaged API contract registration
+
+`generation/packaged-contracts.yaml` is the single registry of approved contract IDs
+and classpath resources. To add a compatible contract, package its OpenAPI YAML under
+`openapi/`, add one ID and resource path to that registry, and add a generation test
+covering its selected bindings, DTO and enum use, and applicable compilation. The
+`PackagedContractLoader` reads the selected resource once per generation, checks its
+version and five CRUD operations with the company response envelope, then supplies
+operations, DTO properties, and enum values to validation and Angular preparation.
+Unknown IDs, version mismatches, malformed resources, and unsupported CRUD shapes
+produce generation diagnostics.
+
+Registration is limited to the existing CRUD method and mapping assumptions: list
+uses `status` query and `body.data`; item and delete use `body`; create and update
+map request DTO fields; item paths use `id`. The packaged Java consumer build inputs
+are a separate fixture set in `PackagedConsumerInputs`; a new contract needs matching
+Java inputs there before its generated Java consumer can be build validated. The
+`case-record-api` fixture includes packaged Java consumer inputs and participates
+in both Java consumer build validation and strict Angular compilation. Registration
+does not add approval, upload, arbitrary OpenAPI, or
+runtime contract upload behavior.

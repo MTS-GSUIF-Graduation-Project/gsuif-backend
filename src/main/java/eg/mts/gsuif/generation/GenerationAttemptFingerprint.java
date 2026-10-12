@@ -76,13 +76,10 @@ final class GenerationAttemptFingerprint {
         var catalog = GenerationCatalog.load();
         hash.add(catalog.version()); hash.add(catalog.providerVersion());
         hash.resource("components.yaml");
+        hash.resource("generation/packaged-contracts.yaml");
         if (spec != null && spec.openApi() != null && spec.openApi().contractId() != null) {
-            String contract = switch (spec.openApi().contractId()) {
-                case "asset-ticket-api" -> "openapi/asset-ticket-api.yaml";
-                case "service-request-api" -> "openapi/service-request-api.yaml";
-                default -> null;
-            };
-            if (contract != null) hash.resource(contract);
+            String contract = new PackagedContractRegistry().resource(spec.openApi().contractId());
+            if (contract != null) hash.resource(contract.substring(1));
         }
         java.util.stream.Stream.of(catalog.entity().path(), catalog.controller().path(),
                 catalog.angularTypescript().path(), catalog.angularHtml().path()).distinct().sorted()

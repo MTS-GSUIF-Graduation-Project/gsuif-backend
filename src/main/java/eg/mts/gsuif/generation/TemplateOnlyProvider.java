@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Comparator;
 import java.util.Locale;
-import org.yaml.snakeyaml.Yaml;
 
 /** Phase 1 provider. Rendering is fully buffered; callers own publication and run persistence. */
 public final class TemplateOnlyProvider implements AICodeGenerationProvider {
@@ -48,14 +47,22 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
     @Override public GenerationResult generate(GenerationContext supplied) {
         if (supplied == null) throw new GenerationValidationException(List.of("context: required"));
         GenerationContext context = builder.build(supplied.metadataVersion(), supplied.specification(), supplied.targets(), supplied.framework());
+        return generateValidated(context, supplied.catalog());
+    }
+
+    GenerationResult generateValidated(GenerationContext context) {
+        return generateValidated(context, context.catalog());
+    }
+
+    private GenerationResult generateValidated(GenerationContext context, GenerationCatalog suppliedCatalog) {
         GenerationCatalog catalog = context.catalog();
-        if (supplied.catalog() == null || !supplied.catalog().version().equals(catalog.version())
-                || !supplied.catalog().entity().equals(catalog.entity())
-                || !supplied.catalog().controller().equals(catalog.controller())
-                || !supplied.catalog().angularTypescript().equals(catalog.angularTypescript())
-                || !supplied.catalog().angularHtml().equals(catalog.angularHtml())
-                || !supplied.catalog().providerVersion().equals(catalog.providerVersion())
-                || !supplied.catalog().standardRefs().equals(catalog.standardRefs()))
+        if (suppliedCatalog == null || !suppliedCatalog.version().equals(catalog.version())
+                || !suppliedCatalog.entity().equals(catalog.entity())
+                || !suppliedCatalog.controller().equals(catalog.controller())
+                || !suppliedCatalog.angularTypescript().equals(catalog.angularTypescript())
+                || !suppliedCatalog.angularHtml().equals(catalog.angularHtml())
+                || !suppliedCatalog.providerVersion().equals(catalog.providerVersion())
+                || !suppliedCatalog.standardRefs().equals(catalog.standardRefs()))
             throw new GenerationValidationException(List.of("context.catalog: selected catalog differs from packaged standards"));
         GenerationSpecification spec = context.specification();
         Map<String, Object> model = new LinkedHashMap<>(context.templateModel());
@@ -140,7 +147,8 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
             properties.add(Map.of("name", name, "type", tsType, "optional", dtoRequired.contains(name) ? "" : "?"));
         }
         String kebab = s.angular().className().replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
-        Map<String, List<String>> options = enumOptions(s.openApi().contractId());
+        @SuppressWarnings("unchecked")
+        Map<String, List<String>> options = (Map<String, List<String>>) ((Map<String, Object>) context.templateModel().get("api")).get("enumOptions");
         Map<String, List<String>> selectedOptions = new LinkedHashMap<>();
         for (var field : s.entity().fields()) if (field.enumType() != null) {
             List<String> values = options.get(field.enumType());
@@ -169,26 +177,6 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
             copy.set("rules", children);
         }
         return copy;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, List<String>> enumOptions(String contractId) throws Exception {
-        String path = switch (contractId) {
-            case "asset-ticket-api" -> "/openapi/asset-ticket-api.yaml";
-            case "service-request-api" -> "/openapi/service-request-api.yaml";
-            default -> throw new IllegalArgumentException("unsupported contract");
-        };
-        try (InputStream in = TemplateOnlyProvider.class.getResourceAsStream(path)) {
-            Map<String, Object> root = new Yaml().load(in);
-            Map<String, Object> schemas = (Map<String, Object>) ((Map<String, Object>) root.get("components")).get("schemas");
-            Map<String, List<String>> result = new HashMap<>();
-            for (var entry : schemas.entrySet()) {
-                Map<String, Object> schema = (Map<String, Object>) entry.getValue();
-                if (schema.get("enum") instanceof List<?> values)
-                    result.put(entry.getKey(), values.stream().map(String::valueOf).toList());
-            }
-            return result;
-        }
     }
 
     private String render(String path, Map<String, Object> model) throws Exception {

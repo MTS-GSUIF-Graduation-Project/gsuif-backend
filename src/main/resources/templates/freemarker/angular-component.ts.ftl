@@ -44,7 +44,16 @@ export class ${className}Component {
       if (expected && typeof expected === 'object' && !Array.isArray(expected)) {
         const number = (expected as Record<string, unknown>)['$jsonNumber'];
         if (typeof number !== 'string' || Object.keys(expected).length !== 1) return null;
-        // Numeric field values require their JSON token spelling because JS erases 1 versus 1.0.
+        if (typeof actual === 'number') {
+          // JavaScript erases the decimal token in 1.0; an ordinary 1 is an integer.
+          // Use a token wrapper when the original JSON numeric type must be retained.
+          if (!Number.isFinite(actual)) return null;
+          const expectedInteger = /^-?(?:0|[1-9][0-9]*)$/.test(number);
+          if (expectedInteger !== Number.isInteger(actual)) return false;
+          if (expectedInteger && !Number.isSafeInteger(actual)) return null;
+          return Object.is(Number(number), actual);
+        }
+        // A token wrapper remains available when exact JSON numeric types matter.
         if (!actual || typeof actual !== 'object' || Array.isArray(actual) ||
             Object.keys(actual).length !== 1) return null;
         const actualNumber = (actual as Record<string, unknown>)['$jsonNumber'];

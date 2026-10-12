@@ -66,7 +66,8 @@ final class AngularComponentHandlers {
         Map<String, Handler> handlers = new LinkedHashMap<>();
         Handler field = (component, spec, fields, path) -> {
             String key = component.path("fieldKey").asText();
-            if (!fields.containsKey(key)) throw new GenerationValidationException(List.of(path + ".fieldKey: missing DTO property"));
+            if (!fields.containsKey(key)) throw new GenerationValidationException(List.of(path + ".fieldKey (component "
+                    + component.path("id").asText() + "): missing DTO property"));
             return new Field(key, component.path("label").asText());
         };
         handlers.put("text-field", field("field", field, (spec, property) ->
@@ -91,7 +92,8 @@ final class AngularComponentHandlers {
             public void validate(JsonNode component, String path, ValidationContext context, List<String> errors) {
                 UUID id;
                 try { id = UUID.fromString(component.path("id").asText()); }
-                catch (Exception ex) { errors.add(path + ".id: invalid UUID"); return; }
+                catch (Exception ex) { errors.add(path + ".id (component " + component.path("id").asText()
+                        + "): invalid UUID"); return; }
                 if (component.has("tableConfig")) {
                     if (context.spec().tableColumns().containsKey(id))
                         errors.add(path + " (" + id + ").tableConfig.columns: conflicts with specification.angular.tableColumns." + id);
@@ -100,20 +102,22 @@ final class AngularComponentHandlers {
                     for (int j = 0; j < columns.size(); j++) {
                         String column = columns.get(j).path("fieldKey").asText();
                         if (!validColumn(column, context.dtoProperties()) || !seen.add(column))
-                            errors.add(path + ".tableConfig.columns[" + j + "].fieldKey: absent from DTO, invalid or duplicate property");
+                            errors.add(path + ".tableConfig.columns[" + j + "].fieldKey (component " + id
+                                    + "): absent from DTO, invalid or duplicate property");
                     }
                 } else {
                     context.legacyTables().add(id);
                     List<String> columns = context.spec().tableColumns().get(id);
+                    String columnsPath = "specification.angular.tableColumns." + id;
                     if (columns == null || columns.isEmpty() || columns.stream().anyMatch(java.util.Objects::isNull)
                             || new java.util.HashSet<>(columns).size() != columns.size())
-                        errors.add(path + ".tableColumns: nonempty distinct columns required");
+                        errors.add(path + " (" + id + "): " + columnsPath + ": nonempty distinct columns required");
                     else for (int j = 0; j < columns.size(); j++)
                         if (!validColumn(columns.get(j), context.dtoProperties()))
-                            errors.add(path + ".tableColumns[" + j + "]: absent from DTO or invalid property");
+                            errors.add(path + " (" + id + "): " + columnsPath + "[" + j + "]: absent from DTO or invalid property");
                 }
                 if (!context.selectedListComponents().contains(id.toString()))
-                    errors.add(path + ": table requires selected list binding");
+                    errors.add(path + " (component " + id + "): table requires selected list binding");
             }
         });
         handlers.put("form", page("form", (component, spec, fields, path) ->

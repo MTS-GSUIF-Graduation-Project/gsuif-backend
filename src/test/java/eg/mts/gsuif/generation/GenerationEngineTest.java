@@ -149,6 +149,38 @@ class GenerationEngineTest {
         }
     }
 
+    @Test void registeredThirdContractGeneratesAndCompilesAngular() throws Exception {
+        ObjectNode snapshot = bindings("CaseRecord");
+        ObjectNode status = snapshot.withArray("components").addObject();
+        status.put("id", new UUID(0, 51).toString());
+        status.put("type", "select").put("label", "Case status").put("fieldKey", "status");
+        status.putObject("position").put("row", 0).put("col", 1);
+        status.putObject("size").put("width", 1).put("height", 1);
+        status.put("visibility", true).put("disabled", false);
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).putArray("linkedComponentIds")
+                .add(status.path("id").asText());
+        ObjectNode navigation = snapshot.withArray("components").addObject();
+        navigation.put("id", new UUID(0, 50).toString());
+        navigation.put("type", "navigation").put("label", "Cases");
+        navigation.putObject("position").put("row", 0).put("col", 0);
+        navigation.putObject("size").put("width", 1).put("height", 1);
+        navigation.put("visibility", true).put("disabled", false);
+        navigation.putObject("navigationConfig").putArray("items")
+                .addObject().put("label", "All cases").put("route", "/cases");
+        String operation = "listCaseRecords";
+        var specification = spec("CaseRecord", "case-record-api", Map.of(new UUID(0, 1), operation),
+                Map.of(operation, EnumSet.of(SupportedRole.ROLE_USER)));
+        var result = GenerationEngine.templateOnly(builder).generate(version("1.1.0", snapshot), specification,
+                Set.of(Target.ANGULAR), "spring-angular");
+        String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
+        assertTrue(html.contains("href=\"/cases\""));
+        assertTrue(html.contains("All cases"));
+        assertTrue(html.contains("Case status"));
+        String typescript = new String(result.artifacts().getFirst().bytes(), StandardCharsets.UTF_8);
+        assertTrue(typescript.contains("status: ['OPEN', 'CLOSED']"));
+        stageAngularForCompilation(result);
+    }
+
     @Test void dateAngularForBothSchemaVersions() throws Exception {
         ObjectNode snapshot = bindings("ServiceRequest");
         ObjectNode date = snapshot.withArray("components").addObject();
@@ -220,6 +252,36 @@ class GenerationEngineTest {
         stageAngularForCompilation(result);
     }
 
+    @Test void selectedFieldDiagnosticsIdentifyComponentAndSnapshotPath() throws Exception {
+        ObjectNode snapshot = bindings("AssetTicket");
+        UUID id = new UUID(0, 91);
+        ObjectNode field = snapshot.withArray("components").addObject();
+        field.put("id", id.toString()); field.put("type", "text-field");
+        field.put("label", "Title"); field.put("fieldKey", "missing");
+        field.putObject("position").put("row", 0).put("col", 0);
+        field.putObject("size").put("width", 1).put("height", 1);
+        field.put("visibility", true); field.put("disabled", false);
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).putArray("linkedComponentIds").add(id.toString());
+        var specification = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
+                Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER)));
+        for (String key : List.of("missing", "status")) {
+            field.put("fieldKey", key);
+            var failure = assertThrows(GenerationValidationException.class,
+                    () -> builder.build(version("1.1.0", snapshot), specification, Set.of(Target.ANGULAR), "spring-angular"));
+            assertTrue(failure.diagnostics().stream().anyMatch(d -> d.contains("snapshot.components[0].fieldKey")
+                    && d.contains(id.toString())
+                    && d.contains(key.equals("missing") ? "absent from entity and DTO" : "incompatible DTO type")),
+                    failure.diagnostics().toString());
+        }
+        UUID absentId = new UUID(0, 92);
+        ((ObjectNode) snapshot.withArray("apiBindings").get(0)).withArray("linkedComponentIds")
+                .set(0, mapper.getNodeFactory().textNode(absentId.toString()));
+        var absent = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), specification, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(absent.diagnostics().stream().anyMatch(d -> d.contains("snapshot.apiBindings[0].linkedComponentIds[0]")
+                && d.contains(absentId.toString()) && d.contains("absent from snapshot")), absent.diagnostics().toString());
+    }
+
     @Test void angularTextSelectAndLegacyTableUseSelectedColumns() throws Exception {
         ObjectNode snapshot = bindings("AssetTicket");
         String[] types = {"text-field", "select", "table"};
@@ -249,7 +311,8 @@ class GenerationEngineTest {
                 () -> builder.build(version("1.0.0", snapshot), missingBindings, Set.of(Target.ANGULAR), "spring-angular"));
         assertTrue(missingBindingsFailure.diagnostics().stream().anyMatch(d -> d.contains("openApi.bindingOperations: required")),
                 missingBindingsFailure.diagnostics().toString());
-        assertTrue(missingBindingsFailure.diagnostics().stream().anyMatch(d -> d.contains("components[2]") && d.contains("selected list binding")),
+        assertTrue(missingBindingsFailure.diagnostics().stream().anyMatch(d -> d.contains("components[2]")
+                && d.contains(new UUID(0, 12).toString()) && d.contains("selected list binding")),
                 missingBindingsFailure.diagnostics().toString());
         var result = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot), spec, Set.of(Target.ANGULAR), "spring-angular");
         String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
@@ -276,12 +339,15 @@ class GenerationEngineTest {
         ((ObjectNode) configured.path("tableConfig").path("columns").get(0)).put("fieldKey", "missing");
         assertTrue(assertThrows(GenerationValidationException.class,
                 () -> builder.build(version("1.1.0", snapshot), configuredSpec, Set.of(Target.ANGULAR), "spring-angular"))
-                .diagnostics().stream().anyMatch(d -> d.contains("components[2].tableConfig.columns[0].fieldKey")));
+                .diagnostics().stream().anyMatch(d -> d.contains("components[2].tableConfig.columns[0].fieldKey")
+                        && d.contains(configured.path("id").asText())));
         configured.remove("tableConfig");
         ((ObjectNode) snapshot.withArray("components").get(0)).put("type", "navigation");
         assertTrue(assertThrows(GenerationValidationException.class,
                 () -> builder.build(version("1.0.0", snapshot), spec, Set.of(Target.ANGULAR), "spring-angular"))
-                .diagnostics().stream().anyMatch(d -> d.contains("unsupported Angular component")));
+                .diagnostics().stream().anyMatch(d -> d.contains("snapshot.components[0]")
+                        && d.contains(new UUID(0, 10).toString())
+                        && d.contains(".type: unsupported Angular component for schema 1.0.0")));
     }
 
     @Test void extendedComponentsRenderApprovedStructureAndCompile() throws Exception {
@@ -389,6 +455,15 @@ class GenerationEngineTest {
                 () -> builder.build(version("1.1.0", snapshot), conflicting, Set.of(Target.ANGULAR), "spring-angular"));
         assertTrue(conflict.diagnostics().stream().anyMatch(d -> d.contains("components[1]")
                 && d.contains(tableId.toString()) && d.contains("tableConfig.columns")), conflict.diagnostics().toString());
+        table.remove("tableConfig");
+        var invalidLegacy = new GenerationSpecification(base.specVersion(), base.basePackage(), base.entity(),
+                base.openApi(), base.operationRoles(), new AngularSpec("AssetTicket", Map.of(tableId, List.of("missing"))));
+        var legacyFailure = assertThrows(GenerationValidationException.class,
+                () -> builder.build(version("1.1.0", snapshot), invalidLegacy, Set.of(Target.ANGULAR), "spring-angular"));
+        assertTrue(legacyFailure.diagnostics().stream().anyMatch(d -> d.contains("snapshot.components[1]")
+                && d.contains(tableId.toString())
+                && d.contains("specification.angular.tableColumns." + tableId + "[0]")),
+                legacyFailure.diagnostics().toString());
     }
 
     @Test void bindingVisibilityUsesDisplayInputAndRejectsAmbiguousRules() throws Exception {
@@ -406,7 +481,7 @@ class GenerationEngineTest {
         rule.put("op", "AND");
         rule.putArray("rules").addObject().put("op", "role").put("value", "EDITOR");
         rule.withArray("rules").addObject().put("op", "field").put("field", "status").put("equals", "OPEN");
-        rule.withArray("rules").addObject().put("op", "field").put("field", "count").put("equals", 1.0);
+        rule.withArray("rules").addObject().put("op", "field").put("field", "count").put("equals", 1);
         var specification = spec("AssetTicket", "asset-ticket-api", Map.of(new UUID(0, 1), "listAssetTickets"),
                 Map.of("listAssetTickets", Set.of(SupportedRole.ROLE_USER)));
         var result = GenerationEngine.templateOnly(builder).generate(version("1.2.0", snapshot), specification,
@@ -418,6 +493,9 @@ class GenerationEngineTest {
         assertTrue(ts.contains("EDITOR"));
         assertTrue(ts.contains("$jsonNumber"));
         assertTrue(ts.contains("sameJsonNumber(number, actualNumber)"));
+        assertTrue(ts.contains("typeof actual === 'number'"));
+        assertTrue(ts.contains("expectedInteger !== Number.isInteger(actual)"));
+        assertTrue(ts.contains("return Object.is(Number(number), actual)"));
         assertTrue(ts.contains("Object.is(Number(expected), Number(actual))"));
         assertTrue(html.contains("*ngIf=\"isVisible('" + id.toString().replace("-", "") + "')\""));
         stageAngularForCompilation(result);
@@ -608,9 +686,10 @@ class GenerationEngineTest {
         assertTrue(result.artifacts().stream().anyMatch(a -> a.relativePath().endsWith(".html")));
     }
 
-    @Test void packagedConsumerTestsFollowGeneratedTargetsForBothContracts() throws Exception {
-        for (String entity : List.of("AssetTicket", "ServiceRequest")) {
-            String contract = entity.equals("AssetTicket") ? "asset-ticket-api" : "service-request-api";
+    @Test void packagedConsumerTestsFollowGeneratedTargetsForAllContracts() throws Exception {
+        for (String entity : List.of("AssetTicket", "ServiceRequest", "CaseRecord")) {
+            String contract = entity.equals("AssetTicket") ? "asset-ticket-api"
+                    : entity.equals("ServiceRequest") ? "service-request-api" : "case-record-api";
             ObjectNode snapshot = bindings(entity);
             Map<UUID, String> selected = new LinkedHashMap<>();
             Map<String, Set<SupportedRole>> roles = new LinkedHashMap<>();
@@ -673,7 +752,8 @@ class GenerationEngineTest {
 
     private ObjectNode bindings(String entity) {
         ObjectNode snapshot = emptySnapshot();
-        String path = entity.equals("AssetTicket") ? "asset-tickets" : "service-requests";
+        String path = entity.equals("AssetTicket") ? "asset-tickets"
+                : entity.equals("CaseRecord") ? "case-records" : "service-requests";
         String[] verbs = {"GET", "POST", "GET", "PUT", "DELETE"};
         for (int i = 0; i < 5; i++) {
             ObjectNode b = snapshot.withArray("apiBindings").addObject();
@@ -700,7 +780,8 @@ class GenerationEngineTest {
         fields.add(new FieldSpec("status", "status", entity + "Status", false, null, entity + "Status"));
         if (entity.equals("ServiceRequest")) fields.add(new FieldSpec("dueDate", "due_date", "LocalDate", false, null, null));
         return new GenerationSpecification("1.0.0", "com.example.fixture",
-                new EntitySpec(entity, entity.equals("ServiceRequest") ? "service_request" : "asset_ticket", fields, false),
+                new EntitySpec(entity, entity.equals("ServiceRequest") ? "service_request"
+                        : entity.equals("CaseRecord") ? "case_record" : "asset_ticket", fields, false),
                 new OpenApiSpec(contract, "1.0.0", bindings), roles, new AngularSpec(entity, Map.of()));
     }
 
