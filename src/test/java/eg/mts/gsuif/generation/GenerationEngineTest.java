@@ -8,6 +8,7 @@ import eg.mts.gsuif.entity.MetadataVersion;
 import eg.mts.gsuif.generation.GenerationContext.Target;
 import eg.mts.gsuif.generation.GenerationSpecification.*;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
+import eg.mts.gsuif.validator.VisibilityRuleEvaluator;
 import freemarker.template.Configuration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -197,7 +198,7 @@ class GenerationEngineTest {
         var spec = spec("ServiceRequest", "service-request-api", selected, roles);
         for (String schema : List.of("1.0.0", "1.1.0")) {
             var result = GenerationEngine.templateOnly(builder).generate(version(schema, snapshot), spec, Set.of(Target.ANGULAR), "spring-angular");
-            assertEquals(2, result.artifacts().size());
+            assertEquals(3, result.artifacts().size());
             String ts = new String(result.artifacts().getFirst().bytes(), StandardCharsets.UTF_8);
             assertTrue(ts.contains("id: string"));
             assertTrue(ts.contains("dueDate: string"));
@@ -244,7 +245,7 @@ class GenerationEngineTest {
                 Map.of("listAssetTickets", EnumSet.of(SupportedRole.ROLE_USER)));
         var result = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot), specification,
                 Set.of(Target.ANGULAR), "spring-angular");
-        assertEquals(2, result.artifacts().size());
+        assertEquals(3, result.artifacts().size());
         String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
         assertTrue(html.contains("type=\"text\""));
         assertTrue(html.contains("<span ngNonBindable>Title {{ missing }} &lt;draft&gt;</span>"));
@@ -489,16 +490,17 @@ class GenerationEngineTest {
         String ts = new String(result.artifacts().getFirst().bytes(), StandardCharsets.UTF_8);
         String html = new String(result.artifacts().get(1).bytes(), StandardCharsets.UTF_8);
         assertTrue(ts.contains("@Input() visibilityContext"));
-        assertTrue(ts.contains("this.evaluateRule(this.visibilityRules[id], 0) === true"));
+        assertTrue(ts.contains("new VisibilityEvaluator(this.visibilityContext).evaluate(this.visibilityRules[id])"));
+        assertTrue(result.artifacts().stream().anyMatch(a -> a.relativePath().equals("src/app/generated/angular-visibility.ts")));
         assertTrue(ts.contains("EDITOR"));
         assertTrue(ts.contains("$jsonNumber"));
-        assertTrue(ts.contains("sameJsonNumber(number, actualNumber)"));
-        assertTrue(ts.contains("typeof actual === 'number'"));
-        assertTrue(ts.contains("expectedInteger !== Number.isInteger(actual)"));
-        assertTrue(ts.contains("return Object.is(Number(number), actual)"));
-        assertTrue(ts.contains("Object.is(Number(expected), Number(actual))"));
+        String evaluator = new String(result.artifacts().stream()
+                .filter(a -> a.relativePath().equals("src/app/generated/angular-visibility.ts"))
+                .findFirst().orElseThrow().bytes(), StandardCharsets.UTF_8);
+        assertTrue(evaluator.contains("sameJsonNumber(number, actualNumber)"));
         assertTrue(html.contains("*ngIf=\"isVisible('" + id.toString().replace("-", "") + "')\""));
         stageAngularForCompilation(result);
+        verifyGeneratedVisibilityRuntime();
         ObjectNode second = (ObjectNode) snapshot.withArray("apiBindings").get(1);
         second.putArray("linkedComponentIds").add(id.toString());
         second.putObject("visibilityRule").put("op", "role").put("value", "VIEWER");
@@ -535,7 +537,10 @@ class GenerationEngineTest {
                 new GenerationResult.Artifact("src/app/generated/dropdown-fixture.component.ts",
                         typescript.getBytes(StandardCharsets.UTF_8), "", "1.0.0", "1.0.0"),
                 new GenerationResult.Artifact("src/app/generated/dropdown-fixture.component.html",
-                        html.getBytes(StandardCharsets.UTF_8), "", "1.0.0", "1.0.0")), List.of()));
+                        html.getBytes(StandardCharsets.UTF_8), "", "1.0.0", "1.0.0"),
+                new GenerationResult.Artifact("src/app/generated/angular-visibility.ts",
+                        renderAngularTemplate(templates, "angular-visibility.ts.ftl", model).getBytes(StandardCharsets.UTF_8),
+                        "", "1.0.0", "1.0.0")), List.of()));
     }
 
     private static String renderAngularTemplate(Configuration templates, String name, Map<String, Object> model)
@@ -748,6 +753,57 @@ class GenerationEngineTest {
                 .directory(harness.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertEquals(0, process.waitFor(), output);
+    }
+
+    private void verifyGeneratedVisibilityRuntime() throws Exception {
+        String[][] samples = {
+                {"{\"op\":\"role\",\"value\":\"EDITOR\"}", "{\"roles\":[\"EDITOR\"],\"permissions\":[],\"fields\":{}}"},
+                {"{\"op\":\"permission\",\"value\":\"READ\"}", "{\"roles\":[],\"permissions\":[\"READ\"],\"fields\":{}}"},
+                {"{\"op\":\"NOT\",\"rule\":{\"op\":\"field\",\"field\":\"count\",\"equals\":1}}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"count\":\"OPEN\"}}"},
+                {"{\"op\":\"NOT\",\"rule\":{\"op\":\"field\",\"field\":\"status\",\"equals\":\"OPEN\"}}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"status\":1}}"},
+                {"{\"op\":\"field\",\"field\":\"count\",\"equals\":1}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"count\":1}}"},
+                {"{\"op\":\"field\",\"field\":\"count\",\"equals\":1.5}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"count\":1.5}}"},
+                {"{\"op\":\"field\",\"field\":\"count\",\"equals\":-0.0}", "{\"roles\":[],\"permissions\":[],\"fields\":{\"count\":0.0}}"},
+                {"{\"op\":\"OR\",\"rules\":[{\"op\":\"role\",\"value\":\"EDITOR\"},{\"op\":\"permission\",\"value\":\"READ\"}]}", "{\"roles\":[],\"permissions\":[\"READ\"],\"fields\":{}}"},
+                {"{\"op\":\"AND\",\"rules\":[{\"op\":\"role\",\"value\":\"EDITOR\"},{\"op\":\"permission\",\"value\":\"READ\"}]}", "{\"roles\":[\"EDITOR\"],\"permissions\":[],\"fields\":{}}"},
+                {"{\"op\":\"NOT\",\"rule\":{\"op\":\"unknown\"}}", "{\"roles\":[],\"permissions\":[],\"fields\":{}}"},
+                {"{\"op\":\"OR\",\"rules\":[{\"op\":\"role\",\"value\":\"EDITOR\"},{\"op\":\"unknown\"}]}", "{\"roles\":[\"EDITOR\"],\"permissions\":[],\"fields\":{}}"},
+                {"{\"op\":\"role\",\"value\":\"EDITOR\"}", "null"},
+                {"{\"op\":\"field\",\"field\":\"count\",\"equals\":1}", "{\"roles\":[],\"permissions\":[],\"fields\":[]}"}
+        };
+        var cases = mapper.createArrayNode();
+        for (String[] sample : samples) {
+            var rule = mapper.readTree(sample[0]);
+            var context = mapper.readTree(sample[1]);
+            Set<String> roles = context.isNull() ? null : mapper.convertValue(context.path("roles"), new com.fasterxml.jackson.core.type.TypeReference<Set<String>>() {});
+            Set<String> permissions = context.isNull() ? null : mapper.convertValue(context.path("permissions"), new com.fasterxml.jackson.core.type.TypeReference<Set<String>>() {});
+            boolean expected = VisibilityRuleEvaluator.evaluate(rule, context.isNull() ? null
+                    : new VisibilityRuleEvaluator.Context(permissions, roles, context.path("fields")));
+            var item = cases.addObject(); item.set("rule", runtimeRule(rule)); item.set("context", context); item.put("expected", expected);
+        }
+        Path harness = Path.of("target/angular-harness");
+        Files.copy(Path.of("src/test/angular-harness/visibility-runtime.mjs"), harness.resolve("visibility-runtime.mjs"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        Path casesPath = harness.resolve("visibility-cases.json");
+        Files.writeString(casesPath, mapper.writeValueAsString(cases));
+        String node = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win") ? "node.exe" : "node";
+        Process process = new ProcessBuilder(node, "visibility-runtime.mjs", "src/app/generated/angular-visibility.ts",
+                "visibility-cases.json").directory(harness.toFile()).redirectErrorStream(true).start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, process.waitFor(), output);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode runtimeRule(com.fasterxml.jackson.databind.JsonNode rule) {
+        var copy = ((ObjectNode) rule).deepCopy();
+        if ("field".equals(copy.path("op").asText()) && copy.path("equals").isNumber())
+            copy.putObject("equals").put("$jsonNumber", rule.path("equals").toString());
+        if (copy.path("rule").isObject()) copy.set("rule", runtimeRule(copy.path("rule")));
+        if (copy.path("rules").isArray()) {
+            var children = mapper.createArrayNode();
+            for (var child : copy.path("rules")) children.add(runtimeRule(child));
+            copy.set("rules", children);
+        }
+        return copy;
     }
 
     private ObjectNode bindings(String entity) {

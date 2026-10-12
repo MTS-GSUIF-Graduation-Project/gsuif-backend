@@ -62,6 +62,10 @@ final class AngularComponentHandlers {
 
     static Handler find(String type) { return HANDLERS.get(type); }
 
+    static Set<String> templatePaths() {
+        return HANDLERS.values().stream().map(Handler::template).collect(java.util.stream.Collectors.toSet());
+    }
+
     private static Map<String, Handler> register() {
         Map<String, Handler> handlers = new LinkedHashMap<>();
         Handler field = (component, spec, fields, path) -> {
