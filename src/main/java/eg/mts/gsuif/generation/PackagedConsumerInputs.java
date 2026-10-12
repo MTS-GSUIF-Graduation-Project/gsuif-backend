@@ -22,6 +22,7 @@ final class PackagedConsumerInputs {
         String entity = switch (contract) {
             case "asset-ticket-api" -> "AssetTicket";
             case "service-request-api" -> "ServiceRequest";
+            case "case-record-api" -> "CaseRecord";
             default -> null;
         };
         if (entity == null) return Map.of();

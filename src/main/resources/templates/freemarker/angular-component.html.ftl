@@ -1,7 +1,9 @@
+<div class="generated-grid" style="display:grid;grid-auto-columns:minmax(0,1fr)">
 <#list controls as control>
-<#if control.type == "table">
-<table><thead><tr><#list control.columns as column><th>${column?html}</th></#list></tr></thead><tbody><tr *ngFor="let row of rows"><#list control.columns as column><td>{{ row.${column} }}</td></#list></tr></tbody></table>
-<#else>
-<label><span ngNonBindable>${control.label?html}</span><#if control.type == "select"><select [(ngModel)]="model.${control.key}"><option *ngFor="let option of options['${control.key?js_string}']" [value]="option">{{ option }}</option></select><#else><input type="<#if control.type == "date-field">date<#else>text</#if>" [(ngModel)]="model.${control.key}"></#if></label>
+<#if control.visible>
+<div class="generated-grid-item" *ngIf="isVisible('${control.id}')" style="grid-row:${control.gridRow!control.row} / span ${control.height?html};grid-column:${control.gridCol!control.col} / span ${control.width?html}" data-grid-row="${control.row?html}" data-grid-col="${control.col?html}" data-grid-width="${control.width?html}" data-grid-height="${control.height?html}">
+<#include control.template>
+</div>
 </#if>
 </#list>
+</div>

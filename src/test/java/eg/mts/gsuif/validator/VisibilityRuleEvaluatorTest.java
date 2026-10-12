@@ -34,4 +34,13 @@ class VisibilityRuleEvaluatorTest {
         assertThat(VisibilityRuleEvaluator.evaluate(notRole, new VisibilityRuleEvaluator.Context(Set.of(), null, null))).isFalse();
         assertThat(VisibilityRuleEvaluator.evaluate(notRole, null)).isFalse();
     }
+
+    @Test
+    void decimalNegativeZeroDiffersFromPositiveZero() throws Exception {
+        JsonNode rule = mapper.readTree("{\"op\":\"field\",\"field\":\"amount\",\"equals\":-0.0}");
+        var negative = new VisibilityRuleEvaluator.Context(Set.of(), Set.of(), mapper.readTree("{\"amount\":-0.0}"));
+        var positive = new VisibilityRuleEvaluator.Context(Set.of(), Set.of(), mapper.readTree("{\"amount\":0.0}"));
+        assertThat(VisibilityRuleEvaluator.evaluate(rule, negative)).isTrue();
+        assertThat(VisibilityRuleEvaluator.evaluate(rule, positive)).isFalse();
+    }
 }

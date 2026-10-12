@@ -522,3 +522,85 @@ No role expression or logging policy has been approved, so the controller emits
 neither `@PreAuthorize` nor `@Loggable`. This sample establishes no general CRUD,
 arbitrary OpenAPI-contract, role-policy, or consumer-export compatibility.
 The catalog remains `PLANNED` until the broader handoff is implemented and reviewed.
+
+## SCRUM-63 Angular component extension
+
+The packaged `TemplateOnlyProvider` and the catalog-selected Angular templates render
+1.1.0 and 1.2.0 `form`, `table`, `navigation`, `modal`, and `pagination` components.
+Form, navigation, modal, and pagination are page components and are emitted even without
+an API binding. Field controls and tables require a selected binding. Selected 1.2.0
+binding parent and child references also select components; they describe API relationships,
+not visual nesting. Each selected component is emitted once in snapshot order. The
+generated wrapper uses CSS grid; zero-based metadata row and column are converted to
+one-based CSS grid lines, and width and height become spans. The original values are
+also exposed as data attributes. Values outside supported CSS grid integer range
+receive indexed diagnostics.
+Static `visibility: false` omits markup; `disabled: true` disables form controls and
+navigation links and marks structural displays as disabled.
+Form markup displays `formConfig.submitLabel`; configured tables preserve column
+order, labels, and DTO field keys, while legacy tables still use
+`specification.angular.tableColumns`. A table cannot provide both column sources;
+the generator reports a conflict. Navigation emits ordinary relative `href` links from
+`navigationConfig.items`; modal uses `Component.label` as its title; pagination
+exposes a positive 32-bit `paginationConfig.pageSize` as structural metadata.
+Larger schema-valid values receive an indexed generation diagnostic instead of wrapping.
+Labels and routes are escaped for HTML output. Modal markup has a named dialog role,
+but does not claim an active modal state. No submit handler, data loader, modal trigger, or page
+coupling is implied by these structures.
+
+A selected binding's 1.2.0 `visibilityRule` applies to its referenced components for
+display only. Generated Angular accepts `visibilityContext` through `@Input()` with
+permissions, roles, and field values. Missing context and malformed predicates fail closed,
+including malformed descendants of `NOT`, `AND`, and `OR`. Components referenced by
+multiple selected bindings with visibility rules receive an ambiguity diagnostic.
+This input never grants API authorization.
+`AngularModelPreparer` builds the selected Angular model; `TemplateOnlyProvider`
+renders and assembles artifacts. Each generated component imports the emitted
+`src/app/generated/angular-visibility.ts` module. A new context value is read on
+each display check, so input updates are reflected without duplicating evaluator
+code in generated components. The shared module and registered component fragments
+are included in generation attempt fingerprints.
+Ordinary finite JavaScript numbers in `fields` are compared by value when their
+integer or decimal category matches the rule. Thus an ordinary `1` does not match
+an `equals: 1.0` rule. Integer rules fail closed for numbers outside JavaScript's
+safe integer range. Consumers can use `{ "$jsonNumber": "1.0" }` to retain an
+original JSON numeric token such as `1.0`. Decimal comparison preserves the sign
+of zero for either representation.
+
+`GenerationContextBuilder` validates selected table keys against the selected DTO
+and retains the selected list binding requirement. The schema validates required
+configuration fields. `GenerationEngineTest` checks the generated structures and
+compiles the Angular artifacts with the pinned strict harness during Maven tests.
+Its Node runtime check executes the generated visibility module against representative
+cases evaluated by `VisibilityRuleEvaluator`.
+The runtime Java consumer build validation covers Java artifacts only.
+
+To add a component, define its versioned metadata shape under `metadata/schema`,
+register a typed preparation handler, binding requirement, and semantic validation in
+`AngularComponentHandlers`, add its fragment under `templates/freemarker/angular`,
+extend the shared TypeScript template only for shared behavior, and add representative
+generation, diagnostics, and strict Angular compilation checks in `GenerationEngineTest`.
+Angular model preparation lives in `AngularModelPreparer`; reusable display behavior
+lives in `angular-visibility.ts.ftl`.
+
+## Packaged API contract registration
+
+`generation/packaged-contracts.yaml` is the single registry of approved contract IDs
+and classpath resources. To add a compatible contract, package its OpenAPI YAML under
+`openapi/`, add one ID and resource path to that registry, and add a generation test
+covering its selected bindings, DTO and enum use, and applicable compilation. The
+`PackagedContractLoader` reads the selected resource once per generation, checks its
+version and five CRUD operations with the company response envelope, then supplies
+operations, DTO properties, and enum values to validation and Angular preparation.
+Unknown IDs, version mismatches, malformed resources, and unsupported CRUD shapes
+produce generation diagnostics.
+
+Registration is limited to the existing CRUD method and mapping assumptions: list
+uses `status` query and `body.data`; item and delete use `body`; create and update
+map request DTO fields; item paths use `id`. The packaged Java consumer build inputs
+are a separate fixture set in `PackagedConsumerInputs`; a new contract needs matching
+Java inputs there before its generated Java consumer can be build validated. The
+`case-record-api` fixture includes packaged Java consumer inputs and participates
+in both Java consumer build validation and strict Angular compilation. Registration
+does not add approval, upload, arbitrary OpenAPI, or
+runtime contract upload behavior.

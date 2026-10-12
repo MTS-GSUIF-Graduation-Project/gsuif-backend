@@ -1,0 +1,1 @@
+<section role="dialog" aria-labelledby="generated-title-${control.id}"<#if control.disabled> aria-disabled="true"</#if>><h2 id="generated-title-${control.id}" ngNonBindable>${control.label?html}</h2></section>

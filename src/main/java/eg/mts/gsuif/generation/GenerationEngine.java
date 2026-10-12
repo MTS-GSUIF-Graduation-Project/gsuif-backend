@@ -19,11 +19,16 @@ public final class GenerationEngine {
     }
 
     public GenerationResult generate(MetadataVersion version, GenerationSpecification specification) {
-        return provider.generate(contextBuilder.build(version, specification));
+        return generateValidated(contextBuilder.build(version, specification));
     }
 
     public GenerationResult generate(MetadataVersion version, GenerationSpecification specification,
                                      Set<Target> targets, String framework) {
-        return provider.generate(contextBuilder.build(version, specification, targets, framework));
+        return generateValidated(contextBuilder.build(version, specification, targets, framework));
+    }
+
+    private GenerationResult generateValidated(GenerationContext context) {
+        return provider instanceof TemplateOnlyProvider template
+                ? template.generateValidated(context) : provider.generate(context);
     }
 }

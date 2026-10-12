@@ -1,0 +1,1 @@
+<table<#if control.disabled> aria-disabled="true"</#if>><thead><tr><#list control.columns as column><th ngNonBindable>${column.label?html}</th></#list></tr></thead><tbody><tr *ngFor="let row of rows"><#list control.columns as column><td>{{ row.${column.key} }}</td></#list></tr></tbody></table>
