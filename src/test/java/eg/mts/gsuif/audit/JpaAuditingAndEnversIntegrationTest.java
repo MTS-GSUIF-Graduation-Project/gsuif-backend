@@ -112,14 +112,11 @@ class JpaAuditingAndEnversIntegrationTest {
 
     @Test
     @WithMockUser(username = "project_editor")
-    void hibernateEnvers_existingRevisionRemainsReadableAfterNewIdentityRevision() {
+    void hibernateEnvers_existingIdentityRevisionRemainsReadableAfterNewRevision() {
         UUID projectId = UUID.randomUUID();
+        jdbcTemplate.update("INSERT INTO revinfo (revtstmp) VALUES (?)", System.currentTimeMillis());
         Integer existingRevision = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(MAX(rev), 0) + 1000 FROM revinfo", Integer.class);
-        jdbcTemplate.update("INSERT INTO revinfo (rev, revtstmp) VALUES (?, ?)",
-                existingRevision, System.currentTimeMillis());
-        // Simulate the identity alignment performed for a deployed explicit revision.
-        jdbcTemplate.execute("ALTER TABLE revinfo ALTER COLUMN rev RESTART WITH " + (existingRevision + 1));
+                "SELECT MAX(rev) FROM revinfo", Integer.class);
         jdbcTemplate.update("""
                 INSERT INTO gsuif_project (id, name, description, created_at, updated_at, created_by, last_modified_by)
                 VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)

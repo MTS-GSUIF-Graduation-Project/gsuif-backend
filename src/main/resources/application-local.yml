@@ -4,6 +4,9 @@ spring:
     username: ${GSUIF_DB_USERNAME:gsuif_user}
     password: ${GSUIF_DB_PASSWORD:gsuif_pass}
     driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: never
   jpa:
     hibernate:
       ddl-auto: validate
