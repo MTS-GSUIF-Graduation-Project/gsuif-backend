@@ -62,13 +62,34 @@ psql -U postgres -d postgres -c "CREATE ROLE gsuif_user LOGIN PASSWORD 'gsuif_pa
 psql -U postgres -d postgres -c "CREATE DATABASE gsuif_db OWNER gsuif_user"
 ```
 
+Provision the database once, before starting any API instances. Run the
+repository scripts as the database owner (or a dedicated schema owner), in
+version order. Stop on the first SQL error. A fresh database needs V1–V6;
+for a database that already has V1, apply only the later versions that have
+not been provisioned yet. Do not reapply V1 to an existing database.
+
+```sh
+for script in sql/V[1-6]__*.sql; do
+  PGPASSWORD=gsuif_pass psql -X -v ON_ERROR_STOP=1 -h localhost -U gsuif_user -d gsuif_db -f "$script" || exit 1
+done
+```
+
+For production, use a separately provisioned account for these commands.
+Grant the runtime account data access to the application tables and usage on
+the `revinfo` identity sequence; it does not need schema ownership or DDL
+privileges. Local and production startup only validate the prepared schema.
+Provisioning must finish before application instances start. The application
+does not reset a database or align IDs from legacy explicit-revision test data;
+recreate those disposable test databases before provisioning.
+
 Start the API with `./mvnw spring-boot:run -Dspring-boot.run.profiles=local`
 (`mvnw.cmd` on Windows). The `local` profile uses PostgreSQL and the development
 security settings; the `prod` profile needs separate database and JWT settings
 and disables Swagger. With the API running, open
 `http://localhost:8080/swagger-ui/index.html` to inspect its endpoints or
-`http://localhost:8080/v3/api-docs` for the OpenAPI document. Once local Hibernate schema
-setup completes, seed the login from another terminal:
+`http://localhost:8080/v3/api-docs` for the OpenAPI document. Once Hibernate
+validates the provisioned local database, seed the login
+from another terminal:
 
 ```sh
 PGPASSWORD=gsuif_pass psql -h localhost -U gsuif_user -d gsuif_db -f demo/woms-seed-admin.sql

@@ -72,6 +72,7 @@ public class GenerationRun extends AuditableEntity {
     private String toolVersion;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "status", nullable = false, length = 20)
     private GenerationRunStatus status;
 

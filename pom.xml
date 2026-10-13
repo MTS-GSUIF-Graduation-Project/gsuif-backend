@@ -193,6 +193,7 @@
                     <include>V3__add_generated_artifact_registry.sql</include>
                     <include>V4__add_generation_attempt_fingerprint.sql</include>
                     <include>V5__add_permission_role_permission.sql</include>
+                    <include>V6__add_work_orders.sql</include>
                 </includes>
             </resource>
             <resource>
@@ -223,6 +224,7 @@
                     <include>V3__add_generated_artifact_registry.sql</include>
                     <include>V4__add_generation_attempt_fingerprint.sql</include>
                     <include>V5__add_permission_role_permission.sql</include>
+                    <include>V6__add_work_orders.sql</include>
                 </includes>
             </testResource>
         </testResources>
