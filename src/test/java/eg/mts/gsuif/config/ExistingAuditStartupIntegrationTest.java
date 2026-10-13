@@ -20,13 +20,12 @@ import org.springframework.test.context.DynamicPropertySource;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Seeds deployed audit data before the local startup initializer and Hibernate validation. */
+/** Provisions repository SQL before startup, then verifies validation and existing audit history. */
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:existing_audit_startup;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa",
-        "spring.datasource.password=",
-        "gsuif.schema.allow-h2-initialization=true"
+        "spring.datasource.password="
 })
 @ActiveProfiles("local")
 class ExistingAuditStartupIntegrationTest {
@@ -43,7 +42,7 @@ class ExistingAuditStartupIntegrationTest {
                 ScriptUtils.executeSqlScript(connection,
                         new ClassPathResource("sql/V" + version + "__" + names[version - 1] + ".sql"));
             }
-            connection.createStatement().executeUpdate("INSERT INTO revinfo (rev, revtstmp) VALUES (1000, 1)");
+            connection.createStatement().executeUpdate("INSERT INTO revinfo (revtstmp) VALUES (1)");
             connection.createStatement().executeUpdate("""
                     INSERT INTO gsuif_project (id, name, description, created_at, updated_at, created_by, last_modified_by)
                     VALUES ('00000000-0000-0000-0000-000000000073', 'Deployed project', 'Before startup',
@@ -51,7 +50,7 @@ class ExistingAuditStartupIntegrationTest {
                     """);
             connection.createStatement().executeUpdate("""
                     INSERT INTO gsuif_project_aud (id, rev, revtype, name, description, created_by, last_modified_by)
-                    VALUES ('00000000-0000-0000-0000-000000000073', 1000, 0,
+                    VALUES ('00000000-0000-0000-0000-000000000073', 1, 0,
                             'Deployed project', 'Before startup', 'original_user', 'original_user')
                     """);
         } catch (Exception exception) {
@@ -65,21 +64,21 @@ class ExistingAuditStartupIntegrationTest {
 
     @Test
     @WithMockUser(username = "editor")
-    void startupAlignsIdentityAndRetainsExistingHistory() {
+    void startupValidatesPreparedSchemaAndRetainsExistingHistory() {
         GsuifProject project = projects.findById(PROJECT_ID).orElseThrow();
         project.setDescription("After startup");
         projects.saveAndFlush(project);
 
         List<Number> revisions = auditService.getRevisions(GsuifProject.class, PROJECT_ID);
         assertEquals(2, revisions.size());
-        assertEquals(1000, revisions.get(0).intValue());
-        assertTrue(revisions.get(1).intValue() > 1000);
+        assertEquals(1, revisions.get(0).intValue());
+        assertTrue(revisions.get(1).intValue() > 1);
         assertEquals("Before startup", auditService.getEntityAtRevision(
-                GsuifProject.class, PROJECT_ID, 1000).getDescription());
+                GsuifProject.class, PROJECT_ID, 1).getDescription());
         assertEquals("After startup", auditService.getEntityAtRevision(
                 GsuifProject.class, PROJECT_ID, revisions.get(1)).getDescription());
         assertEquals(1, jdbc.queryForObject(
-                "SELECT COUNT(*) FROM gsuif_project_aud WHERE id = ? AND rev = 1000",
+                "SELECT COUNT(*) FROM gsuif_project_aud WHERE id = ? AND rev = 1",
                 Integer.class, PROJECT_ID.toString()));
         assertEquals(0, jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.sequences WHERE lower(sequence_name) = 'revinfo_seq'",
