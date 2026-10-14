@@ -585,21 +585,37 @@ lives in `angular-visibility.ts.ftl`.
 
 ## Packaged API contract registration
 
-`generation/packaged-contracts.yaml` is the single registry of approved contract IDs
-and classpath resources. To add a compatible contract, package its OpenAPI YAML under
-`openapi/`, add one ID and resource path to that registry, and add a generation test
-covering its selected bindings, DTO and enum use, and applicable compilation. The
-`PackagedContractLoader` reads the selected resource once per generation, checks its
-version and five CRUD operations with the company response envelope, then supplies
-operations, DTO properties, and enum values to validation and Angular preparation.
+`generation/packaged-contracts.yaml` is the registry of approved contract IDs and
+versions. Each version selects one classpath OpenAPI resource, an update profile
+(`LEGACY_OPTIONAL` or `FULL`), and five explicit operation IDs keyed by `LIST`,
+`CREATE`, `READ`, `UPDATE`, and `DELETE`. Operation names do not determine behavior.
+To add a compatible version, package its OpenAPI YAML under `openapi/`, add the
+versioned descriptor, and test its selected bindings, DTO and enum use, and applicable
+compilation. The `PackagedContractLoader` verifies the selected resource's version,
+CRUD mapping and response envelopes, then supplies operations, DTO properties,
+update-field requirements and enum values to validation and Angular preparation.
 Unknown IDs, version mismatches, malformed resources, and unsupported CRUD shapes
-produce generation diagnostics.
+produce generation diagnostics. The `FULL` profile requires every editable update
+field to be present. Null remains valid only where the contract marks it nullable.
+For this complete-output profile the registered contract also declares a five-field
+400 error response for invalid updates and a five-field 404 error response for
+missing READ, UPDATE and DELETE records; the loader checks those declarations.
+Existing `1.0.0` descriptors remain explicitly registered with their original
+`LEGACY_OPTIONAL` behavior; callers must select a new version explicitly.
+
+`GenerationCapabilityPreflight` checks a complete `FRONTEND`, `BACKEND`, or
+`FULL_STACK` request against the full-update profile and explicit entity fields
+before later application assembly work. It is not yet a runnable-application entry
+point; the existing fragment generation path remains available for legacy contracts.
 
 Registration is limited to the existing CRUD method and mapping assumptions: list
 uses `status` query and `body.data`; item and delete use `body`; create and update
 map request DTO fields; item paths use `id`. The packaged Java consumer build inputs
 are a separate fixture set in `PackagedConsumerInputs`; a new contract needs matching
-Java inputs there before its generated Java consumer can be build validated. The
+Java inputs there before its generated Java consumer can be build validated. Current
+fragment fixture inputs are explicitly limited to `1.0.0`; selecting `2.0.0` in
+that build path fails validation until complete-output assembly supplies matching
+inputs. The selected CREATE operation ID comes from the versioned descriptor. The
 `case-record-api` fixture includes packaged Java consumer inputs and participates
 in both Java consumer build validation and strict Angular compilation. Registration
 does not add approval, upload, arbitrary OpenAPI, or

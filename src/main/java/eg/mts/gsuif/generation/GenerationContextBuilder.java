@@ -15,12 +15,19 @@ public final class GenerationContextBuilder {
     private static final Set<String> RESERVED = Set.of("abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null", "var", "yield", "record", "sealed", "permits");
     private final ObjectMapper mapper;
     private final MetadataSchemaValidator schemaValidator;
-    private final PackagedContractRegistry contractRegistry = new PackagedContractRegistry();
-    private final PackagedContractLoader contractLoader = new PackagedContractLoader(contractRegistry);
+    private final PackagedContractRegistry contractRegistry;
+    private final PackagedContractLoader contractLoader;
 
     public GenerationContextBuilder(ObjectMapper mapper, MetadataSchemaValidator schemaValidator) {
+        this(mapper, schemaValidator, new PackagedContractRegistry());
+    }
+
+    GenerationContextBuilder(ObjectMapper mapper, MetadataSchemaValidator schemaValidator,
+                             PackagedContractRegistry contractRegistry) {
         this.mapper = Objects.requireNonNull(mapper);
         this.schemaValidator = Objects.requireNonNull(schemaValidator);
+        this.contractRegistry = Objects.requireNonNull(contractRegistry);
+        this.contractLoader = new PackagedContractLoader(contractRegistry);
     }
 
     public GenerationContext build(MetadataVersion version, GenerationSpecification spec, Set<Target> targets, String framework) {
@@ -92,7 +99,10 @@ public final class GenerationContextBuilder {
         }
         OpenApiSpec openApi = s.openApi();
         if (openApi == null) { errors.add("specification.openApi: required"); return Map.of(); }
-        if (openApi.contractId() == null || contractRegistry.resource(openApi.contractId()) == null) errors.add("specification.openApi.contractId: unsupported packaged contract");
+        if (!contractRegistry.containsId(openApi.contractId()))
+            errors.add("specification.openApi.contractId: unsupported packaged contract");
+        else if (contractRegistry.find(openApi.contractId(), openApi.contractVersion()) == null)
+            errors.add("specification.openApi.contractVersion: unsupported packaged version");
         PackagedContractLoader.Contract contract = contractLoader.load(openApi, errors);
         Map<String, Object> api = contract == null ? Map.of() : contract.api();
         Map<String, PackagedContractLoader.Operation> operations = contract == null ? Map.of() : contract.operations();

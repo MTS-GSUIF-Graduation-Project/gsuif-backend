@@ -89,7 +89,8 @@ final class GenerationAttemptFingerprint {
         hash.resource("components.yaml");
         hash.resource("generation/packaged-contracts.yaml");
         if (spec != null && spec.openApi() != null && spec.openApi().contractId() != null) {
-            String contract = new PackagedContractRegistry().resource(spec.openApi().contractId());
+            String contract = new PackagedContractRegistry().resource(
+                    spec.openApi().contractId(), spec.openApi().contractVersion());
             if (contract != null) hash.resource(contract.substring(1));
         }
         java.util.stream.Stream.of(catalog.entity().path(), catalog.controller().path(),
