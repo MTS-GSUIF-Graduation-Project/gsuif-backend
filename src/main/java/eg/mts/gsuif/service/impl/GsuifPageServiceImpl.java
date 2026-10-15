@@ -13,6 +13,7 @@ import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.service.GsuifPageService;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.exception.MetadataValidationException;
 import eg.mts.gsuif.validator.MetadataBusinessValidator;
 import eg.mts.gsuif.validator.MetadataValidationContext;
@@ -21,9 +22,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.util.Set;
 
 /**
  * Production implementation of {@link GsuifPageService}.
@@ -39,21 +43,25 @@ public class GsuifPageServiceImpl implements GsuifPageService {
     private final GsuifPageRepository pageRepository;
     private final MetadataVersionRepository metadataVersionRepository;
     private final MetadataBusinessValidator businessValidator;
+    private final EntityPermissionChecker permissionChecker;
 
     public GsuifPageServiceImpl(GsuifProjectRepository projectRepository,
                                 GsuifPageRepository pageRepository,
                                 MetadataVersionRepository metadataVersionRepository,
-                                MetadataBusinessValidator businessValidator) {
+                                MetadataBusinessValidator businessValidator,
+                                EntityPermissionChecker permissionChecker) {
         this.projectRepository = projectRepository;
         this.pageRepository = pageRepository;
         this.metadataVersionRepository = metadataVersionRepository;
         this.businessValidator = businessValidator;
+        this.permissionChecker = permissionChecker;
     }
 
     @Override
     @Transactional
     @Loggable
     public PageDto create(UUID projectId, CreatePageRequest request) {
+        Authentication authentication = requireAccess();
         verifyProjectExists(projectId);
 
         if (pageRepository.existsByProjectIdAndName(projectId, request.name())) {
@@ -68,15 +76,16 @@ public class GsuifPageServiceImpl implements GsuifPageService {
         page.setName(request.name());
         page.setRoute(request.route());
 
-        return toDto(pageRepository.save(page));
+        return toDto(pageRepository.save(page), deniedFields(authentication));
     }
 
     @Override
     @Loggable
     public PageDto getById(UUID projectId, UUID pageId) {
+        Authentication authentication = requireAccess();
         verifyProjectExists(projectId);
         return pageRepository.findByIdAndProjectId(pageId, projectId)
-                .map(this::toDto)
+                .map(entity -> toDto(entity, deniedFields(authentication)))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Page not found with id: " + pageId + " in project: " + projectId));
     }
@@ -84,6 +93,8 @@ public class GsuifPageServiceImpl implements GsuifPageService {
     @Override
     @Loggable
     public PagedBody<PageDto> getAll(UUID projectId, Pageable pageable) {
+        Authentication authentication = requireAccess();
+        Set<String> deniedFields = deniedFields(authentication);
         verifyProjectExists(projectId);
 
         int pageNumber = pageable.isPaged() ? Math.max(0, pageable.getPageNumber()) : 0;
@@ -96,13 +107,14 @@ public class GsuifPageServiceImpl implements GsuifPageService {
 
         Pageable cappedPageable = PageRequest.of(pageNumber, pageSize, sort);
         Page<GsuifPage> page = pageRepository.findAllByProjectId(projectId, cappedPageable);
-        return PagedBody.of(page.map(this::toDto));
+        return PagedBody.of(page.map(entity -> toDto(entity, deniedFields)));
     }
 
     @Override
     @Transactional
     @Loggable
     public PageDto update(UUID projectId, UUID pageId, UpdatePageRequest request) {
+        Authentication authentication = requireAccess();
         verifyProjectExists(projectId);
 
         GsuifPage page = pageRepository.findByIdAndProjectId(pageId, projectId)
@@ -120,13 +132,14 @@ public class GsuifPageServiceImpl implements GsuifPageService {
         page.setName(request.name());
         page.setRoute(request.route());
 
-        return toDto(pageRepository.save(page));
+        return toDto(pageRepository.save(page), deniedFields(authentication));
     }
 
     @Override
     @Transactional
     @Loggable
     public void delete(UUID projectId, UUID pageId) {
+        requireAccess();
         verifyProjectExists(projectId);
 
         GsuifPage page = pageRepository.findByIdAndProjectId(pageId, projectId)
@@ -160,16 +173,26 @@ public class GsuifPageServiceImpl implements GsuifPageService {
         }
     }
 
-    private PageDto toDto(GsuifPage entity) {
+    private Authentication requireAccess() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
+        return authentication;
+    }
+
+    private Set<String> deniedFields(Authentication authentication) {
+        return permissionChecker.getDeniedFields("GsuifPage", authentication);
+    }
+
+    private PageDto toDto(GsuifPage entity, Set<String> deniedFields) {
         return new PageDto(
-                entity.getId(),
-                entity.getProject().getId(),
-                entity.getName(),
-                entity.getRoute(),
-                entity.getCreatedAt(),
-                entity.getUpdatedAt(),
-                entity.getCreatedBy(),
-                entity.getLastModifiedBy()
+                deniedFields.contains("id") ? null : entity.getId(),
+                deniedFields.contains("projectId") ? null : entity.getProject().getId(),
+                deniedFields.contains("name") ? null : entity.getName(),
+                deniedFields.contains("route") ? null : entity.getRoute(),
+                deniedFields.contains("createdAt") ? null : entity.getCreatedAt(),
+                deniedFields.contains("updatedAt") ? null : entity.getUpdatedAt(),
+                deniedFields.contains("createdBy") ? null : entity.getCreatedBy(),
+                deniedFields.contains("lastModifiedBy") ? null : entity.getLastModifiedBy()
         );
     }
 }

@@ -155,10 +155,10 @@ class GenerationControllerIntegrationTest {
                 .andExpect(jsonPath("$.statusCode").value(404));
     }
 
-    @Test void failedAttemptEndpointReturnsStandard403WhileResourcePolicyIsUnavailable() throws Exception {
+    @Test void failedAttemptEndpointReturnsStandard403WhenResourcePolicyDenies() throws Exception {
         UUID id = UUID.randomUUID();
         when(service.failedAttempt(id, "esraa.abdelrazek"))
-                .thenThrow(new org.springframework.security.access.AccessDeniedException("Generation diagnostic access unavailable"));
+                .thenThrow(new org.springframework.security.access.AccessDeniedException("Entity access denied: MetadataVersion"));
         mvc.perform(get("/api/v1/generation/runs/{id}/failure", id))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value("FORBIDDEN"))

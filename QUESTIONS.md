@@ -23,6 +23,8 @@ The following questions were resolved and are therefore not considered open:
 - OQ-08: Multi-tenancy is not implemented in Phase 1 or Phase 2 unless later confirmed. *(V3.2)*
 - OQ-09: The API Gateway is deferred — do only if time remains after core scope, not a Phase 1 blocker. *(Scope Decision v1)*
 - OQ-10: Email/SMS password reset is deferred; not a core requirement. Authentication itself (login, JWT) remains mandatory. *(Scope Decision v1)*
+- OQ-11: RESOLVED — SCRUM-61 narrows DEC-017 by accepting entity-level and read-path field-level permission enforcement into Phase 1; write-path field enforcement and policy-engine authorization remain deferred. *(DEC-032)*
+- OQ-12: RESOLVED — `FIELD_DENY` applies to read-path DTO response masking only; write-path field enforcement is deferred to Phase 2 or a dedicated authorization task. *(DEC-031)*
 
 ## Question Status
 

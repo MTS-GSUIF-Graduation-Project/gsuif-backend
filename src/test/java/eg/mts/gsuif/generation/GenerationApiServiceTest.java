@@ -12,8 +12,10 @@ import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifUserRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -34,8 +36,9 @@ class GenerationApiServiceTest {
     GeneratedArtifactRepository artifacts = mock(GeneratedArtifactRepository.class);
     GenerationWorkflow workflow = mock(GenerationWorkflow.class);
     GenerationRunService runs = mock(GenerationRunService.class);
+    EntityPermissionChecker permissionChecker = mock(EntityPermissionChecker.class);
     GenerationApiService service = new GenerationApiService(pages, versions, users, artifacts, workflow,
-            runs, mock(MetadataSchemaValidator.class));
+            runs, mock(MetadataSchemaValidator.class), permissionChecker);
 
     @Test void downloadRequiresSavedRunRegisteredSafePathAndVerifiedStorage() {
         UUID id = UUID.randomUUID();
@@ -152,41 +155,58 @@ class GenerationApiServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> service.run(UUID.randomUUID()));
     }
 
-    @Test void failedAttemptIsClosedUntilScrum61ResourcePermissionsCanBeEnforced() {
+    @Test void failedAttemptRequiresOwnerAndBothResourcePermissions() {
         UUID id = UUID.randomUUID();
         GenerationRun run = mock(GenerationRun.class);
         GsuifUser owner = mock(GsuifUser.class);
+        MetadataVersion version = mock(MetadataVersion.class);
         when(runs.findById(id)).thenReturn(Optional.of(run));
+        when(run.getId()).thenReturn(id);
         when(run.getTriggeringUser()).thenReturn(owner);
         when(owner.getUsername()).thenReturn("owner");
         when(run.getStatus()).thenReturn(GenerationRunStatus.FAILED);
+        when(run.getMetadataVersion()).thenReturn(version);
+        when(version.getId()).thenReturn(UUID.randomUUID());
+        when(runs.persistedFailure(id, "owner")).thenReturn(Optional.of(
+                new GenerationRunService.PersistedFailure(id, GenerationFailureStage.CONFIG,
+                        GenerationFailureCode.CONFIG_MISSING)));
 
         assertThrows(org.springframework.security.authentication.InsufficientAuthenticationException.class,
                 () -> service.failedAttempt(id, null));
+        var context = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        context.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                "other", null, List.of()));
         assertThrows(org.springframework.security.access.AccessDeniedException.class,
                 () -> service.failedAttempt(id, "other"));
-        // Ownership alone cannot substitute for either SCRUM-61 resource permission.
-        assertThrows(org.springframework.security.access.AccessDeniedException.class,
-                () -> service.failedAttempt(id, "owner"));
-        // Claimed authorities for Page only, Version only, or both cannot bypass
-        // the absent SCRUM-61 database-backed checker. These are fail-closed tests,
-        // not a substitute for the positive integration test after SCRUM-61 lands.
-        for (List<String> codes : List.of(
-                List.of("ENTITY_ACCESS:GsuifPage"),
-                List.of("ENTITY_ACCESS:MetadataVersion"),
-                List.of("ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion"))) {
-            var context = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        try {
             context.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                    "owner", "n/a", codes.stream()
-                    .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new).toList()));
-            try {
-                assertThrows(org.springframework.security.access.AccessDeniedException.class,
-                        () -> service.failedAttempt(id, "owner"));
-            } finally {
-                org.springframework.security.core.context.SecurityContextHolder.clearContext();
-            }
+                    "owner", null, List.of()));
+            doThrow(new AccessDeniedException("missing Page"))
+                    .when(permissionChecker).requireEntityAccess(eq("GsuifPage"), any());
+            assertThrows(AccessDeniedException.class, () -> service.failedAttempt(id, "owner"));
+            reset(permissionChecker);
+            doThrow(new AccessDeniedException("missing Version"))
+                    .when(permissionChecker).requireEntityAccess(eq("MetadataVersion"), any());
+            assertThrows(AccessDeniedException.class, () -> service.failedAttempt(id, "owner"));
+            reset(permissionChecker);
+            var detail = service.failedAttempt(id, "owner");
+            assertEquals(id, detail.runId());
+            assertEquals("CONFIG", detail.failureStage());
+            assertEquals("CONFIG_MISSING", detail.failureCode());
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
         }
         verifyNoInteractions(artifacts);
+    }
+
+    @Test void runDeniedWhenPageAccessDenied() {
+        UUID runId = UUID.randomUUID();
+        doThrow(new AccessDeniedException("Entity access denied: GsuifPage"))
+                .when(permissionChecker).requireEntityAccess(eq("GsuifPage"), any());
+
+        assertThrows(AccessDeniedException.class, () -> service.run(runId));
+
+        verify(runs, never()).findById(any());
     }
 
     private static GenerationSpecification specification() {

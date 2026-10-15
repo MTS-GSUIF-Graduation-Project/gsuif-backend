@@ -88,7 +88,7 @@ public class GenerationController {
 
     @GetMapping("/runs/{id}/failure")
     @Operation(summary = "Inspect a failed generation attempt", operationId = "getFailedGenerationAttempt",
-            description = "Unavailable until SCRUM-61 Page and MetadataVersion permissions are enforced together with run ownership.")
+            description = "Requires run ownership and persisted Page and MetadataVersion entity access grants.")
     @ApiCommonResponses
     public ApiResponse<GenerationApiDtos.FailedAttempt> failedAttempt(@PathVariable UUID id, Authentication authentication) {
         return ApiResponse.success(service.failedAttempt(id, authentication == null ? null : authentication.getName()),

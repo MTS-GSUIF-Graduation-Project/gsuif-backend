@@ -442,6 +442,7 @@ public class GlobalExceptionHandler {
 
     }
 
+    // Authenticated principal lacks a required persisted permission.
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleGenerationAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
         return ResponseEntity.status(403).body(ApiResponse.error(403, "Access denied", null));
