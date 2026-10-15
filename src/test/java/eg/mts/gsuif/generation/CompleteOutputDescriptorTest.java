@@ -59,6 +59,127 @@ class CompleteOutputDescriptorTest {
     @EnableMethodSecurity(proxyTargetClass = true)
     static class GeneratedMethodSecurityOnly { }
 
+    @Test void stockUnitSchemaProjectionHasExactFieldsAuditAndEnumCheck() throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        var schema = CompleteBackendEntitySchema.from(descriptor);
+        assertEquals("stock_unit", schema.tableName());
+        assertEquals(List.of("id", "condition", "label", "retired_on", "created_at", "updated_at",
+                "created_by", "last_modified_by"), schema.columns().stream().map(
+                CompleteBackendEntitySchema.Column::name).toList());
+        assertEquals("uuid", schema.columns().get(0).sqlType());
+        assertTrue(schema.columns().get(0).primaryKey());
+        assertEquals("varchar(255)", schema.columns().get(1).sqlType());
+        assertEquals("varchar(100)", schema.columns().get(2).sqlType());
+        assertEquals("date", schema.columns().get(3).sqlType());
+        assertTrue(schema.columns().get(3).nullable());
+        assertEquals("timestamp(6) with time zone", schema.columns().get(4).sqlType());
+        assertEquals("varchar(100)", schema.columns().get(6).sqlType());
+        assertTrue(schema.columns().stream().filter(c -> !c.name().equals("retired_on"))
+                .noneMatch(CompleteBackendEntitySchema.Column::nullable));
+        assertEquals(List.of("OPEN", "CLOSED"), schema.constraints().get(0).enumValues());
+        assertTrue(schema.sqlFragment().contains("CONSTRAINT ck_stock_unit_condition_enum CHECK (condition IN ('OPEN', 'CLOSED'))"));
+        assertTrue(schema.sqlFragment().contains("CONSTRAINT pk_stock_unit PRIMARY KEY (id)"));
+        assertThrows(UnsupportedOperationException.class, () -> schema.columns().clear());
+        assertThrows(UnsupportedOperationException.class, () -> schema.constraints().get(0).enumValues().clear());
+    }
+
+    @Test void schemaProjectionOrdersEquivalentDescriptorFieldsCanonically() throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        var reversed = new ArrayList<>(descriptor.fields());
+        java.util.Collections.reverse(reversed);
+        assertEquals(CompleteBackendEntitySchema.from(descriptor),
+                CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, descriptor.tableName(), reversed)));
+        assertEquals(CompleteBackendEntitySchema.from(descriptor).sqlFragment(),
+                CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, descriptor.tableName(), reversed)).sqlFragment());
+    }
+
+    @Test void schemaProjectionMapsRemainingSupportedScalarsAndRejectsDecimal() throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        var fields = List.of(
+                new FieldSpec("externalId", "external_id", "UUID", false, null, null),
+                new FieldSpec("count", "count", "Integer", false, null, null),
+                new FieldSpec("total", "total", "Long", false, null, null),
+                new FieldSpec("active", "active", "Boolean", false, null, null),
+                new FieldSpec("observedAt", "observed_at", "LocalDateTime", true, null, null));
+        var schema = CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, "warehouse_entry", fields));
+        var types = new java.util.TreeMap<String, String>();
+        schema.columns().forEach(column -> types.put(column.name(), column.sqlType()));
+        assertEquals("uuid", types.get("external_id"));
+        assertEquals("integer", types.get("count"));
+        assertEquals("bigint", types.get("total"));
+        assertEquals("boolean", types.get("active"));
+        assertEquals("timestamp(6) without time zone", types.get("observed_at"));
+        assertTrue(schema.columns().stream().filter(c -> c.name().equals("observed_at"))
+                .findFirst().orElseThrow().nullable());
+        var decimals = List.of(new FieldSpec("amount", "amount", "BigDecimal", false, null, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, "warehouse_entry", decimals)));
+    }
+
+    @Test void schemaProjectionRejectsUnsafeNamesAndGeneratedConstraintOverflow() throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        for (String table : List.of("select", "bad-name", "a".repeat(64)))
+            assertThrows(IllegalArgumentException.class,
+                    () -> CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, table, descriptor.fields())));
+        for (String column : List.of("created_at", "bad-name", "a".repeat(64))) {
+            var fields = new ArrayList<>(descriptor.fields());
+            fields.set(0, new FieldSpec("label", column, "String", false, 100, null));
+            assertThrows(IllegalArgumentException.class,
+                    () -> CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, descriptor.tableName(), fields)));
+        }
+        var duplicate = new ArrayList<>(descriptor.fields());
+        duplicate.set(0, new FieldSpec("label", "retired_on", "String", false, 100, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, descriptor.tableName(), duplicate)));
+        var fields = new ArrayList<>(descriptor.fields());
+        fields.set(1, new FieldSpec("condition", "x".repeat(54), "StockUnitCondition", false, null,
+                "StockUnitCondition"));
+        assertThrows(IllegalArgumentException.class,
+                () -> CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, descriptor.tableName(), fields)));
+    }
+
+    @Test void schemaProjectionReservesAppOwnedTablesAndChecksDerivedAuditName() throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        for (String name : CompleteBackendPersistenceNames.SUPPORT_TABLES) {
+            var failure = assertThrows(IllegalArgumentException.class,
+                    () -> CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, name, descriptor.fields())));
+            assertTrue(failure.getMessage().contains("reserved app-owned table"), failure.getMessage());
+        }
+        var ordinary = CompleteBackendEntitySchema.from(schemaDescriptor(descriptor, "warehouse_entry", descriptor.fields()));
+        assertNull(ordinary.auditTableName());
+        var audited = auditedSchemaDescriptor(descriptor, "warehouse_entry");
+        assertEquals("warehouse_entry_aud", CompleteBackendEntitySchema.from(audited).auditTableName());
+        var tooLong = auditedSchemaDescriptor(descriptor, "a".repeat(60));
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> CompleteBackendEntitySchema.from(tooLong));
+        assertTrue(failure.getMessage().contains("derived audit table"), failure.getMessage());
+    }
+
+    private static CompleteOutputDescriptor auditedSchemaDescriptor(CompleteOutputDescriptor d, String table) {
+        return new CompleteOutputDescriptor(d.metadataVersionId(), d.metadataVersionNumber(), d.metadataSchemaVersion(),
+                d.specificationVersion(), d.validatedSnapshotJson(), d.pageId(), d.pageName(), d.pageRoute(),
+                d.projectId(), d.projectName(), d.framework(), d.catalogVersion(), d.catalogAssets(),
+                d.catalogProviderVersion(), d.standardRefs(), d.mode(), d.basePackage(), d.entityName(), table,
+                true, d.fields(), d.angularClassName(), d.angularTableColumns(), d.contractId(),
+                d.contractVersion(), d.contractResourceSha256(), d.contractDtoPackage(), d.contractServicePackage(),
+                d.contractInterfacePackage(), d.contractServiceName(), d.contractInterfaceName(), d.dtoName(),
+                d.pageDtoName(), d.createRequestName(), d.updateRequestName(), d.createRules(), d.createFields(),
+                d.updateRules(), d.editableFields(), d.responseFields(), d.operations());
+    }
+
+    private static CompleteOutputDescriptor schemaDescriptor(CompleteOutputDescriptor d, String table,
+                                                               List<FieldSpec> fields) {
+        return new CompleteOutputDescriptor(d.metadataVersionId(), d.metadataVersionNumber(), d.metadataSchemaVersion(),
+                d.specificationVersion(), d.validatedSnapshotJson(), d.pageId(), d.pageName(), d.pageRoute(),
+                d.projectId(), d.projectName(), d.framework(), d.catalogVersion(), d.catalogAssets(),
+                d.catalogProviderVersion(), d.standardRefs(), d.mode(), d.basePackage(), d.entityName(), table,
+                d.enversAudited(), fields, d.angularClassName(), d.angularTableColumns(), d.contractId(),
+                d.contractVersion(), d.contractResourceSha256(), d.contractDtoPackage(), d.contractServicePackage(),
+                d.contractInterfacePackage(), d.contractServiceName(), d.contractInterfaceName(), d.dtoName(),
+                d.pageDtoName(), d.createRequestName(), d.updateRequestName(), d.createRules(), d.createFields(),
+                d.updateRules(), d.editableFields(), d.responseFields(), d.operations());
+    }
+
     @Test void persistenceProfileRejectsBigDecimalBeforeDescriptorOrOutput() throws Exception {
         var base = specification();
         var fields = new ArrayList<>(base.entity().fields());

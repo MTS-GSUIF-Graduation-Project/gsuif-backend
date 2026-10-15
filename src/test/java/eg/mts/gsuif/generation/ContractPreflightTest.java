@@ -70,6 +70,14 @@ class ContractPreflightTest {
                 new OpenApiSpec("asset-ticket-api", "2.0.0", bindings), roles, legacy.angular());
         var descriptor = preflight.describe(metadata, full, GenerationCapabilityPreflight.OutputMode.BACKEND);
         assertEquals("2.0.0", descriptor.contractVersion());
+        var schema = CompleteBackendEntitySchema.from(descriptor);
+        assertEquals("asset_ticket", schema.tableName());
+        assertEquals(List.of("id", "status", "title", "created_at", "updated_at", "created_by",
+                "last_modified_by"), schema.columns().stream().map(CompleteBackendEntitySchema.Column::name).toList());
+        assertEquals("varchar(100)", schema.columns().get(2).sqlType());
+        assertEquals(List.of("OPEN", "CLOSED"), schema.constraints().get(0).enumValues());
+        assertTrue(schema.sqlFragment().contains("ck_asset_ticket_status_enum"));
+        assertFalse(schema.sqlFragment().contains("StockUnit"));
         var rendered = new CompleteBackendDefinitionRenderer().render(descriptor, GenerationFilePlan.forDescriptor(descriptor));
         String sources = rendered.files().values().stream()
                 .map(bytes -> new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).reduce("", String::concat);
