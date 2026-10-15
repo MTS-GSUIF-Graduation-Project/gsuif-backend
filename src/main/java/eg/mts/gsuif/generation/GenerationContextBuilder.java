@@ -31,6 +31,11 @@ public final class GenerationContextBuilder {
     }
 
     public GenerationContext build(MetadataVersion version, GenerationSpecification spec, Set<Target> targets, String framework) {
+        return build(version, spec, targets, framework, false);
+    }
+
+    GenerationContext build(MetadataVersion version, GenerationSpecification spec, Set<Target> targets,
+                            String framework, boolean completeOutputProfile) {
         List<String> errors = new ArrayList<>();
         JsonNode snapshot = null;
         if (version == null) errors.add("metadataVersion: required");
@@ -45,7 +50,7 @@ public final class GenerationContextBuilder {
         if (!"spring-angular".equals(framework)) errors.add("context.framework: expected spring-angular");
         if (spec == null) errors.add("specification: required");
         Map<String, Object> api = spec == null ? Map.of() : validateSpecification(spec, snapshot, targets,
-                version == null ? null : version.getSchemaVersion(), errors);
+                version == null ? null : version.getSchemaVersion(), completeOutputProfile, errors);
         if (!errors.isEmpty()) throw new GenerationValidationException(errors);
 
         Map<String, Object> entity = new LinkedHashMap<>();
@@ -73,7 +78,8 @@ public final class GenerationContextBuilder {
     }
 
     private Map<String, Object> validateSpecification(GenerationSpecification s, JsonNode snapshot, Set<Target> targets,
-                                                       String schemaVersion, List<String> errors) {
+                                                       String schemaVersion, boolean completeOutputProfile,
+                                                       List<String> errors) {
         if (!"1.0.0".equals(s.specVersion())) errors.add("specification.specVersion: supported version is 1.0.0");
         if (!identifier(s.basePackage(), "[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+")) errors.add("specification.basePackage: invalid Java package");
         EntitySpec entity = s.entity();
@@ -93,7 +99,10 @@ public final class GenerationContextBuilder {
                     if (!identifier(f.columnName(), "[a-z][a-z0-9_]*") || !columns.add(f.columnName())) errors.add(p + ".columnName: invalid or duplicate");
                     if (f.javaType() == null || !(TYPES.contains(f.javaType()) || f.javaType().equals(f.enumType()) && identifier(f.enumType(), "[A-Z][A-Za-z0-9]*"))) errors.add(p + ".javaType: unsupported type");
                     if (f.enumType() != null && (!f.enumType().equals(f.javaType()) || TYPES.contains(f.enumType()))) errors.add(p + ".enumType: invalid enum");
-                    if (f.columnLength() != null && (f.columnLength() < 1 || !"String".equals(f.javaType()))) errors.add(p + ".columnLength: requires positive String length");
+                    if (f.columnLength() != null && (f.columnLength() < 1 || !("String".equals(f.javaType())
+                            || completeOutputProfile && f.enumType() != null)))
+                        errors.add(p + ".columnLength: requires positive String length"
+                                + (completeOutputProfile ? " or enum length" : ""));
                 }
             }
         }

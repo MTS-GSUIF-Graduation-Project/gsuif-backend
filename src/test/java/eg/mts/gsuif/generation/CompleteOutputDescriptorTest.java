@@ -59,6 +59,109 @@ class CompleteOutputDescriptorTest {
     @EnableMethodSecurity(proxyTargetClass = true)
     static class GeneratedMethodSecurityOnly { }
 
+    @Test void persistenceProfileRejectsBigDecimalBeforeDescriptorOrOutput() throws Exception {
+        var base = specification();
+        var fields = new ArrayList<>(base.entity().fields());
+        fields.set(0, new FieldSpec("label", "label", "BigDecimal", false, null, null));
+        var changed = new GenerationSpecification(base.specVersion(), base.basePackage(),
+                new EntitySpec(base.entity().className(), base.entity().tableName(), fields, false),
+                base.openApi(), base.operationRoles(), base.angular());
+        for (var mode : List.of(OutputMode.BACKEND, OutputMode.FULL_STACK)) {
+            var failure = assertThrows(GenerationValidationException.class,
+                    () -> preflight().describe(version(snapshot("condition")), changed, mode));
+            assertTrue(failure.diagnostics().stream().anyMatch(value -> value.contains("BigDecimal requires explicit precision and scale")));
+        }
+    }
+
+    @Test void completeOutputChecksEnumValuesAgainstExplicitAndDefaultColumnLength() throws Exception {
+        List<String> defaultLengthErrors = new ArrayList<>();
+        GenerationCapabilityPreflight.validateEnumColumnLength(
+                new FieldSpec("condition", "condition", "StockUnitCondition", false, null, "StockUnitCondition"),
+                List.of("X".repeat(256)), 1, defaultLengthErrors);
+        assertEquals(1, defaultLengthErrors.size());
+        assertTrue(defaultLengthErrors.get(0).contains("exceeds varchar(255)"));
+        List<String> invalidValueErrors = new ArrayList<>();
+        GenerationCapabilityPreflight.validateEnumColumnLength(
+                new FieldSpec("condition", "condition", "StockUnitCondition", false, null, "StockUnitCondition"),
+                List.of("bad-value"), 1, invalidValueErrors);
+        assertTrue(invalidValueErrors.stream().anyMatch(value -> value.contains("unsupported selected enum value")));
+        var base = specification();
+        var fields = new ArrayList<>(base.entity().fields());
+        fields.set(1, new FieldSpec("condition", "condition", "StockUnitCondition", false, 3, "StockUnitCondition"));
+        var shortColumn = new GenerationSpecification(base.specVersion(), base.basePackage(),
+                new EntitySpec(base.entity().className(), base.entity().tableName(), fields, false),
+                base.openApi(), base.operationRoles(), base.angular());
+        var failure = assertThrows(GenerationValidationException.class,
+                () -> preflight().describe(version(snapshot("condition")), shortColumn, OutputMode.BACKEND));
+        assertTrue(failure.diagnostics().stream().anyMatch(value -> value.contains("enum value exceeds varchar(3)")));
+        fields.set(1, new FieldSpec("condition", "condition", "StockUnitCondition", false, 6, "StockUnitCondition"));
+        var fitting = new GenerationSpecification(base.specVersion(), base.basePackage(),
+                new EntitySpec(base.entity().className(), base.entity().tableName(), fields, false),
+                base.openApi(), base.operationRoles(), base.angular());
+        var legacyLength = assertThrows(GenerationValidationException.class,
+                () -> new GenerationContextBuilder(mapper, new MetadataSchemaValidator(),
+                        new PackagedContractRegistry("/generation/stock-unit-contracts.yaml"))
+                        .build(version(snapshot("condition")), fitting));
+        assertTrue(legacyLength.diagnostics().stream().anyMatch(value -> value.contains("requires positive String length")));
+        var descriptor = preflight().describe(version(snapshot("condition")), fitting, OutputMode.BACKEND);
+        var files = new CompleteBackendDefinitionRenderer().render(descriptor, GenerationFilePlan.forDescriptor(descriptor)).files();
+        String entity = new String(files.entrySet().stream().filter(entry -> entry.getKey().endsWith("/entity/StockUnit.java"))
+                .findFirst().orElseThrow().getValue(), StandardCharsets.UTF_8);
+        assertTrue(entity.contains("@JdbcTypeCode(SqlTypes.VARCHAR)\n    @Column(name = \"condition\", nullable = false, length = 6)"));
+        assertTrue(entity.contains("private String label;"));
+        assertTrue(entity.contains("private LocalDate retiredOn;"));
+        assertFalse(entity.contains("@JdbcTypeCode(SqlTypes.VARCHAR)\n    @Column(name = \"label\""));
+        assertEquals("7.2.24.Final", org.hibernate.Version.getVersionString());
+        assertEquals(java.sql.Types.VARCHAR, org.hibernate.type.SqlTypes.VARCHAR);
+    }
+
+    @Test void emittedEnumResolvesToVarcharWithPinnedHibernateWithoutJdbc(@TempDir Path scratch) throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        var files = new CompleteBackendDefinitionRenderer()
+                .render(descriptor, GenerationFilePlan.forDescriptor(descriptor)).files();
+        List<String> sources = new ArrayList<>();
+        for (var entry : files.entrySet()) {
+            if (!entry.getKey().endsWith(".java")) continue;
+            Path file = scratch.resolve(entry.getKey());
+            Files.createDirectories(file.getParent());
+            Files.write(file, entry.getValue());
+            sources.add(file.toString());
+        }
+        Path classes = Files.createDirectories(scratch.resolve("classes"));
+        List<String> compiler = new ArrayList<>(List.of("-classpath", System.getProperty("java.class.path"),
+                "-d", classes.toString()));
+        compiler.addAll(sources);
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, compiler.toArray(String[]::new)));
+        try (var loader = new URLClassLoader(new java.net.URL[]{classes.toUri().toURL()}, getClass().getClassLoader())) {
+            Class<?> entity = loader.loadClass("com.example.inventory.entity.StockUnit");
+            var field = entity.getDeclaredField("condition");
+            assertEquals(jakarta.persistence.EnumType.STRING,
+                    field.getAnnotation(jakarta.persistence.Enumerated.class).value());
+            assertEquals(org.hibernate.type.SqlTypes.VARCHAR,
+                    field.getAnnotation(org.hibernate.annotations.JdbcTypeCode.class).value());
+            ClassLoader previousLoader = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(loader);
+            try {
+                var registry = new org.hibernate.boot.registry.StandardServiceRegistryBuilder()
+                        .applySetting("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect")
+                        .applySetting("hibernate.boot.allow_jdbc_metadata_access", "false")
+                        .applySetting("hibernate.classLoaders", List.of(loader))
+                        .build();
+                try {
+                    var metadata = new org.hibernate.boot.MetadataSources(registry)
+                            .addAnnotatedClass(entity).buildMetadata();
+                    var value = (org.hibernate.mapping.BasicValue) metadata
+                            .getEntityBinding(entity.getName()).getProperty("condition").getValue();
+                    assertEquals(java.sql.Types.VARCHAR, value.resolve().getJdbcType().getJdbcTypeCode());
+                } finally {
+                    org.hibernate.boot.registry.StandardServiceRegistryBuilder.destroy(registry);
+                }
+            } finally {
+                Thread.currentThread().setContextClassLoader(previousLoader);
+            }
+        }
+    }
+
     @Test void runtimeScaffoldIsPlannedSecretFreeAndCopiesExactContractBytes() throws Exception {
         var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
         var plan = GenerationFilePlan.forDescriptor(descriptor);

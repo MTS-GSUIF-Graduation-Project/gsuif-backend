@@ -279,6 +279,46 @@ class TemplateFoundationTest {
         assertTrue(source.contains("@Audited"));
     }
 
+    @Test void legacyEntityDefaultsRemainUnchangedForEnumAndBigDecimal() throws Exception {
+        Map<String, Object> entity = new LinkedHashMap<>();
+        entity.put("className", "AssetTicket");
+        entity.put("tableName", "asset_tickets");
+        entity.put("auditBasePackage", "eg.mts.gsuif.entity");
+        entity.put("enumPackage", "com.example.fixture.dto");
+        entity.put("fields", List.of(
+                field("status", "status", "AssetTicketStatus", false, null, "AssetTicketStatus"),
+                field("price", "price", "BigDecimal", false, null, null)));
+        String source = render(entityPath(), Map.of("project", Map.of("basePackage", "com.example.fixture"), "entity", entity));
+        assertTrue(source.contains("@Enumerated(EnumType.STRING)"));
+        assertTrue(source.contains("private BigDecimal price;"));
+        assertFalse(source.contains("JdbcTypeCode"));
+        assertFalse(source.contains("SqlTypes"));
+    }
+
+    @Test void completeEnumOptionLeavesSupportedScalarMappingsAlone() throws Exception {
+        Map<String, Object> entity = new LinkedHashMap<>();
+        entity.put("className", "AssetTicket");
+        entity.put("tableName", "asset_tickets");
+        entity.put("auditBasePackage", "eg.mts.gsuif.entity");
+        entity.put("enumPackage", "com.example.fixture.dto");
+        entity.put("explicitVarcharEnumMapping", true);
+        entity.put("fields", List.of(
+                field("status", "status", "AssetTicketStatus", false, 16, "AssetTicketStatus"),
+                field("label", "label", "String", false, 100, null),
+                field("externalId", "external_id", "UUID", false, null, null),
+                field("count", "count", "Integer", false, null, null),
+                field("total", "total", "Long", false, null, null),
+                field("active", "active", "Boolean", false, null, null),
+                field("dueOn", "due_on", "LocalDate", true, null, null),
+                field("changedAt", "changed_at", "LocalDateTime", true, null, null)));
+        String source = render(entityPath(), Map.of("project", Map.of("basePackage", "com.example.fixture"), "entity", entity));
+        assertEquals(1, source.split("@JdbcTypeCode\\(SqlTypes.VARCHAR\\)", -1).length - 1);
+        for (String declaration : List.of("private String label;", "private UUID externalId;",
+                "private Integer count;", "private Long total;", "private Boolean active;",
+                "private LocalDate dueOn;", "private LocalDateTime changedAt;"))
+            assertTrue(source.contains(declaration), declaration);
+    }
+
     @Test
     void catalogOverrideResolvesAtClasspathRoot() throws Exception {
         List<?> artifacts = (List<?>) ((Map<?, ?>) generation("BE-05").get("template")).get("artifacts");

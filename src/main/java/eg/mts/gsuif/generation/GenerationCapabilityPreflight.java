@@ -22,12 +22,24 @@ final class GenerationCapabilityPreflight {
 
     GenerationContext check(MetadataVersion version, GenerationSpecification specification, OutputMode mode) {
         if (mode == null) throw new GenerationValidationException(List.of("outputMode: required"));
+        if (mode != OutputMode.FRONTEND && specification != null && specification.entity() != null
+                && specification.entity().fields() != null) {
+            List<String> unsupported = new ArrayList<>();
+            for (int i = 0; i < specification.entity().fields().size(); i++) {
+                FieldSpec field = specification.entity().fields().get(i);
+                if (field != null && "BigDecimal".equals(field.javaType()))
+                    unsupported.add("specification.entity.fields[" + i
+                            + "].javaType: BigDecimal requires explicit precision and scale in the complete-output persistence profile");
+            }
+            if (!unsupported.isEmpty()) throw new GenerationValidationException(unsupported);
+        }
         Set<Target> targets = switch (mode) {
             case FRONTEND -> Set.of(Target.ANGULAR);
             case BACKEND -> Set.of(Target.ENTITY, Target.CONTROLLER);
             case FULL_STACK -> EnumSet.allOf(Target.class);
         };
-        GenerationContext context = contextBuilder.build(version, specification, targets, "spring-angular");
+        GenerationContext context = contextBuilder.build(version, specification, targets, "spring-angular",
+                mode != OutputMode.FRONTEND);
         List<String> errors = new ArrayList<>();
         var contract = contractLoader.load(specification.openApi(), errors);
         if (contract == null) {
@@ -40,6 +52,11 @@ final class GenerationCapabilityPreflight {
                 errors.add("specification.openApi.bindingOperations: all five mapped CRUD operations required");
             Map<String, FieldSpec> fields = new LinkedHashMap<>();
             for (FieldSpec field : specification.entity().fields()) fields.put(field.name(), field);
+            if (mode != OutputMode.FRONTEND) for (int i = 0; i < specification.entity().fields().size(); i++) {
+                FieldSpec field = specification.entity().fields().get(i);
+                if (field.enumType() == null) continue;
+                validateEnumColumnLength(field, contract.enums().get(field.enumType()), i, errors);
+            }
             if (!fields.keySet().equals(contract.createFields().keySet()))
                 errors.add("contract.create: fields must match explicit entity fields for the initial profile");
             if (!fields.keySet().equals(contract.updateFields().keySet()))
@@ -104,5 +121,19 @@ final class GenerationCapabilityPreflight {
                 errors.add(path + ": unexpected contract enum");
         } else if (!entity.enumType().equals(schema.enumName()) || schema.values().isEmpty())
             errors.add(path + ": enum differs from entity field");
+    }
+
+    static void validateEnumColumnLength(FieldSpec field, List<String> values, int index, List<String> errors) {
+        int length = field.columnLength() == null ? 255 : field.columnLength();
+        if (values == null) return;
+        for (String value : values) {
+            if (value == null || !value.matches("[A-Z][A-Z0-9_]*")) {
+                errors.add("specification.entity.fields[" + index + "].enumType: unsupported selected enum value");
+                continue;
+            }
+            if (value.length() > length)
+                errors.add("specification.entity.fields[" + index
+                        + "].columnLength: selected enum value exceeds varchar(" + length + ")");
+        }
     }
 }
