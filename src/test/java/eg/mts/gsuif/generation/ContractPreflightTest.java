@@ -77,6 +77,15 @@ class ContractPreflightTest {
         assertTrue(sources.contains("AssetTicketStatus"));
         assertFalse(sources.contains("StockUnit"));
         assertFalse(sources.contains("eg.mts.gsuif"));
+        var transport = new CompleteBackendApiRenderer().render(descriptor, GenerationFilePlan.forDescriptor(descriptor));
+        String transportSource = transport.values().stream()
+                .map(bytes -> new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).reduce("", String::concat);
+        assertTrue(transportSource.contains("listAssetTickets("));
+        assertTrue(transportSource.contains("createAssetTicket("));
+        assertTrue(transportSource.contains("deleteAssetTicket("));
+        assertTrue(transportSource.contains("service.delete(id)"));
+        assertTrue(transportSource.contains("name = \"status\", required = false"));
+        assertFalse(transportSource.contains("StockUnit"));
     }
 
     @Test void renamedOperationsAndNullableFieldPassAllOutputPreflights() throws Exception {
