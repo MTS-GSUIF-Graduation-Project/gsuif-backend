@@ -78,6 +78,15 @@ class ContractPreflightTest {
         assertEquals(List.of("OPEN", "CLOSED"), schema.constraints().get(0).enumValues());
         assertTrue(schema.sqlFragment().contains("ck_asset_ticket_status_enum"));
         assertFalse(schema.sqlFragment().contains("StockUnit"));
+        var assetMigration = new CompleteBackendInitialMigrationRenderer()
+                .render(descriptor, GenerationFilePlan.forDescriptor(descriptor));
+        String assetSql = new String(assetMigration.get("backend/src/main/resources/db/migration/V1__initial_schema.sql"),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(assetSql.startsWith(schema.sqlFragment()));
+        assertFalse(assetSql.contains("StockUnit") || assetSql.contains("Gadget") || assetSql.contains("WorkOrder"));
+        java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/v1-review-examples"));
+        java.nio.file.Files.writeString(java.nio.file.Path.of("target/v1-review-examples/AssetTicket.sql"),
+                assetSql, java.nio.charset.StandardCharsets.UTF_8);
         var rendered = new CompleteBackendDefinitionRenderer().render(descriptor, GenerationFilePlan.forDescriptor(descriptor));
         String sources = rendered.files().values().stream()
                 .map(bytes -> new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).reduce("", String::concat);

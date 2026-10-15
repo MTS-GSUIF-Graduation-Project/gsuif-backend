@@ -60,6 +60,8 @@ record GenerationFilePlan(List<Entry> entries) {
                     "security/FirstAdminBootstrap.java", "security/UserAccount.java", "security/UserAccountRepository.java",
                     "security/AuthController.java", "security/JwtService.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "backend contract or framework");
+            if (descriptor.enversAudited())
+                add(entries, root + "audit/AppRevision.java", Owner.DETERMINISTIC, "app-owned Envers revision");
             enumNames(descriptor).forEach(enumName ->
                             add(entries, root + "dto/" + enumName + ".java", Owner.DETERMINISTIC, "contract enum"));
             add(entries, root + "service/" + entity + "ServiceImpl.java", Owner.MODEL, "CRUD service implementation");

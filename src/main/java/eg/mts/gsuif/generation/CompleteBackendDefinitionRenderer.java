@@ -110,6 +110,7 @@ final class CompleteBackendDefinitionRenderer {
         entity.put("auditBasePackage", d.basePackage() + ".entity");
         entity.put("enumPackage", d.basePackage() + ".dto");
         entity.put("explicitVarcharEnumMapping", true);
+        entity.put("explicitAuditInheritedFields", true);
         entity.put("enversAudited", d.enversAudited()); entity.put("fields", fields);
         try {
             StringWriter writer = new StringWriter();

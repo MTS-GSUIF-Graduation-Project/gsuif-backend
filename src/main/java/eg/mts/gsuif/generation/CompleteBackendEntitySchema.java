@@ -73,6 +73,8 @@ record CompleteBackendEntitySchema(String tableName, String auditTableName, List
             identifier(field.columnName(), "entity column");
             if (SUPPORT_COLUMNS.contains(field.columnName()))
                 throw new IllegalArgumentException("Entity column collides with inherited support column");
+            if (descriptor.enversAudited() && Set.of("rev", "revtype").contains(field.columnName()))
+                throw new IllegalArgumentException("Entity column collides with Envers audit metadata column");
             String sqlType;
             if (field.enumType() != null) {
                 if (!field.enumType().equals(field.javaType()))
@@ -135,7 +137,7 @@ record CompleteBackendEntitySchema(String tableName, String auditTableName, List
         columns.add(column);
     }
 
-    private static void identifier(String value, String purpose) {
+    static void identifier(String value, String purpose) {
         if (value == null || !value.matches("[a-z][a-z0-9_]*")
                 || value.getBytes(StandardCharsets.UTF_8).length > 63
                 || SQL_RESERVED.contains(value.toLowerCase(Locale.ROOT)))

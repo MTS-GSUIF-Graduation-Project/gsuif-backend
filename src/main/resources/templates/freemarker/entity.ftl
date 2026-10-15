@@ -57,6 +57,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "${entity.tableName}")
 <#if entity.enversAudited!false>@Audited
+<#if entity.explicitAuditInheritedFields!false>@org.hibernate.envers.AuditOverride(forClass = AuditableEntity.class, isAudited = true)
+</#if>
 </#if>public class ${entity.className} extends AuditableEntity {
 
     @Id

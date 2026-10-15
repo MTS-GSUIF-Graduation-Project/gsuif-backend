@@ -74,6 +74,19 @@
         </dependency>
 
         <!-- Tests -->
+        <!-- Isolated generated-app V1 migration acceptance; never connects to an existing database. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>11.14.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>11.14.1</version>
+            <scope>test</scope>
+        </dependency>
         <!-- SCRUM-44 fixture tests render and compile Java; the runtime engine belongs to SCRUM-28. -->
         <dependency>
             <groupId>org.freemarker</groupId>
