@@ -8,6 +8,7 @@ import eg.mts.gsuif.entity.GsuifProject;
 import eg.mts.gsuif.entity.GsuifUser;
 import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.service.MetadataVersionService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
@@ -48,7 +49,8 @@ class WomsDocumentedRunIntegrationTest {
         SecurityContextHolder.clearContext();
     }
 
-    @Test void documentedFixtureBuildsAndItsSavedRunDownloadsAndExports() throws Exception {
+    @Test void documentedFixtureBuildsAndItsSavedRunDownloadsAndExports(
+            @Autowired EntityPermissionChecker permissionChecker) throws Exception {
         var mapper = new ObjectMapper();
         var metadata = mapper.readTree(Files.readString(Path.of("demo/woms-sample-metadata.json")));
         var request = mapper.readTree(Files.readString(Path.of("demo/woms-generation-request.json")));
@@ -94,7 +96,7 @@ class WomsDocumentedRunIntegrationTest {
         assertTrue(api.artifactHistory(path).stream().anyMatch(trace ->
                 trace.runId().equals(created.runId()) && trace.metadataVersionId().equals(savedVersion.id())));
 
-        var exports = new GenerationExportService(temp.toString(), runs, artifacts, projects);
+        var exports = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissionChecker);
         exports.configure(project.getId(), "local", new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
         exports.configure(project.getId(), "zip", new GenerationExportService.DestinationConfig("ZIP", "delivery/archive"));
         Path folder = Path.of(URI.create(exports.export(created.runId(), "local").location()));

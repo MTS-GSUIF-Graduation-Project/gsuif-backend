@@ -3,6 +3,7 @@ package eg.mts.gsuif.generation;
 import eg.mts.gsuif.dto.GenerationApiDtos;
 import eg.mts.gsuif.entity.GenerationRun;
 import eg.mts.gsuif.entity.GenerationRunStatus;
+import eg.mts.gsuif.entity.GeneratedArtifact;
 import eg.mts.gsuif.entity.GsuifPage;
 import eg.mts.gsuif.entity.GsuifPermission;
 import eg.mts.gsuif.entity.GsuifProject;
@@ -33,6 +34,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,6 +59,7 @@ class GenerationPermissionIntegrationTest {
     @Autowired private GsuifRolePermissionRepository rolePermissionRepository;
     @Autowired private EntityManager entityManager;
     @MockitoBean private GenerationWorkflow workflow;
+    @MockitoBean private GenerationRunService runs;
 
     @AfterEach
     void clearSecurityContext() {
@@ -105,6 +108,70 @@ class GenerationPermissionIntegrationTest {
 
         assertThat(result.metadataVersionId()).isEqualTo(fixture.versionId());
         verify(workflow).generateAndRecord(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void download_withoutPageAccess_deniesBeforeReturningBytes() {
+        fixture("download-no-page", "ROLE_DOWNLOAD_NO_PAGE");
+
+        assertThatThrownBy(() -> service.download(UUID.randomUUID(), "src/main/java/Thing.java"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Entity access denied: GsuifPage");
+
+        verifyNoInteractions(runs);
+    }
+
+    @Test
+    void download_withoutMetadataVersionAccess_isDenied() {
+        fixture("download-no-version", "ROLE_DOWNLOAD_NO_VERSION",
+                "ENTITY_ACCESS:GsuifPage");
+
+        assertThatThrownBy(() -> service.download(UUID.randomUUID(), "src/main/java/Thing.java"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Entity access denied: MetadataVersion");
+
+        verifyNoInteractions(runs);
+    }
+
+    @Test
+    void artifactHistory_withoutPageAccess_deniesBeforeDisclosingIds() {
+        fixture("history-no-page", "ROLE_HISTORY_NO_PAGE");
+
+        assertThatThrownBy(() -> service.artifactHistory("src/main/java/Thing.java"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Entity access denied: GsuifPage");
+
+        verifyNoInteractions(runs);
+    }
+
+    @Test
+    void admin_canDownloadAndReadArtifactHistory() {
+        authenticate("admin", "ROLE_ADMIN");
+        UUID runId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        String path = "src/main/java/Thing.java";
+        byte[] bytes = "class Thing {}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        GenerationRun run = mock(GenerationRun.class);
+        MetadataVersion version = mock(MetadataVersion.class);
+        GeneratedArtifact artifact = mock(GeneratedArtifact.class);
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
+        when(runs.findFile(runId, path)).thenReturn(Optional.of(artifact));
+        when(runs.readArtifact(runId, path)).thenReturn(bytes);
+        when(runs.findFileHistory(path)).thenReturn(List.of(artifact));
+        when(artifact.getId()).thenReturn(UUID.randomUUID());
+        when(artifact.getRelativePath()).thenReturn(path);
+        when(artifact.getGenerationRun()).thenReturn(run);
+        when(run.getId()).thenReturn(runId);
+        when(run.getMetadataVersion()).thenReturn(version);
+        when(version.getId()).thenReturn(versionId);
+
+        assertThat(service.download(runId, path).bytes()).isEqualTo(bytes);
+        assertThat(service.artifactHistory(path))
+                .singleElement()
+                .satisfies(trace -> {
+                    assertThat(trace.runId()).isEqualTo(runId);
+                    assertThat(trace.metadataVersionId()).isEqualTo(versionId);
+                });
     }
 
     private Fixture fixture(String username, String roleName, String... permissionCodes) {

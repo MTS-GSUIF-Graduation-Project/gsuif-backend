@@ -8,8 +8,6 @@ This document tracks project questions that require clarification or confirmatio
 |----|----------|---------|----------|--------|--------|
 | OQ-05 | What exactly constitutes a passing Phase 1 submission? | Demo preparation and documentation scope | HIGH | OPEN | V3.2 |
 | OQ-07 | Must WOMS be the formal Phase 2 demonstration application? | Phase 2 scope | MEDIUM | OPEN | V3.2 |
-| OQ-11 | SCRUM-61 introduces entity-level and field-level permission enforcement although DEC-017 defers advanced authorization. The team has approved SCRUM-61 as In Progress; should DEC-017 be superseded or narrowed when this work is accepted? | Authorization scope and DEC-017 | HIGH | OPEN | SCRUM-61 (team-approved In Progress) |
-| OQ-12 | Please confirm that `FIELD_DENY` in SCRUM-61 intentionally applies to read-path DTO masking only and that write-path field enforcement is deferred to Phase 2. If confirmed, add DEC-031 with the agreed scope clarification. | Field-level authorization scope and proposed DEC-031 | HIGH | OPEN | SCRUM-61 PR #43 review |
 
 These remaining questions were sent to the supervisor on **2026-09-09** (T-12 / SCRUM-41).
 
@@ -25,6 +23,8 @@ The following questions were resolved and are therefore not considered open:
 - OQ-08: Multi-tenancy is not implemented in Phase 1 or Phase 2 unless later confirmed. *(V3.2)*
 - OQ-09: The API Gateway is deferred — do only if time remains after core scope, not a Phase 1 blocker. *(Scope Decision v1)*
 - OQ-10: Email/SMS password reset is deferred; not a core requirement. Authentication itself (login, JWT) remains mandatory. *(Scope Decision v1)*
+- OQ-11: RESOLVED — SCRUM-61 narrows DEC-017 by accepting entity-level and read-path field-level permission enforcement into Phase 1; write-path field enforcement and policy-engine authorization remain deferred. *(DEC-032)*
+- OQ-12: RESOLVED — `FIELD_DENY` applies to read-path DTO response masking only; write-path field enforcement is deferred to Phase 2 or a dedicated authorization task. *(DEC-031)*
 
 ## Question Status
 

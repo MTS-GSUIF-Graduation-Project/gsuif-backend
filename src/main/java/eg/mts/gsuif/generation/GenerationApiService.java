@@ -128,6 +128,9 @@ public class GenerationApiService {
     }
     @Transactional(readOnly = true)
     public DownloadedArtifact download(UUID runId, String path) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
+        permissionChecker.requireEntityAccess("MetadataVersion", authentication);
         runs.findById(runId).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
         validateArtifactPath(path);
         if (runs.findFile(runId, path).isEmpty())
@@ -139,6 +142,9 @@ public class GenerationApiService {
 
     @Transactional(readOnly = true)
     public List<ArtifactTrace> artifactHistory(String path) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
+        permissionChecker.requireEntityAccess("MetadataVersion", authentication);
         validateArtifactPath(path);
         return runs.findFileHistory(path).stream()
                 .map(a -> new ArtifactTrace(a.getId(), a.getRelativePath(),

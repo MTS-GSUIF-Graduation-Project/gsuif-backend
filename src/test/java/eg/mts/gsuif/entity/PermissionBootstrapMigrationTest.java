@@ -25,7 +25,7 @@ class PermissionBootstrapMigrationTest {
                     new ClassPathResource("sql/V5__add_permission_role_permission.sql"));
 
             ScriptUtils.executeSqlScript(connection,
-                    new ClassPathResource("sql/V6__bootstrap_entity_permissions.sql"));
+                    new ClassPathResource("sql/V7__bootstrap_entity_permissions.sql"));
 
             assertEquals(4, count(connection,
                     "SELECT COUNT(*) FROM gsuif_permission WHERE code LIKE 'ENTITY_ACCESS:%'"));
@@ -45,7 +45,7 @@ class PermissionBootstrapMigrationTest {
             }
 
             ScriptUtils.executeSqlScript(connection,
-                    new ClassPathResource("sql/V6__bootstrap_entity_permissions.sql"));
+                    new ClassPathResource("sql/V7__bootstrap_entity_permissions.sql"));
             assertEquals(4, count(connection,
                     "SELECT COUNT(*) FROM gsuif_permission WHERE code LIKE 'ENTITY_ACCESS:%'"));
             assertEquals(4, count(connection, "SELECT COUNT(*) FROM gsuif_role_permission"));

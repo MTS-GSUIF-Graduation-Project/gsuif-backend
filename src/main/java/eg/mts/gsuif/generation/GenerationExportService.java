@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,17 +32,20 @@ public class GenerationExportService {
     private final GenerationRunService runs;
     private final GeneratedArtifactRepository artifacts;
     private final GsuifProjectRepository projects;
+    private final EntityPermissionChecker permissionChecker;
     private final Map<String, ExportDestination> destinations = Map.of(
             "LOCAL_FOLDER", new LocalFolderExportDestination(),
             "ZIP", new ZipExportDestination(),
             "CLOUD_STUB", new CloudStubExportDestination());
 
     public GenerationExportService(@Value("${gsuif.generation.export-root:var/exports}") String root,
-            GenerationRunService runs, GeneratedArtifactRepository artifacts, GsuifProjectRepository projects) {
+            GenerationRunService runs, GeneratedArtifactRepository artifacts, GsuifProjectRepository projects,
+            EntityPermissionChecker permissionChecker) {
         this.root = Path.of(root).toAbsolutePath().normalize();
         this.runs = runs;
         this.artifacts = artifacts;
         this.projects = projects;
+        this.permissionChecker = permissionChecker;
     }
 
     /** Location relative to this project's export directory. */
@@ -47,6 +53,8 @@ public class GenerationExportService {
     public record ExportLocation(UUID runId, UUID projectId, String destination, String location) { }
 
     public DestinationConfig configure(UUID projectId, String name, DestinationConfig config) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("GsuifProject", authentication);
         safeName(name);
         if (!projects.existsById(projectId)) throw new ResourceNotFoundException("Project not found");
         destinationFor(config);
@@ -64,6 +72,8 @@ public class GenerationExportService {
 
     @Transactional(readOnly = true)
     public ExportLocation export(UUID runId, String name) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("GsuifProject", authentication);
         safeName(name);
         var run = runs.findById(runId).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
         UUID projectId = run.getMetadataVersion().getPage().getProject().getId();

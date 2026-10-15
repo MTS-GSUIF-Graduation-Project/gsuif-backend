@@ -111,6 +111,40 @@ class JpaAuditingAndEnversIntegrationTest {
     }
 
     @Test
+    @WithMockUser(username = "project_editor")
+    void hibernateEnvers_existingIdentityRevisionRemainsReadableAfterNewRevision() {
+        UUID projectId = UUID.randomUUID();
+        jdbcTemplate.update("INSERT INTO revinfo (revtstmp) VALUES (?)", System.currentTimeMillis());
+        Integer existingRevision = jdbcTemplate.queryForObject(
+                "SELECT MAX(rev) FROM revinfo", Integer.class);
+        jdbcTemplate.update("""
+                INSERT INTO gsuif_project (id, name, description, created_at, updated_at, created_by, last_modified_by)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)
+                """, projectId.toString(), "Existing audit " + projectId, "Original description", "original_user", "original_user");
+        jdbcTemplate.update("""
+                INSERT INTO gsuif_project_aud (id, rev, revtype, name, description, created_by, last_modified_by)
+                VALUES (?, ?, 0, ?, ?, ?, ?)
+                """, projectId.toString(), existingRevision, "Existing audit " + projectId,
+                "Original description", "original_user", "original_user");
+
+        GsuifProject project = projectRepository.findById(projectId).orElseThrow();
+        project.setDescription("New description");
+        projectRepository.saveAndFlush(project);
+
+        List<Number> revisions = auditService.getRevisions(GsuifProject.class, projectId);
+        assertEquals(2, revisions.size());
+        assertEquals(existingRevision, revisions.get(0).intValue());
+        assertTrue(revisions.get(1).intValue() > existingRevision);
+        assertEquals("Original description", auditService.getEntityAtRevision(
+                GsuifProject.class, projectId, existingRevision).getDescription());
+        assertEquals("New description", auditService.getEntityAtRevision(
+                GsuifProject.class, projectId, revisions.get(1)).getDescription());
+        assertEquals(0, jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.sequences WHERE lower(sequence_name) = 'revinfo_seq'
+                """, Integer.class));
+    }
+
+    @Test
     @WithMockUser(username = "page_author")
     void hibernateEnvers_pageRevisionHistoryIsQueryable() {
         // Setup parent project

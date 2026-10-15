@@ -7,8 +7,13 @@ import eg.mts.gsuif.entity.GsuifProject;
 import eg.mts.gsuif.entity.MetadataVersion;
 import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
+import eg.mts.gsuif.security.EntityPermissionChecker;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +27,11 @@ import static org.mockito.Mockito.*;
 
 class GenerationExportServiceTest {
     @TempDir Path temp;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test void bothDestinationsWriteOnlyVerifiedRunFilesAndKeepProjectScope() throws Exception {
         UUID projectId = UUID.randomUUID(), runId = UUID.randomUUID();
@@ -46,7 +56,8 @@ class GenerationExportServiceTest {
         when(runs.readArtifact(runId, path)).thenReturn(bytes);
         when(runs.readResult(run)).thenReturn(new GenerationResult(List.of(
                 new GenerationResult.Artifact(path, bytes, "hash", "1", "1")), List.of()));
-        var service = new GenerationExportService(temp.toString(), runs, artifacts, projects);
+        var service = new GenerationExportService(temp.toString(), runs, artifacts, projects,
+                mock(EntityPermissionChecker.class));
         service.configure(projectId, "local", new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
         service.configure(projectId, "zip", new GenerationExportService.DestinationConfig("ZIP", "delivery/archive"));
         var folder = Path.of(java.net.URI.create(service.export(runId, "local").location()));
@@ -79,7 +90,7 @@ class GenerationExportServiceTest {
         var projects = mock(GsuifProjectRepository.class);
         when(projects.existsById(projectId)).thenReturn(true);
         var service = new GenerationExportService(temp.toString(), mock(GenerationRunService.class),
-                mock(GeneratedArtifactRepository.class), projects);
+                mock(GeneratedArtifactRepository.class), projects, mock(EntityPermissionChecker.class));
         assertThrows(GenerationValidationException.class, () -> service.configure(projectId, "null-config", null));
         assertThrows(GenerationValidationException.class, () -> service.configure(projectId, "null-type",
                 new GenerationExportService.DestinationConfig(null, "safe/path")));
@@ -92,5 +103,81 @@ class GenerationExportServiceTest {
         assertFalse(Files.exists(configDirectory.resolve("null-type.json")));
         assertFalse(Files.exists(configDirectory.resolve("blank-type.json")));
         assertFalse(Files.exists(configDirectory.resolve("unsupported-type.json")));
+    }
+
+    @Test void configureWithoutProjectAccessDoesNotCreateConfigurationFile() {
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("no-project-access", "n/a", List.of()));
+        UUID projectId = UUID.randomUUID();
+        var runs = mock(GenerationRunService.class);
+        var artifacts = mock(GeneratedArtifactRepository.class);
+        var projects = mock(GsuifProjectRepository.class);
+        var permissionChecker = mock(EntityPermissionChecker.class);
+        doThrow(new AccessDeniedException("Entity access denied: GsuifProject"))
+                .when(permissionChecker).requireEntityAccess(eq("GsuifProject"), any());
+        var service = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissionChecker);
+
+        assertThrows(AccessDeniedException.class, () -> service.configure(projectId, "local",
+                new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder")));
+
+        assertFalse(Files.exists(temp.resolve("config").resolve(projectId.toString()).resolve("local.json")));
+        verifyNoInteractions(runs, artifacts, projects);
+    }
+
+    @Test void exportWithoutProjectAccessDoesNotCreateExportFiles() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("no-project-access", "n/a", List.of()));
+        var runs = mock(GenerationRunService.class);
+        var artifacts = mock(GeneratedArtifactRepository.class);
+        var projects = mock(GsuifProjectRepository.class);
+        var permissionChecker = mock(EntityPermissionChecker.class);
+        doThrow(new AccessDeniedException("Entity access denied: GsuifProject"))
+                .when(permissionChecker).requireEntityAccess(eq("GsuifProject"), any());
+        var service = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissionChecker);
+
+        assertThrows(AccessDeniedException.class, () -> service.export(UUID.randomUUID(), "local"));
+
+        try (var entries = Files.list(temp)) {
+            assertTrue(entries.findAny().isEmpty());
+        }
+        verifyNoInteractions(runs, artifacts, projects);
+    }
+
+    @Test void adminCanConfigureAndExport() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("admin", "n/a", List.of()));
+        UUID projectId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        String path = "src/main/java/Thing.java";
+        byte[] bytes = "class Thing {}".getBytes();
+        var runs = mock(GenerationRunService.class);
+        var artifacts = mock(GeneratedArtifactRepository.class);
+        var projects = mock(GsuifProjectRepository.class);
+        var permissionChecker = mock(EntityPermissionChecker.class);
+        var run = mock(GenerationRun.class);
+        var version = mock(MetadataVersion.class);
+        var page = mock(GsuifPage.class);
+        var project = mock(GsuifProject.class);
+        var artifact = mock(GeneratedArtifact.class);
+        when(projects.existsById(projectId)).thenReturn(true);
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
+        when(run.getMetadataVersion()).thenReturn(version);
+        when(version.getPage()).thenReturn(page);
+        when(page.getProject()).thenReturn(project);
+        when(project.getId()).thenReturn(projectId);
+        when(artifacts.findAllByGenerationRunIdOrderByRelativePathAsc(runId)).thenReturn(List.of(artifact));
+        when(artifact.getRelativePath()).thenReturn(path);
+        when(runs.readArtifact(runId, path)).thenReturn(bytes);
+        when(runs.readResult(run)).thenReturn(new GenerationResult(List.of(
+                new GenerationResult.Artifact(path, bytes, "hash", "1", "1")), List.of()));
+        var service = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissionChecker);
+
+        service.configure(projectId, "local",
+                new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
+        Path folder = Path.of(java.net.URI.create(service.export(runId, "local").location()));
+
+        assertArrayEquals(bytes, Files.readAllBytes(folder.resolve(path)));
+        verify(permissionChecker, times(2)).requireEntityAccess(eq("GsuifProject"),
+                same(SecurityContextHolder.getContext().getAuthentication()));
     }
 }

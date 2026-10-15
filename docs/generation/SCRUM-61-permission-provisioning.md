@@ -3,13 +3,13 @@
 SCRUM-61 uses free-text codes in `gsuif_permission` for service-layer authorization:
 
 - `ENTITY_ACCESS:{SimpleEntityName}` grants access to an entity type. The initial entity names are `GsuifProject`, `GsuifPage`, `MetadataVersion`, and `WorkOrder`.
-- `FIELD_DENY:{SimpleEntityName}:{fieldName}` masks that field in read-path DTO responses. Write-path field enforcement is not part of SCRUM-61 and remains open under OQ-12.
+- `FIELD_DENY:{SimpleEntityName}:{fieldName}` masks that field in read-path DTO responses. Write-path field enforcement is deferred to Phase 2 or a dedicated authorization task under DEC-031.
 
 ## Automatic upgrade behavior
 
-`V6__bootstrap_entity_permissions.sql` creates the four initial `ENTITY_ACCESS:*` permission rows when they do not already exist. V1 and V5 create the security tables but do not seed roles, so V6 does not create a role or invent a role ID. If the established full-access role `ROLE_ADMIN` exists when V6 runs, V6 grants all four permissions to it. Re-running V6 is safe.
+`V7__bootstrap_entity_permissions.sql` creates the four initial `ENTITY_ACCESS:*` permission rows when they do not already exist. V1 and V5 create the security tables but do not seed roles, so V7 does not create a role or invent a role ID. If the established full-access role `ROLE_ADMIN` exists when V7 runs, V7 grants all four permissions to it. Re-running V7 is safe.
 
-Deployments that provision `ROLE_ADMIN` after applying V6 must run the grant statement below after creating the role.
+Deployments that provision `ROLE_ADMIN` after applying V7 must run the grant statement below after creating the role.
 
 ## Grant permissions to additional roles
 
