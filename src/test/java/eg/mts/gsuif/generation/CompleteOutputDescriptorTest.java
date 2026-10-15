@@ -12,12 +12,20 @@ import eg.mts.gsuif.generation.GenerationSpecification.*;
 import eg.mts.gsuif.generation.PackagedContractRegistry.CrudAction;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.TreeMap;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import javax.tools.ToolProvider;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,6 +33,98 @@ class CompleteOutputDescriptorTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final List<String> ids = List.of("scanStockUnits", "registerStockUnit", "inspectStockUnit",
             "replaceStockUnit", "discardStockUnit");
+
+    @Test void backendDefinitionsUseOnlyRequiredSubsetAndBindExactBytes() throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        var plan = GenerationFilePlan.forDescriptor(descriptor);
+        var rendered = new CompleteBackendDefinitionRenderer().render(descriptor, plan);
+        var required = CompleteBackendDefinitionRenderer.requiredDefinitionPaths(descriptor,
+                rendered.handoff().specification());
+        assertEquals(required, rendered.files().keySet());
+        assertEquals(rendered.handoff().definitions().size(), required.size());
+        assertTrue(required.stream().anyMatch(path -> path.endsWith("entity/AuditableEntity.java")));
+        var audit = rendered.handoff().definitions().stream()
+                .filter(definition -> definition.role().equals("audit base")).findFirst().orElseThrow();
+        assertTrue(audit.path().endsWith("entity/AuditableEntity.java"));
+        assertArrayEquals(rendered.files().get(audit.path()), audit.bytes());
+        assertFalse(required.contains("backend/pom.xml"));
+        assertTrue(plan.entries().stream().anyMatch(e -> e.path().equals("backend/pom.xml")));
+        String all = rendered.files().values().stream()
+                .map(bytes -> new String(bytes, StandardCharsets.UTF_8)).reduce("", String::concat);
+        assertFalse(all.contains("eg.mts.gsuif"));
+        assertFalse(all.contains("AssetTicket"));
+        assertFalse(all.contains("Gadget"));
+        assertFalse(all.contains("scanStockUnits")); // operation IDs stay in the typed handoff, not source signatures
+        assertEquals(ids, rendered.handoff().specification().operations().stream().map(
+                CompleteOutputDescriptor.Operation::operationId).toList());
+        assertTrue(all.contains("StockUnitPage list(com.example.inventory.dto.StockUnitCondition condition, String label)"));
+        assertTrue(all.contains("required = true"));
+        assertTrue(all.contains("java.time.LocalDate retiredOn"));
+        assertTrue(all.contains("enum StockUnitCondition { OPEN, CLOSED }"));
+        assertFalse(rendered.files().keySet().stream().anyMatch(p -> p.endsWith("StockUnitLabel.java")));
+        for (var definition : rendered.handoff().definitions()) {
+            byte[] emitted = rendered.files().get(definition.path());
+            assertArrayEquals(emitted, definition.bytes());
+            assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(emitted)),
+                    definition.sha256());
+        }
+        var again = new CompleteBackendDefinitionRenderer().render(descriptor, plan);
+        for (String path : required) assertArrayEquals(rendered.files().get(path), again.files().get(path));
+        var mutable = rendered.files().get(rendered.handoff().definitions().getFirst().path());
+        byte original = mutable[0]; mutable[0] ^= 1;
+        assertEquals(original, rendered.files().get(rendered.handoff().definitions().getFirst().path())[0]);
+        var handoffBytes = rendered.handoff().definitions().getFirst().bytes();
+        handoffBytes[0] ^= 1;
+        assertEquals(original, rendered.handoff().definitions().getFirst().bytes()[0]);
+    }
+
+    @Test void definitionSubsetRejectsMissingExtraAndIncorrectOwnership() throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        var plan = GenerationFilePlan.forDescriptor(descriptor);
+        var rendered = new CompleteBackendDefinitionRenderer().render(descriptor, plan);
+        var handoff = rendered.handoff().specification();
+        var missing = new TreeMap<>(rendered.files());
+        missing.remove(handoff.definitions().getFirst().path());
+        assertThrows(IllegalArgumentException.class, () -> CompleteBackendDefinitionRenderer.validateDefinitions(
+                descriptor, plan, handoff, missing));
+        var extra = new TreeMap<>(rendered.files());
+        extra.put("backend/src/main/java/com/example/inventory/Unexpected.java", new byte[] {1});
+        assertThrows(IllegalArgumentException.class, () -> CompleteBackendDefinitionRenderer.validateDefinitions(
+                descriptor, plan, handoff, extra));
+        var wrongOwner = new GenerationFilePlan(plan.entries().stream().map(entry ->
+                entry.path().endsWith("entity/AuditableEntity.java")
+                        ? new Entry(entry.path(), Owner.MODEL, entry.purpose()) : entry).toList());
+        assertThrows(IllegalArgumentException.class, () -> CompleteBackendDefinitionRenderer.validateDefinitions(
+                descriptor, wrongOwner, handoff, rendered.files()));
+        var noAudit = new GenerationFilePlan(plan.entries().stream()
+                .filter(entry -> !entry.path().endsWith("entity/AuditableEntity.java")).toList());
+        assertThrows(IllegalArgumentException.class, () -> CompleteBackendDefinitionRenderer.validateDefinitions(
+                descriptor, noAudit, handoff, rendered.files()));
+        var withoutDeferred = new GenerationFilePlan(plan.entries().stream()
+                .filter(entry -> !entry.path().equals("backend/pom.xml")
+                        && !entry.path().endsWith("Controller.java")).toList());
+        assertEquals(rendered.files().keySet(), new CompleteBackendDefinitionRenderer()
+                .render(descriptor, withoutDeferred).files().keySet());
+    }
+
+    @Test void deterministicDefinitionsCompileWithoutFixtureSources(@TempDir Path scratch) throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        var rendered = new CompleteBackendDefinitionRenderer().render(descriptor,
+                GenerationFilePlan.forDescriptor(descriptor));
+        List<String> sources = new ArrayList<>();
+        for (var entry : rendered.files().entrySet()) {
+            Path file = scratch.resolve(entry.getKey());
+            Files.createDirectories(file.getParent());
+            Files.write(file, entry.getValue());
+            sources.add(file.toString());
+        }
+        Path classes = Files.createDirectories(scratch.resolve("classes"));
+        List<String> arguments = new ArrayList<>(List.of("-classpath", System.getProperty("java.class.path"),
+                "-d", classes.toString()));
+        arguments.addAll(sources);
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null,
+                arguments.toArray(String[]::new)));
+    }
 
     @Test void exactContractAndRenamedQueryProduceStableDescriptorAndHandoff() throws Exception {
         var preflight = preflight();
@@ -41,6 +141,8 @@ class CompleteOutputDescriptorTest {
         assertEquals(List.of("OPEN", "CLOSED"), descriptor.editableFields().get("condition").values());
         assertTrue(descriptor.updateRules().get("retiredOn").required());
         assertTrue(descriptor.updateRules().get("retiredOn").nullable());
+        assertTrue(descriptor.createRules().get("retiredOn").required());
+        assertTrue(descriptor.createFields().get("retiredOn").nullable());
         assertTrue(descriptor.editableFields().get("retiredOn").nullable());
         assertEquals(List.of(CrudAction.LIST, CrudAction.CREATE, CrudAction.READ, CrudAction.UPDATE, CrudAction.DELETE),
                 descriptor.operations().stream().map(CompleteOutputDescriptor.Operation::action).toList());
@@ -68,7 +170,9 @@ class CompleteOutputDescriptorTest {
         assertTrue(plan.entries().stream().noneMatch(e -> e.path().endsWith("StockUnitLabel.java")));
         var handoff = ModelHandoffSpec.from(descriptor, plan);
         assertEquals(List.of(modelPath), handoff.writablePaths());
-        assertEquals(9, handoff.definitions().size());
+        assertEquals(10, handoff.definitions().size());
+        assertTrue(handoff.definitions().stream().anyMatch(d -> d.role().equals("audit base")
+                && d.path().endsWith("entity/AuditableEntity.java")));
         assertTrue(handoff.definitions().stream().anyMatch(d -> d.role().equals("page DTO")
                 && d.path().endsWith("StockUnitPage.java")));
         assertTrue(handoff.definitions().stream().anyMatch(d -> d.role().equals("contract enum")
@@ -88,6 +192,21 @@ class CompleteOutputDescriptorTest {
         var withoutEnum = new GenerationFilePlan(plan.entries().stream()
                 .filter(e -> !e.path().endsWith("StockUnitCondition.java")).toList());
         assertThrows(IllegalArgumentException.class, () -> ModelHandoffSpec.from(descriptor, withoutEnum));
+        var withoutAudit = new GenerationFilePlan(plan.entries().stream()
+                .filter(e -> !e.path().endsWith("entity/AuditableEntity.java")).toList());
+        assertThrows(IllegalArgumentException.class, () -> ModelHandoffSpec.from(descriptor, withoutAudit));
+    }
+
+    @Test void unsupportedRequestConstraintsFailBeforeRendering() throws Exception {
+        var registry = new PackagedContractRegistry("/generation/stock-unit-constrained-contracts.yaml");
+        var preflight = new GenerationCapabilityPreflight(
+                new GenerationContextBuilder(mapper, new MetadataSchemaValidator(), registry), registry);
+        var failure = assertThrows(GenerationValidationException.class,
+                () -> preflight.describe(version(snapshot("condition")), specification(), OutputMode.BACKEND));
+        assertTrue(failure.diagnostics().stream().anyMatch(message ->
+                message.contains("contract.create.label: unsupported request-field schema")));
+        assertTrue(failure.diagnostics().stream().anyMatch(message ->
+                message.contains("contract.update.label: unsupported request-field schema")));
     }
 
     @Test void modesAndPathAliasesHaveExclusiveOwnership() throws Exception {
@@ -174,6 +293,12 @@ class CompleteOutputDescriptorTest {
         assertEquals(GenerationFilePlan.forDescriptor(first), GenerationFilePlan.forDescriptor(equivalent));
         assertEquals(ModelHandoffSpec.from(first, GenerationFilePlan.forDescriptor(first)),
                 ModelHandoffSpec.from(equivalent, GenerationFilePlan.forDescriptor(equivalent)));
+        var renderer = new CompleteBackendDefinitionRenderer();
+        var firstRendered = renderer.render(first, GenerationFilePlan.forDescriptor(first));
+        var equivalentRendered = renderer.render(equivalent, GenerationFilePlan.forDescriptor(equivalent));
+        assertEquals(firstRendered.files().keySet(), equivalentRendered.files().keySet());
+        for (String path : firstRendered.files().keySet())
+            assertArrayEquals(firstRendered.files().get(path), equivalentRendered.files().get(path));
 
         var mutableFields = new ArrayList<>(spec.entity().fields());
         var mutableBindings = new java.util.LinkedHashMap<>(spec.openApi().bindingOperations());

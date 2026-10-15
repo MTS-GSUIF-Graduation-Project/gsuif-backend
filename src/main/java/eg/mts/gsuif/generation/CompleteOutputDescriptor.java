@@ -26,6 +26,8 @@ record CompleteOutputDescriptor(UUID metadataVersionId, Integer metadataVersionN
         String contractDtoPackage, String contractServicePackage, String contractInterfacePackage,
         String contractServiceName, String contractInterfaceName,
         String dtoName, String pageDtoName, String createRequestName, String updateRequestName,
+        Map<String, PackagedContractLoader.UpdateField> createRules,
+        Map<String, PackagedContractLoader.FieldSchema> createFields,
         Map<String, PackagedContractLoader.UpdateField> updateRules,
         Map<String, PackagedContractLoader.FieldSchema> editableFields,
         Map<String, PackagedContractLoader.FieldSchema> responseFields, List<Operation> operations) {
@@ -47,6 +49,8 @@ record CompleteOutputDescriptor(UUID metadataVersionId, Integer metadataVersionN
         TreeMap<UUID, List<String>> columns = new TreeMap<>();
         angularTableColumns.forEach((id, values) -> columns.put(id, List.copyOf(values)));
         angularTableColumns = Collections.unmodifiableMap(columns);
+        createRules = Collections.unmodifiableMap(new TreeMap<>(createRules));
+        createFields = Collections.unmodifiableMap(new TreeMap<>(createFields));
         updateRules = Collections.unmodifiableMap(new TreeMap<>(updateRules));
         editableFields = Collections.unmodifiableMap(new TreeMap<>(editableFields));
         responseFields = Collections.unmodifiableMap(new TreeMap<>(responseFields));

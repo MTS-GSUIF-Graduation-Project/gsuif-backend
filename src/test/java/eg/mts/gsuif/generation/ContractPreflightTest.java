@@ -68,7 +68,15 @@ class ContractPreflightTest {
                 rejected.diagnostics().toString());
         var full = new GenerationSpecification(legacy.specVersion(), legacy.basePackage(), entity,
                 new OpenApiSpec("asset-ticket-api", "2.0.0", bindings), roles, legacy.angular());
-        assertEquals("2.0.0", preflight.describe(metadata, full, GenerationCapabilityPreflight.OutputMode.BACKEND).contractVersion());
+        var descriptor = preflight.describe(metadata, full, GenerationCapabilityPreflight.OutputMode.BACKEND);
+        assertEquals("2.0.0", descriptor.contractVersion());
+        var rendered = new CompleteBackendDefinitionRenderer().render(descriptor, GenerationFilePlan.forDescriptor(descriptor));
+        String sources = rendered.files().values().stream()
+                .map(bytes -> new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).reduce("", String::concat);
+        assertTrue(sources.contains("AssetTicketService"));
+        assertTrue(sources.contains("AssetTicketStatus"));
+        assertFalse(sources.contains("StockUnit"));
+        assertFalse(sources.contains("eg.mts.gsuif"));
     }
 
     @Test void renamedOperationsAndNullableFieldPassAllOutputPreflights() throws Exception {

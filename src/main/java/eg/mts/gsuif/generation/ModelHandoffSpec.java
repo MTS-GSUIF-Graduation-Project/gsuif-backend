@@ -14,7 +14,9 @@ import java.util.TreeSet;
 /** Declares authoritative definitions and writable paths; rendered bytes arrive in a later slice. */
 record ModelHandoffSpec(String contractId, String contractVersion, String contractResourceSha256,
         List<Definition> definitions, List<CompleteOutputDescriptor.Operation> operations,
-        List<FieldSpec> fields, Map<String, PackagedContractLoader.UpdateField> updateRules,
+        List<FieldSpec> fields, Map<String, PackagedContractLoader.UpdateField> createRules,
+        Map<String, PackagedContractLoader.FieldSchema> createFields,
+        Map<String, PackagedContractLoader.UpdateField> updateRules,
         Map<String, PackagedContractLoader.FieldSchema> editableFields,
         Map<String, PackagedContractLoader.FieldSchema> responseFields,
         Set<String> allowedDependencyGroups, List<String> writablePaths) {
@@ -24,6 +26,8 @@ record ModelHandoffSpec(String contractId, String contractVersion, String contra
         definitions = List.copyOf(definitions);
         operations = List.copyOf(operations);
         fields = List.copyOf(fields);
+        createRules = Collections.unmodifiableMap(new TreeMap<>(createRules));
+        createFields = Collections.unmodifiableMap(new TreeMap<>(createFields));
         updateRules = Collections.unmodifiableMap(new TreeMap<>(updateRules));
         editableFields = Collections.unmodifiableMap(new TreeMap<>(editableFields));
         responseFields = Collections.unmodifiableMap(new TreeMap<>(responseFields));
@@ -42,6 +46,7 @@ record ModelHandoffSpec(String contractId, String contractVersion, String contra
                     new Definition("service interface", root + "service/" + descriptor.contractServiceName() + ".java"),
                     new Definition("repository signatures", root + "repository/" + entity + "Repository.java"),
                     new Definition("entity fields", root + "entity/" + entity + ".java"),
+                    new Definition("audit base", root + "entity/AuditableEntity.java"),
                     new Definition("create request", root + "dto/" + descriptor.createRequestName() + ".java"),
                     new Definition("update request", root + "dto/" + descriptor.updateRequestName() + ".java"),
                     new Definition("response DTO", root + "dto/" + descriptor.dtoName() + ".java"),
@@ -55,6 +60,7 @@ record ModelHandoffSpec(String contractId, String contractVersion, String contra
             throw new IllegalArgumentException("Handoff definition absent from deterministic file plan");
         return new ModelHandoffSpec(descriptor.contractId(), descriptor.contractVersion(),
                 descriptor.contractResourceSha256(), definitions, descriptor.operations(), descriptor.fields(),
+                descriptor.createRules(), descriptor.createFields(),
                 descriptor.updateRules(), descriptor.editableFields(), descriptor.responseFields(),
                 Set.of("java", "jakarta.persistence", "org.springframework", "com.fasterxml.jackson"), paths);
     }

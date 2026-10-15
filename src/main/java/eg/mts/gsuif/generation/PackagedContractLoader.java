@@ -24,7 +24,8 @@ final class PackagedContractLoader {
     record Contract(Map<String, Object> api, Map<String, Operation> operations,
                     Map<String, Object> dtoProperties, Map<String, List<String>> enums,
                     PackagedContractRegistry.Entry descriptor, Map<String, UpdateField> updateFields,
-                    Map<String, FieldSchema> updateSchemas, Map<String, FieldSchema> dtoSchemas) { }
+                    Map<String, FieldSchema> updateSchemas, Map<String, FieldSchema> dtoSchemas,
+                    Map<String, UpdateField> createFields, Map<String, FieldSchema> createSchemas) { }
 
     @SuppressWarnings("unchecked")
     Contract load(OpenApiSpec spec, List<String> errors) {
@@ -177,6 +178,8 @@ final class PackagedContractLoader {
             Map<String, FieldSchema> updateSchemas = new LinkedHashMap<>();
             for (var field : updateProperties.entrySet()) {
                 Map<String, Object> property = nested(updateProperties, field.getKey());
+                if (descriptor.fullUpdate() && !supportedRequestFieldSchema(property, schemas))
+                    errors.add("contract.update." + field.getKey() + ": unsupported request-field schema");
                 updateFields.put(field.getKey(), new UpdateField(updateRequired.contains(field.getKey()),
                         Boolean.TRUE.equals(property.get("nullable"))));
                 updateSchemas.put(field.getKey(), fieldSchema(property, schemas));
@@ -184,6 +187,19 @@ final class PackagedContractLoader {
             Map<String, FieldSchema> dtoSchemas = new LinkedHashMap<>();
             for (var field : nested(nested(schemas, dto), "properties").entrySet())
                 dtoSchemas.put(field.getKey(), fieldSchema(nested(nested(schemas, dto), "properties", field.getKey()), schemas));
+            Map<String, Object> createSchema = nested(schemas, create);
+            Map<String, Object> createProperties = nested(createSchema, "properties");
+            List<String> createRequired = (List<String>) createSchema.getOrDefault("required", List.of());
+            Map<String, UpdateField> createFields = new LinkedHashMap<>();
+            Map<String, FieldSchema> createSchemas = new LinkedHashMap<>();
+            for (var field : createProperties.entrySet()) {
+                Map<String, Object> property = nested(createProperties, field.getKey());
+                if (descriptor.fullUpdate() && !supportedRequestFieldSchema(property, schemas))
+                    errors.add("contract.create." + field.getKey() + ": unsupported request-field schema");
+                createFields.put(field.getKey(), new UpdateField(createRequired.contains(field.getKey()),
+                        Boolean.TRUE.equals(property.get("nullable"))));
+                createSchemas.put(field.getKey(), fieldSchema(property, schemas));
+            }
             if (descriptor.fullUpdate()) {
                 if (updateFields.isEmpty() || !updateFields.keySet().equals(Set.copyOf(updateRequired)))
                     errors.add("contract.update: every editable field must be required for full update");
@@ -192,14 +208,63 @@ final class PackagedContractLoader {
                 else for (String field : updateFields.keySet())
                     if (!nested(nested(schemas, dto), "properties").containsKey(field))
                         errors.add("contract.update." + field + ": absent from response DTO");
+                if (createFields.isEmpty() || !createFields.keySet().containsAll(createRequired))
+                    errors.add("contract.create: invalid required fields");
+                Map<String, Object> pageSchema = nested(schemas, page);
+                Map<String, Object> pageProperties = nested(pageSchema, "properties");
+                if (!"object".equals(pageSchema.get("type"))
+                        || !(pageSchema.get("required") instanceof List<?> pageRequired)
+                        || !Set.copyOf(pageRequired).equals(Set.of("data", "totalPages", "totalElements", "size", "number"))
+                        || !pageProperties.keySet().equals(Set.of("data", "totalPages", "totalElements", "size", "number"))
+                        || !"array".equals(nested(pageProperties, "data").get("type"))
+                        || !dto.equals(refName(nested(pageProperties, "data", "items").get("$ref")))
+                        || !scalarShape(pageProperties, "totalPages", "integer", "int32")
+                        || !scalarShape(pageProperties, "totalElements", "integer", "int64")
+                        || !scalarShape(pageProperties, "size", "integer", "int32")
+                        || !scalarShape(pageProperties, "number", "integer", "int32"))
+                    errors.add("contract.page: supported five-field page schema required");
             }
             return new Contract(Map.copyOf(api), Map.copyOf(operations), nested(nested(schemas, dto), "properties"),
-                    Map.copyOf(enums), descriptor, Map.copyOf(updateFields), Map.copyOf(updateSchemas), Map.copyOf(dtoSchemas));
+                    Map.copyOf(enums), descriptor, Map.copyOf(updateFields), Map.copyOf(updateSchemas), Map.copyOf(dtoSchemas),
+                    Map.copyOf(createFields), Map.copyOf(createSchemas));
         } catch (Exception ex) {
             errors.add("specification.openApi.contractId (" + spec.contractId() + "): packaged contract "
                     + resource + " has an unsupported or unreadable shape (" + ex.getClass().getSimpleName() + ")");
             return null;
         }
+    }
+
+    private static boolean scalarShape(Map<String, Object> properties, String name, String type, String format) {
+        Map<String, Object> field = nested(properties, name);
+        return type.equals(field.get("type")) && format.equals(field.get("format")) && field.size() == 2;
+    }
+
+    /** Initial complete-output DTOs emit only scalar type, format and null rules. */
+    private static boolean supportedRequestFieldSchema(Map<String, Object> property, Map<String, Object> schemas) {
+        if (property.isEmpty()) return false;
+        boolean reference = property.containsKey("$ref");
+        if (reference && (property.size() != 1 || !(property.get("$ref") instanceof String ref)
+                || !ref.startsWith("#/components/schemas/"))) return false;
+        Map<String, Object> resolved = reference ? nested(schemas, refName(property.get("$ref"))) : property;
+        if (resolved.isEmpty() || resolved.keySet().stream().anyMatch(key ->
+                !Set.of("type", "format", "nullable", "enum", "description", "example").contains(key))) return false;
+        if (!reference && resolved.containsKey("enum")) return false; // no deterministic enum name
+        if (resolved.containsKey("nullable") && !(resolved.get("nullable") instanceof Boolean)) return false;
+        String type = String.valueOf(resolved.getOrDefault("type", ""));
+        String format = String.valueOf(resolved.getOrDefault("format", ""));
+        if (resolved.containsKey("enum")) {
+            if (!"string".equals(type) || !format.isEmpty()
+                    || !(resolved.get("enum") instanceof List<?> values) || values.isEmpty()
+                    || values.stream().anyMatch(value -> !(value instanceof String text)
+                            || !text.matches("[A-Z][A-Z0-9_]*"))
+                    || values.stream().distinct().count() != values.size()) return false;
+        }
+        return switch (type) {
+            case "string" -> Set.of("", "uuid", "date", "date-time").contains(format);
+            case "integer" -> Set.of("int32", "int64").contains(format);
+            case "number", "boolean" -> format.isEmpty();
+            default -> false;
+        };
     }
 
     /** Only scalar query parameters on LIST are currently represented in a complete-output descriptor. */

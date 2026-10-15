@@ -40,6 +40,8 @@ final class GenerationCapabilityPreflight {
                 errors.add("specification.openApi.bindingOperations: all five mapped CRUD operations required");
             Map<String, FieldSpec> fields = new LinkedHashMap<>();
             for (FieldSpec field : specification.entity().fields()) fields.put(field.name(), field);
+            if (!fields.keySet().equals(contract.createFields().keySet()))
+                errors.add("contract.create: fields must match explicit entity fields for the initial profile");
             if (!fields.keySet().equals(contract.updateFields().keySet()))
                 errors.add("contract.update: editable fields must match explicit entity fields");
             @SuppressWarnings("unchecked")
@@ -59,6 +61,14 @@ final class GenerationCapabilityPreflight {
                             && !requestSchema.values().equals(responseSchema.values()))
                         errors.add("contract.dto." + update.getKey() + ": enum values differ from update request");
                 }
+            }
+            for (var create : contract.createFields().entrySet()) {
+                if (!create.getValue().required())
+                    errors.add("contract.create." + create.getKey() + ": field must be required for the initial profile");
+                FieldSpec field = fields.get(create.getKey());
+                if (field != null)
+                    compatible(field, contract.createSchemas().get(create.getKey()),
+                            "contract.create." + create.getKey(), errors);
             }
         }
         if (!errors.isEmpty()) throw new GenerationValidationException(errors);

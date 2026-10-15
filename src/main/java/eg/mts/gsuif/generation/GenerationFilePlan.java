@@ -52,7 +52,7 @@ record GenerationFilePlan(List<Entry> entries) {
                     "backend/src/main/resources/db/migration/V1__initial_schema.sql"))
                 add(entries, path, Owner.DETERMINISTIC, "backend runtime");
             for (String relative : List.of("Application.java", "api/ApiResponse.java", "api/GlobalExceptionHandler.java",
-                    "entity/" + entity + ".java", "repository/" + entity + "Repository.java",
+                    "entity/AuditableEntity.java", "entity/" + entity + ".java", "repository/" + entity + "Repository.java",
                     "dto/" + descriptor.dtoName() + ".java", "dto/" + descriptor.pageDtoName() + ".java",
                     "dto/" + descriptor.createRequestName() + ".java", "dto/" + descriptor.updateRequestName() + ".java",
                     "api/" + entity + "Api.java", "controller/" + entity + "Controller.java",
@@ -88,6 +88,7 @@ record GenerationFilePlan(List<Entry> entries) {
     static Set<String> enumNames(CompleteOutputDescriptor descriptor) {
         Set<String> names = new TreeSet<>();
         descriptor.fields().forEach(field -> { if (field.enumType() != null) names.add(field.enumType()); });
+        descriptor.createFields().values().forEach(schema -> { if (!schema.enumName().isEmpty()) names.add(schema.enumName()); });
         descriptor.editableFields().values().forEach(schema -> { if (!schema.enumName().isEmpty()) names.add(schema.enumName()); });
         descriptor.responseFields().values().forEach(schema -> { if (!schema.enumName().isEmpty()) names.add(schema.enumName()); });
         descriptor.operations().forEach(operation -> operation.queryFields().values().forEach(parameter -> {

@@ -72,6 +72,7 @@ final class CompleteOutputDescriptorFactory {
                 (String) api.get("serviceInterface"), (String) api.get("interfaceClass"),
                 (String) api.get("dtoClass"), (String) api.get("pageDtoClass"),
                 (String) api.get("createRequestClass"), (String) api.get("updateRequestClass"),
+                contract.createFields(), contract.createSchemas(),
                 contract.updateFields(), contract.updateSchemas(), contract.dtoSchemas(), operations);
     }
 
