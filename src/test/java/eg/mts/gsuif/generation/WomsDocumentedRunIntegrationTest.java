@@ -5,8 +5,15 @@ import eg.mts.gsuif.dto.GenerationApiDtos;
 import eg.mts.gsuif.dto.CreateMetadataVersionRequest;
 import eg.mts.gsuif.entity.GsuifPage;
 import eg.mts.gsuif.entity.GsuifProject;
+import eg.mts.gsuif.entity.GsuifRole;
+import eg.mts.gsuif.entity.GsuifRolePermission;
+import eg.mts.gsuif.entity.GsuifRolePermissionId;
 import eg.mts.gsuif.entity.GsuifUser;
+import eg.mts.gsuif.entity.GsuifUserRole;
+import eg.mts.gsuif.entity.GsuifUserRoleId;
+import eg.mts.gsuif.entity.MetadataVersion;
 import eg.mts.gsuif.repository.GeneratedArtifactRepository;
+import eg.mts.gsuif.repository.GsuifPermissionRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
 import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.service.MetadataVersionService;
@@ -16,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,8 +31,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.net.URI;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.zip.ZipFile;
@@ -41,18 +51,24 @@ class WomsDocumentedRunIntegrationTest {
     @Autowired GenerationRunService runs;
     @Autowired GeneratedArtifactRepository artifacts;
     @Autowired GsuifProjectRepository projects;
+    @Autowired GsuifPermissionRepository permissions;
     @Autowired MetadataVersionService metadataVersions;
     @Autowired TransactionTemplate transactions;
+    @Value("${gsuif.generation.artifact-root}") String artifactRoot;
     private Fixture persistedFixture;
-    private UUID recordedRunId;
 
-    @AfterEach void removeCommittedFixture() {
-        if (persistedFixture == null || recordedRunId == null) return;
-        transactions.executeWithoutResult(status -> {
-            entities.createNativeQuery("DELETE FROM gsuif_generated_artifact WHERE generation_run_id = :id")
-                    .setParameter("id", recordedRunId.toString()).executeUpdate();
-            entities.createNativeQuery("DELETE FROM gsuif_generation_run WHERE id = :id")
-                    .setParameter("id", recordedRunId.toString()).executeUpdate();
+    @AfterEach void removeCommittedFixture() throws IOException {
+        if (persistedFixture == null) return;
+        List<UUID> runIds = transactions.execute(status -> {
+            List<UUID> ids = entities.createNativeQuery(
+                            "SELECT id FROM gsuif_generation_run WHERE metadata_version_id = :versionId")
+                    .setParameter("versionId", persistedFixture.versionId().toString())
+                    .getResultStream().map(id -> UUID.fromString(id.toString())).toList();
+            entities.createNativeQuery("DELETE FROM gsuif_generated_artifact WHERE generation_run_id IN "
+                            + "(SELECT id FROM gsuif_generation_run WHERE metadata_version_id = :versionId)")
+                    .setParameter("versionId", persistedFixture.versionId().toString()).executeUpdate();
+            entities.createNativeQuery("DELETE FROM gsuif_generation_run WHERE metadata_version_id = :versionId")
+                    .setParameter("versionId", persistedFixture.versionId().toString()).executeUpdate();
             entities.createNativeQuery("UPDATE gsuif_page SET current_metadata_version_id = NULL WHERE id = :id")
                     .setParameter("id", persistedFixture.pageId().toString()).executeUpdate();
             entities.createNativeQuery("DELETE FROM gsuif_metadata_version WHERE id = :id")
@@ -61,9 +77,26 @@ class WomsDocumentedRunIntegrationTest {
                     .setParameter("id", persistedFixture.pageId().toString()).executeUpdate();
             entities.createNativeQuery("DELETE FROM gsuif_project WHERE id = :id")
                     .setParameter("id", persistedFixture.projectId().toString()).executeUpdate();
+            entities.createNativeQuery("DELETE FROM gsuif_user_role WHERE user_id = :id")
+                    .setParameter("id", persistedFixture.userId().toString()).executeUpdate();
+            entities.createNativeQuery("DELETE FROM gsuif_role_permission WHERE role_id = :id")
+                    .setParameter("id", persistedFixture.roleId().toString()).executeUpdate();
+            entities.createNativeQuery("DELETE FROM gsuif_role WHERE id = :id")
+                    .setParameter("id", persistedFixture.roleId().toString()).executeUpdate();
             entities.createNativeQuery("DELETE FROM gsuif_user WHERE id = :id")
                     .setParameter("id", persistedFixture.userId().toString()).executeUpdate();
+            return ids;
         });
+        Path root = Path.of(artifactRoot).toAbsolutePath().normalize();
+        if (Files.isSymbolicLink(root)) throw new IOException("Artifact root is a symbolic link");
+        for (UUID runId : runIds) {
+            Path directory = root.resolve(runId.toString());
+            if (!Files.exists(directory)) continue;
+            if (Files.isSymbolicLink(directory)) throw new IOException("Run artifact directory is a symbolic link");
+            try (var files = Files.walk(directory)) {
+                for (Path file : files.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
+            }
+        }
     }
 
     @AfterEach
@@ -74,39 +107,12 @@ class WomsDocumentedRunIntegrationTest {
     @Test void documentedFixtureBuildsAndItsSavedRunDownloadsAndExports(
             @Autowired EntityPermissionChecker permissionChecker) throws Exception {
         var mapper = new ObjectMapper();
-        var metadata = mapper.readTree(Files.readString(Path.of("demo/woms-sample-metadata.json")));
         var request = mapper.readTree(Files.readString(Path.of("demo/woms-generation-request.json")));
-        // A reserved attempt commits before generation and therefore requires committed metadata/user inputs.
-        Fixture fixture = transactions.execute(status -> {
-            GsuifProject project = new GsuifProject();
-            project.setName("WOMS " + UUID.randomUUID());
-            entities.persist(project);
-            GsuifPage page = new GsuifPage();
-            page.setProject(project);
-            page.setName("Asset tickets");
-            entities.persist(page);
-            GsuifUser user = new GsuifUser();
-            user.setUsername("woms-" + UUID.randomUUID());
-            user.setPasswordHash("hash");
-            entities.persist(user);
-            entities.flush();
-            // The seeded ADMIN principal has persisted Page and MetadataVersion grants.
-            SecurityContextHolder.getContext().setAuthentication(
-                    new UsernamePasswordAuthenticationToken("admin", null,
-                            List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
-            var savedVersion = metadataVersions.create(page.getId(), new CreateMetadataVersionRequest(
-                    metadata.path("schemaVersion").asText(),
-                    new tools.jackson.databind.ObjectMapper().readTree(metadata.path("snapshot").toString())));
-            assertEquals(5, savedVersion.snapshot().path("apiBindings").size());
-            assertEquals(savedVersion.id(), metadataVersions.getCurrent(page.getId()).id());
-            return new Fixture(project.getId(), page.getId(), user.getId(), user.getUsername(), savedVersion.id());
-        });
-        persistedFixture = fixture;
+        Fixture fixture = createCommittedFixture();
 
         var specification = mapper.treeToValue(request.path("specification"), GenerationSpecification.class);
         var created = api.generate(new GenerationApiDtos.GenerateRequest(fixture.pageId(), "FULL_STACK", specification),
                 fixture.username());
-        recordedRunId = created.runId();
         assertEquals(fixture.versionId(), created.metadataVersionId());
         var details = api.run(created.runId());
         assertEquals("SUCCESS", created.status(), details.compileOutput() + "\n" + details.testOutput());
@@ -134,5 +140,66 @@ class WomsDocumentedRunIntegrationTest {
         assertEquals("SUCCESS", api.run(created.runId()).status());
     }
 
-    private record Fixture(UUID projectId, UUID pageId, UUID userId, String username, UUID versionId) { }
+    @Test void cleanupFindsReservedAttemptWithoutCompletedRunId() throws Exception {
+        Fixture fixture = createCommittedFixture();
+        UUID runId = transactions.execute(status -> runs.reserveAttempt(UUID.randomUUID(),
+                entities.find(MetadataVersion.class, fixture.versionId()),
+                entities.find(GsuifUser.class, fixture.userId()), "fixture-fingerprint").getId());
+        assertTrue(runs.findById(runId).isPresent());
+
+        removeCommittedFixture();
+        persistedFixture = null;
+        entities.clear();
+        assertTrue(runs.findById(runId).isEmpty());
+    }
+
+    private Fixture createCommittedFixture() throws Exception {
+        var metadata = new ObjectMapper().readTree(Files.readString(Path.of("demo/woms-sample-metadata.json")));
+        // A reserved attempt commits before generation and therefore requires committed metadata/user inputs.
+        Fixture fixture = transactions.execute(status -> {
+            GsuifProject project = new GsuifProject();
+            project.setName("WOMS " + UUID.randomUUID());
+            entities.persist(project);
+            GsuifPage page = new GsuifPage();
+            page.setProject(project);
+            page.setName("Asset tickets");
+            entities.persist(page);
+            GsuifUser user = new GsuifUser();
+            user.setUsername("woms-" + UUID.randomUUID());
+            user.setPasswordHash("hash");
+            entities.persist(user);
+            GsuifRole role = new GsuifRole();
+            role.setName("ROLE_WOMS_" + UUID.randomUUID());
+            entities.persist(role);
+            entities.flush();
+            GsuifUserRole membership = new GsuifUserRole();
+            membership.setId(new GsuifUserRoleId(user.getId(), role.getId()));
+            membership.setUser(user);
+            membership.setRole(role);
+            entities.persist(membership);
+            for (String code : List.of("ENTITY_ACCESS:GsuifProject", "ENTITY_ACCESS:GsuifPage",
+                    "ENTITY_ACCESS:MetadataVersion")) {
+                var permission = permissions.findByCode(code).orElseThrow();
+                GsuifRolePermission grant = new GsuifRolePermission();
+                grant.setId(new GsuifRolePermissionId(role.getId(), permission.getId()));
+                grant.setRole(role);
+                grant.setPermission(permission);
+                entities.persist(grant);
+            }
+            entities.flush();
+            SecurityContextHolder.getContext().setAuthentication(
+                    new UsernamePasswordAuthenticationToken(user.getUsername(), null,
+                            List.of(new SimpleGrantedAuthority(role.getName()))));
+            var savedVersion = metadataVersions.create(page.getId(), new CreateMetadataVersionRequest(
+                    metadata.path("schemaVersion").asText(),
+                    new tools.jackson.databind.ObjectMapper().readTree(metadata.path("snapshot").toString())));
+            assertEquals(5, savedVersion.snapshot().path("apiBindings").size());
+            assertEquals(savedVersion.id(), metadataVersions.getCurrent(page.getId()).id());
+            return new Fixture(project.getId(), page.getId(), user.getId(), role.getId(), user.getUsername(), savedVersion.id());
+        });
+        persistedFixture = fixture;
+        return fixture;
+    }
+
+    private record Fixture(UUID projectId, UUID pageId, UUID userId, UUID roleId, String username, UUID versionId) { }
 }
