@@ -34,8 +34,41 @@ class ContractPreflightTest {
         assertTrue(full.descriptor().fullUpdate());
         assertTrue(full.updateFields().get("title").required());
         assertTrue(full.updateFields().get("status").required());
+        assertFalse(full.operations().get("listAssetTickets").queryFields().get("status").required());
         assertFalse(full.updateFields().get("title").nullable());
         assertFalse(full.updateFields().get("status").nullable());
+    }
+
+    @Test void legacyFragmentContextRemainsValidButCompleteOutputRequiresExplicitNewVersion() throws Exception {
+        var registry = new PackagedContractRegistry();
+        var snapshot = bindings();
+        for (var binding : snapshot.withArray("apiBindings")) {
+            ((ObjectNode) binding).put("endpointUrl", binding.path("endpointUrl").asText().replace("gadgets", "asset-tickets"));
+            if (binding.path("requestMapping").path("body") instanceof ObjectNode body) body.remove("note");
+        }
+        List<String> ids = List.of("listAssetTickets", "createAssetTicket", "getAssetTicketById",
+                "updateAssetTicket", "deleteAssetTicket");
+        Map<UUID, String> bindings = new LinkedHashMap<>();
+        Map<String, Set<SupportedRole>> roles = new LinkedHashMap<>();
+        for (int i = 0; i < ids.size(); i++) {
+            bindings.put(new UUID(0, i + 1), ids.get(i));
+            roles.put(ids.get(i), Set.of(SupportedRole.ROLE_ADMIN));
+        }
+        var entity = new EntitySpec("AssetTicket", "asset_ticket", List.of(
+                new FieldSpec("title", "title", "String", false, 100, null),
+                new FieldSpec("status", "status", "AssetTicketStatus", false, null, "AssetTicketStatus")), false);
+        var metadata = version(snapshot);
+        var legacy = new GenerationSpecification("1.0.0", "com.example.fixture", entity,
+                new OpenApiSpec("asset-ticket-api", "1.0.0", bindings), roles, new AngularSpec("AssetTicket", Map.of()));
+        assertNotNull(builder(registry).build(metadata, legacy));
+        var preflight = new GenerationCapabilityPreflight(builder(registry), registry);
+        var rejected = assertThrows(GenerationValidationException.class,
+                () -> preflight.describe(metadata, legacy, GenerationCapabilityPreflight.OutputMode.BACKEND));
+        assertTrue(rejected.diagnostics().stream().anyMatch(s -> s.contains("full-update contract profile")),
+                rejected.diagnostics().toString());
+        var full = new GenerationSpecification(legacy.specVersion(), legacy.basePackage(), entity,
+                new OpenApiSpec("asset-ticket-api", "2.0.0", bindings), roles, legacy.angular());
+        assertEquals("2.0.0", preflight.describe(metadata, full, GenerationCapabilityPreflight.OutputMode.BACKEND).contractVersion());
     }
 
     @Test void renamedOperationsAndNullableFieldPassAllOutputPreflights() throws Exception {

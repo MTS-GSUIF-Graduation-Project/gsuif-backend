@@ -12,10 +12,12 @@ final class GenerationCapabilityPreflight {
 
     private final GenerationContextBuilder contextBuilder;
     private final PackagedContractLoader contractLoader;
+    private final CompleteOutputDescriptorFactory descriptorFactory;
 
     GenerationCapabilityPreflight(GenerationContextBuilder contextBuilder, PackagedContractRegistry registry) {
         this.contextBuilder = Objects.requireNonNull(contextBuilder);
         this.contractLoader = new PackagedContractLoader(Objects.requireNonNull(registry));
+        this.descriptorFactory = new CompleteOutputDescriptorFactory(registry);
     }
 
     GenerationContext check(MetadataVersion version, GenerationSpecification specification, OutputMode mode) {
@@ -61,6 +63,12 @@ final class GenerationCapabilityPreflight {
         }
         if (!errors.isEmpty()) throw new GenerationValidationException(errors);
         return context;
+    }
+
+    /** Descriptor-only entry point; it does not advertise or dispatch runnable output. */
+    CompleteOutputDescriptor describe(MetadataVersion version, GenerationSpecification specification, OutputMode mode) {
+        GenerationContext context = check(version, specification, mode);
+        return descriptorFactory.create(context, mode);
     }
 
     private static void compatible(FieldSpec entity, PackagedContractLoader.FieldSchema schema,

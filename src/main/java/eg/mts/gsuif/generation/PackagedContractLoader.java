@@ -14,9 +14,13 @@ final class PackagedContractLoader {
     PackagedContractLoader(PackagedContractRegistry registry) { this.registry = registry; }
 
     record Operation(String verb, String path, String kind, String request, Set<String> requestFields,
-                     CrudAction action) { }
+                     CrudAction action, Map<String, QueryParameter> queryFields, int successStatus,
+                     String responseDto, String successEnvelope, Map<Integer, String> errorEnvelopes) { }
+    record QueryParameter(boolean required, FieldSchema schema) { }
     record UpdateField(boolean required, boolean nullable) { }
-    record FieldSchema(String type, String format, String enumName, List<String> values, boolean nullable) { }
+    record FieldSchema(String type, String format, String enumName, List<String> values, boolean nullable) {
+        FieldSchema { values = List.copyOf(values); }
+    }
     record Contract(Map<String, Object> api, Map<String, Operation> operations,
                     Map<String, Object> dtoProperties, Map<String, List<String>> enums,
                     PackagedContractRegistry.Entry descriptor, Map<String, UpdateField> updateFields,
@@ -46,6 +50,7 @@ final class PackagedContractLoader {
                     continue;
                 }
                 Map<String, Object> verbs = (Map<String, Object>) pathEntry.getValue();
+                validatePathParameters(pathEntry.getKey(), verbs.get("parameters"), errors);
                 for (String key : verbs.keySet()) {
                     if (!Set.of("get", "post", "put", "delete", "parameters", "summary", "description", "servers").contains(key))
                         errors.add("contract.paths." + pathEntry.getKey() + "." + key + ": unsupported operation; five CRUD operations required");
@@ -127,8 +132,17 @@ final class PackagedContractLoader {
                         case DELETE -> "deleteMethod";
                     };
                     if (methods.put(methodKey, id) != null) errors.add("contract." + id + ": duplicate CRUD operation");
+                    Map<String, QueryParameter> queryFields = parseQueryParameters(op.get("parameters"), action,
+                            schemas, id, errors);
+                    Map<Integer, String> errorEnvelopes = new LinkedHashMap<>();
+                    for (String errorCode : List.of("400", "404")) {
+                        String errorRef = refName(nested(op, "responses", errorCode, "content", "application/json", "schema").get("$ref"));
+                        if (!errorRef.isEmpty()) errorEnvelopes.put(Integer.parseInt(errorCode), errorRef);
+                    }
                     if (operations.put(id, new Operation(verb.toUpperCase(Locale.ROOT), pathEntry.getKey(), kind, request,
-                            Set.copyOf(nested(nested(schemas, request), "properties").keySet()), action)) != null)
+                            Set.copyOf(nested(nested(schemas, request), "properties").keySet()), action,
+                            Map.copyOf(queryFields), Integer.parseInt(code), body, envelopeName,
+                            Map.copyOf(errorEnvelopes))) != null)
                         errors.add("contract." + id + ": duplicate operation ID");
                 }
             }
@@ -136,7 +150,9 @@ final class PackagedContractLoader {
                 errors.add("contract: five mapped CRUD operations required");
             for (String id : descriptor.operations().values()) if (!operations.containsKey(id))
                 errors.add("contract." + id + ": mapped operation missing from OpenAPI");
-            String status = tag + "Status";
+            String status = operations.values().stream().filter(o -> o.action() == CrudAction.LIST)
+                    .flatMap(o -> o.queryFields().values().stream()).map(p -> p.schema().enumName())
+                    .filter(name -> !name.isEmpty()).findFirst().orElse(tag + "Status");
             Map<String, List<String>> enums = new HashMap<>();
             for (var entry : schemas.entrySet()) if (nested(schemas, entry.getKey()).get("enum") instanceof List<?> values)
                 enums.put(entry.getKey(), values.stream().map(String::valueOf).toList());
@@ -186,6 +202,91 @@ final class PackagedContractLoader {
         }
     }
 
+    /** Only scalar query parameters on LIST are currently represented in a complete-output descriptor. */
+    @SuppressWarnings("unchecked")
+    static Map<String, QueryParameter> parseQueryParameters(Object source, CrudAction action,
+            Map<String, Object> schemas, String operationId, List<String> errors) {
+        if (source == null) return Map.of();
+        if (!(source instanceof List<?> parameters)) {
+            errors.add("contract." + operationId + ".parameters: unsupported parameter shape (array required)");
+            return Map.of();
+        }
+        Map<String, QueryParameter> parsed = new TreeMap<>();
+        for (Object parameter : parameters) {
+            if (!(parameter instanceof Map<?, ?> raw)) {
+                errors.add("contract." + operationId + ".parameters: unsupported parameter shape (object required)");
+                continue;
+            }
+            Map<String, Object> item = (Map<String, Object>) raw;
+            String name = String.valueOf(item.getOrDefault("name", ""));
+            String path = "contract." + operationId + ".parameters." + name;
+            if (action != CrudAction.LIST || !"query".equals(item.get("in"))
+                    || !name.matches("[a-z][A-Za-z0-9]*")
+                    || item.keySet().stream().anyMatch(key -> !Set.of("name", "in", "required", "schema", "description").contains(key))
+                    || (item.containsKey("required") && !(item.get("required") instanceof Boolean))) {
+                errors.add(path + ": unsupported parameter shape");
+                continue;
+            }
+            Map<String, Object> schema = nested(item, "schema");
+            if (!supportedScalarParameter(schema, schemas)) {
+                errors.add(path + ": unsupported parameter schema");
+                continue;
+            }
+            if (parsed.put(name, new QueryParameter(Boolean.TRUE.equals(item.get("required")),
+                    fieldSchema(schema, schemas))) != null)
+                errors.add(path + ": duplicate query parameter");
+        }
+        return Collections.unmodifiableMap(parsed);
+    }
+
+    @SuppressWarnings("unchecked")
+    static void validatePathParameters(String path, Object source, List<String> errors) {
+        boolean itemPath = path.endsWith("/{id}");
+        if (source == null) {
+            if (itemPath) errors.add("contract.paths." + path + ".parameters: required id declaration missing");
+            return;
+        }
+        if (!itemPath || !(source instanceof List<?> parameters) || parameters.size() != 1
+                || !(parameters.getFirst() instanceof Map<?, ?> raw)) {
+            errors.add("contract.paths." + path + ".parameters: unsupported path parameter shape");
+            return;
+        }
+        Map<String, Object> item = (Map<String, Object>) raw;
+        Map<String, Object> schema = nested(item, "schema");
+        if (!"path".equals(item.get("in")) || !"id".equals(item.get("name"))
+                || !Boolean.TRUE.equals(item.get("required")) || !"string".equals(schema.get("type"))
+                || !"uuid".equals(schema.get("format"))
+                || item.keySet().stream().anyMatch(key -> !Set.of("name", "in", "required", "schema", "description").contains(key))
+                || schema.keySet().stream().anyMatch(key -> !Set.of("type", "format").contains(key)))
+            errors.add("contract.paths." + path + ".parameters: unsupported path parameter shape");
+    }
+
+    private static boolean supportedScalarParameter(Map<String, Object> schema, Map<String, Object> schemas) {
+        if (schema.isEmpty()) return false;
+        Map<String, Object> resolved = schema;
+        if (schema.containsKey("$ref")) {
+            Object ref = schema.get("$ref");
+            if (schema.size() != 1 || !(ref instanceof String reference)
+                    || !reference.startsWith("#/components/schemas/")) return false;
+            resolved = nested(schemas, refName(ref));
+        }
+        if (resolved.isEmpty() || resolved.keySet().stream().anyMatch(key ->
+                !Set.of("type", "format", "enum", "nullable", "description").contains(key))
+                || Boolean.TRUE.equals(resolved.get("nullable"))) return false;
+        String type = String.valueOf(resolved.getOrDefault("type", ""));
+        String format = String.valueOf(resolved.getOrDefault("format", ""));
+        if (resolved.containsKey("enum") && (!(resolved.get("enum") instanceof List<?> values)
+                || values.isEmpty() || !"string".equals(type)
+                || values.stream().anyMatch(value -> !(value instanceof String))
+                || values.stream().distinct().count() != values.size())) return false;
+        return switch (type) {
+            case "string" -> Set.of("", "uuid", "date", "date-time").contains(format);
+            case "integer" -> Set.of("int32", "int64").contains(format);
+            case "number", "boolean" -> format.isEmpty();
+            default -> false;
+        };
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> nested(Map<String, Object> map, String... keys) {
         Object current = map;
@@ -199,10 +300,11 @@ final class PackagedContractLoader {
     }
 
     private static FieldSchema fieldSchema(Map<String, Object> property, Map<String, Object> schemas) {
-        String enumName = refName(property.get("$ref"));
-        Map<String, Object> resolved = enumName.isEmpty() ? property : nested(schemas, enumName);
+        String referencedName = refName(property.get("$ref"));
+        Map<String, Object> resolved = referencedName.isEmpty() ? property : nested(schemas, referencedName);
         Object rawValues = resolved.get("enum");
         List<String> values = rawValues instanceof List<?> list ? list.stream().map(String::valueOf).toList() : List.of();
+        String enumName = values.isEmpty() ? "" : referencedName;
         return new FieldSchema(String.valueOf(resolved.getOrDefault("type", "")),
                 String.valueOf(resolved.getOrDefault("format", "")), enumName, values,
                 Boolean.TRUE.equals(property.get("nullable")) || Boolean.TRUE.equals(resolved.get("nullable")));

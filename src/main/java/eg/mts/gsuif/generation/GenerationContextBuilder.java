@@ -140,7 +140,15 @@ public final class GenerationContextBuilder {
                         errors.add(p + ".requestMapping.body." + field + ": DTO field mapping required");
                 }
                 if (operation.path().contains("{id}") && !"id".equals(request.path("path").path("id").asText())) errors.add(p + ".requestMapping.path.id: required");
-                if (operation.kind().equals("list") && !"status".equals(request.path("query").path("status").asText())) errors.add(p + ".requestMapping.query.status: required");
+                if (operation.kind().equals("list")) {
+                    for (String query : operation.queryFields().keySet())
+                        if (!query.equals(request.path("query").path(query).asText()))
+                            errors.add(p + ".requestMapping.query." + query + ": required");
+                    if (request.path("query").isObject()) request.path("query").fieldNames().forEachRemaining(query -> {
+                        if (!operation.queryFields().containsKey(query))
+                            errors.add(p + ".requestMapping.query." + query + ": absent from contract");
+                    });
+                }
             }
             if (!selected.keySet().equals(seenIds)) errors.add("specification.openApi.bindingOperations: unknown binding ID");
             if (targets != null && targets.contains(Target.CONTROLLER) && seenOperations.size() != operations.size()) errors.add("specification.openApi.bindingOperations: all contract operations required");
