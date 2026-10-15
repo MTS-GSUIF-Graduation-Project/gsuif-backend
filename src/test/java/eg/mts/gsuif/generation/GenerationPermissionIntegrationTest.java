@@ -25,14 +25,21 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,14 +48,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "gsuif.generation.export-root=target/generation-permission-exports")
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
 class GenerationPermissionIntegrationTest {
+
+    private static final Path EXPORT_ROOT = Path.of("target", "generation-permission-exports")
+            .toAbsolutePath().normalize();
+
+    private final MockMvc mvc;
+    private final GenerationExportService exportService;
 
     @Autowired private GenerationApiService service;
     @Autowired private GenerationRunRepository runRepository;
@@ -61,9 +81,22 @@ class GenerationPermissionIntegrationTest {
     @MockitoBean private GenerationWorkflow workflow;
     @MockitoBean private GenerationRunService runs;
 
+    @Autowired
+    GenerationPermissionIntegrationTest(MockMvc mvc, GenerationExportService exportService) {
+        this.mvc = mvc;
+        this.exportService = exportService;
+    }
+
     @AfterEach
-    void clearSecurityContext() {
+    void clearSecurityContext() throws IOException {
         SecurityContextHolder.clearContext();
+        if (Files.exists(EXPORT_ROOT)) {
+            try (var paths = Files.walk(EXPORT_ROOT)) {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
     }
 
     @Test
@@ -174,6 +207,80 @@ class GenerationPermissionIntegrationTest {
                 });
     }
 
+    @Test
+    void exportDeniedWithPageDenied_returns403() throws Exception {
+        Fixture fixture = fixture("export-no-page", "ROLE_EXPORT_NO_PAGE",
+                "ENTITY_ACCESS:GsuifProject", "ENTITY_ACCESS:MetadataVersion");
+        exportService.configure(fixture.projectId(), "local",
+                new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
+        var requestAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        UUID runId = UUID.randomUUID();
+
+        mvc.perform(post("/api/v1/generation/runs/{id}/exports/{name}", runId, "local")
+                        .with(authentication(requestAuthentication)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.statusCode").value(403))
+                .andExpect(jsonPath("$.status").value("FORBIDDEN"));
+
+        assertThat(EXPORT_ROOT.resolve(fixture.projectId().toString())).doesNotExist();
+        verify(runs, never()).findById(any());
+    }
+
+    @Test
+    void exportDeniedWithMetadataVersionDenied_returns403() throws Exception {
+        Fixture fixture = fixture("export-no-version", "ROLE_EXPORT_NO_VERSION",
+                "ENTITY_ACCESS:GsuifProject", "ENTITY_ACCESS:GsuifPage");
+        exportService.configure(fixture.projectId(), "local",
+                new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
+        var requestAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        UUID runId = UUID.randomUUID();
+
+        mvc.perform(post("/api/v1/generation/runs/{id}/exports/{name}", runId, "local")
+                        .with(authentication(requestAuthentication)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.statusCode").value(403))
+                .andExpect(jsonPath("$.status").value("FORBIDDEN"));
+
+        assertThat(EXPORT_ROOT.resolve(fixture.projectId().toString())).doesNotExist();
+        verify(runs, never()).findById(any());
+    }
+
+    @Test
+    void runDetailsDeniedWithPageDenied_returns403() throws Exception {
+        fixture("run-no-page", "ROLE_RUN_NO_PAGE", "ENTITY_ACCESS:MetadataVersion");
+        var requestAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        UUID runId = UUID.randomUUID();
+
+        mvc.perform(get("/api/v1/generation/runs/{id}", runId)
+                        .with(authentication(requestAuthentication)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.statusCode").value(403));
+
+        verify(runs, never()).findById(any());
+    }
+
+    @Test
+    void runDetailsSuccessWithBothPermissions() throws Exception {
+        authenticate("admin", "ROLE_ADMIN");
+        var requestAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        UUID runId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        GenerationRun run = mock(GenerationRun.class);
+        MetadataVersion version = mock(MetadataVersion.class);
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
+        when(run.getId()).thenReturn(runId);
+        when(run.getStatus()).thenReturn(GenerationRunStatus.SUCCESS);
+        when(run.getCreatedAt()).thenReturn(Instant.parse("2026-10-15T00:00:00Z"));
+        when(run.getUpdatedAt()).thenReturn(Instant.parse("2026-10-15T00:00:01Z"));
+        when(run.getMetadataVersion()).thenReturn(version);
+        when(version.getId()).thenReturn(versionId);
+
+        mvc.perform(get("/api/v1/generation/runs/{id}", runId)
+                        .with(authentication(requestAuthentication)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.id").value(runId.toString()));
+    }
+
     private Fixture fixture(String username, String roleName, String... permissionCodes) {
         GsuifProject project = new GsuifProject();
         project.setName("Generation permission " + UUID.randomUUID());
@@ -193,7 +300,7 @@ class GenerationPermissionIntegrationTest {
         createUserWithPermissions(username, roleName, permissionCodes);
         authenticate(username, roleName);
         entityManager.flush();
-        return new Fixture(username, page.getId(), version.getId());
+        return new Fixture(username, project.getId(), page.getId(), version.getId());
     }
 
     private void createUserWithPermissions(String username, String roleName, String... permissionCodes) {
@@ -230,5 +337,5 @@ class GenerationPermissionIntegrationTest {
                 new GenerationSpecification("1.0.0", "com.example.fixture", null, null, null, null));
     }
 
-    private record Fixture(String username, UUID pageId, UUID versionId) { }
+    private record Fixture(String username, UUID projectId, UUID pageId, UUID versionId) { }
 }

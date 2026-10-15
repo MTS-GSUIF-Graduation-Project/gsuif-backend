@@ -15,6 +15,7 @@ import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -152,6 +153,16 @@ class GenerationApiServiceTest {
         assertTrue(detail.validationScope().passedTargets().isEmpty());
         assertEquals(List.of("ANGULAR"), detail.validationScope().notValidatedTargets());
         assertThrows(ResourceNotFoundException.class, () -> service.run(UUID.randomUUID()));
+    }
+
+    @Test void runDeniedWhenPageAccessDenied() {
+        UUID runId = UUID.randomUUID();
+        doThrow(new AccessDeniedException("Entity access denied: GsuifPage"))
+                .when(permissionChecker).requireEntityAccess(eq("GsuifPage"), any());
+
+        assertThrows(AccessDeniedException.class, () -> service.run(runId));
+
+        verify(runs, never()).findById(any());
     }
 
     private static GenerationSpecification specification() {

@@ -74,6 +74,8 @@ public class GenerationExportService {
     public ExportLocation export(UUID runId, String name) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         permissionChecker.requireEntityAccess("GsuifProject", authentication);
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
+        permissionChecker.requireEntityAccess("MetadataVersion", authentication);
         safeName(name);
         var run = runs.findById(runId).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
         UUID projectId = run.getMetadataVersion().getPage().getProject().getId();

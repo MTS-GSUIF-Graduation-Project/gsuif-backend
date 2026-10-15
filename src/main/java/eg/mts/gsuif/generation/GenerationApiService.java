@@ -102,6 +102,7 @@ public class GenerationApiService {
     @Loggable
     public GenerationApiDtos.RunDetails run(UUID id) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
         permissionChecker.requireEntityAccess("MetadataVersion", authentication);
         var run = runs.findById(id).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
         var linked = artifacts.findAllByGenerationRunIdOrderByRelativePathAsc(id).stream()

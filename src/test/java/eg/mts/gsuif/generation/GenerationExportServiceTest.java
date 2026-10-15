@@ -124,7 +124,7 @@ class GenerationExportServiceTest {
         verifyNoInteractions(runs, artifacts, projects);
     }
 
-    @Test void exportWithoutProjectAccessDoesNotCreateExportFiles() throws Exception {
+    @Test void exportDeniedWhenProjectAccessDenied() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(
                 UsernamePasswordAuthenticationToken.authenticated("no-project-access", "n/a", List.of()));
         var runs = mock(GenerationRunService.class);
@@ -143,7 +143,45 @@ class GenerationExportServiceTest {
         verifyNoInteractions(runs, artifacts, projects);
     }
 
-    @Test void adminCanConfigureAndExport() throws Exception {
+    @Test void exportDeniedWhenPageAccessDenied() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("no-page-access", "n/a", List.of()));
+        var runs = mock(GenerationRunService.class);
+        var artifacts = mock(GeneratedArtifactRepository.class);
+        var projects = mock(GsuifProjectRepository.class);
+        var permissionChecker = mock(EntityPermissionChecker.class);
+        doThrow(new AccessDeniedException("Entity access denied: GsuifPage"))
+                .when(permissionChecker).requireEntityAccess(eq("GsuifPage"), any());
+        var service = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissionChecker);
+
+        assertThrows(AccessDeniedException.class, () -> service.export(UUID.randomUUID(), "local"));
+
+        verify(runs, never()).findById(any());
+        try (var entries = Files.list(temp)) {
+            assertTrue(entries.findAny().isEmpty());
+        }
+    }
+
+    @Test void exportDeniedWhenMetadataVersionAccessDenied() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("no-version-access", "n/a", List.of()));
+        var runs = mock(GenerationRunService.class);
+        var artifacts = mock(GeneratedArtifactRepository.class);
+        var projects = mock(GsuifProjectRepository.class);
+        var permissionChecker = mock(EntityPermissionChecker.class);
+        doThrow(new AccessDeniedException("Entity access denied: MetadataVersion"))
+                .when(permissionChecker).requireEntityAccess(eq("MetadataVersion"), any());
+        var service = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissionChecker);
+
+        assertThrows(AccessDeniedException.class, () -> service.export(UUID.randomUUID(), "local"));
+
+        verify(runs, never()).findById(any());
+        try (var entries = Files.list(temp)) {
+            assertTrue(entries.findAny().isEmpty());
+        }
+    }
+
+    @Test void exportSuccessWithAllPermissions() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(
                 UsernamePasswordAuthenticationToken.authenticated("admin", "n/a", List.of()));
         UUID projectId = UUID.randomUUID();
@@ -174,10 +212,17 @@ class GenerationExportServiceTest {
 
         service.configure(projectId, "local",
                 new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
+        clearInvocations(permissionChecker);
         Path folder = Path.of(java.net.URI.create(service.export(runId, "local").location()));
 
+        assertTrue(Files.exists(folder.resolve(path)));
         assertArrayEquals(bytes, Files.readAllBytes(folder.resolve(path)));
-        verify(permissionChecker, times(2)).requireEntityAccess(eq("GsuifProject"),
+        var ordered = inOrder(permissionChecker);
+        ordered.verify(permissionChecker).requireEntityAccess(eq("GsuifProject"),
+                same(SecurityContextHolder.getContext().getAuthentication()));
+        ordered.verify(permissionChecker).requireEntityAccess(eq("GsuifPage"),
+                same(SecurityContextHolder.getContext().getAuthentication()));
+        ordered.verify(permissionChecker).requireEntityAccess(eq("MetadataVersion"),
                 same(SecurityContextHolder.getContext().getAuthentication()));
     }
 }
