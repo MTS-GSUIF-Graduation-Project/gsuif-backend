@@ -86,6 +86,15 @@ class ContractPreflightTest {
         assertTrue(transportSource.contains("service.delete(id)"));
         assertTrue(transportSource.contains("name = \"status\", required = false"));
         assertFalse(transportSource.contains("StockUnit"));
+        var scaffold = new CompleteBackendRuntimeRenderer(registry)
+                .render(descriptor, GenerationFilePlan.forDescriptor(descriptor));
+        assertTrue(scaffold.containsKey("contracts/asset-ticket-api-2.0.0.yaml"));
+        String runtimeSources = scaffold.entrySet().stream()
+                .filter(e -> !e.getKey().startsWith("contracts/"))
+                .map(e -> new String(e.getValue(), java.nio.charset.StandardCharsets.UTF_8))
+                .reduce("", String::concat);
+        assertTrue(runtimeSources.contains("asset-ticket-generated-backend"));
+        assertFalse(runtimeSources.contains("StockUnit"));
     }
 
     @Test void renamedOperationsAndNullableFieldPassAllOutputPreflights() throws Exception {
