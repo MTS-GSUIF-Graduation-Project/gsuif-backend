@@ -13,6 +13,7 @@ import eg.mts.gsuif.repository.GsuifUserRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,9 +63,18 @@ public class GenerationApiService {
         if (versionId == null) throw new ResourceNotFoundException("Page has no selected metadata version");
         MetadataVersion version = versions.findByIdAndPageId(versionId, request.pageId())
                 .orElseThrow(() -> new ResourceNotFoundException("Selected metadata version not found"));
-        var completed = workflow.generateAndRecord(UUID.randomUUID(), version, user,
-                request.specification(), targets, "spring-angular",
-                PackagedConsumerInputs.forBuild(request.specification(), targets));
+        UUID attemptId = UUID.randomUUID();
+        Map<String, byte[]> inputs;
+        try {
+            inputs = PackagedConsumerInputs.forBuild(request.specification(), targets);
+        } catch (GenerationValidationException ex) {
+            throw ex; // Unsupported client input does not reserve an attempt.
+        } catch (RuntimeException ex) {
+            workflow.recordPreparationFailure(attemptId, version, user, request.specification(), targets, "spring-angular");
+            throw new IllegalStateException("Preparation failure was not recorded");
+        }
+        var completed = workflow.generateAndRecord(attemptId, version, user,
+                request.specification(), targets, "spring-angular", inputs);
         List<GenerationApiDtos.TextArtifact> generated = completed.result().artifacts().stream()
                 .map(a -> new GenerationApiDtos.TextArtifact(a.relativePath(),
                         new String(a.bytes(), StandardCharsets.UTF_8), a.sha256(),
@@ -94,6 +104,21 @@ public class GenerationApiService {
         return new GenerationApiDtos.RunDetails(run.getId(), run.getStatus().name(),
                 run.getCreatedAt(), run.getUpdatedAt(), run.getMetadataVersion().getId(), linked,
                 run.getCompileExitCode(), run.getCompileOutput(), run.getTestExitCode(), run.getTestOutput(), validationScope);
+    }
+
+    @Transactional(readOnly = true)
+    public GenerationApiDtos.FailedAttempt failedAttempt(UUID id, String username) {
+        if (username == null || username.isBlank())
+            throw new InsufficientAuthenticationException("Authentication required");
+        var run = runs.findById(id).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
+        if (run.getTriggeringUser() == null || !username.equals(run.getTriggeringUser().getUsername()))
+            throw new AccessDeniedException("Generation run access denied");
+        if (run.getStatus() != eg.mts.gsuif.entity.GenerationRunStatus.FAILED)
+            throw new ResourceNotFoundException("Failed generation attempt not found");
+        // SCRUM-61's EntityPermissionChecker is not in this worktree. A run owner must
+        // not receive version-linked diagnostics until both GsuifPage and MetadataVersion
+        // ENTITY_ACCESS checks can run here. Keep this service path closed until integration.
+        throw new AccessDeniedException("Generation diagnostic access unavailable");
     }
 
     private static GenerationApiDtos.ValidationScope validationScope(List<String> paths, String status,

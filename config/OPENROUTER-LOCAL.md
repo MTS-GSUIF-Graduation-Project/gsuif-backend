@@ -1,0 +1,11 @@
+# Local OpenRouter runtime configuration
+
+This setup prepares the GSUIF backend for later OpenRouter integration. The adapter and live model qualification are not part of this increment. Generated applications do not use these variables.
+
+On Windows, run `scripts/Save-OpenRouterKey.ps1` interactively once. It prompts with masked input and writes DPAPI-encrypted ciphertext to `%APPDATA%\GSUIF\openrouter-key.dpapi`, outside this repository and bound to the current Windows user. The script restricts file access to that user. Repeat the command to rotate the key; do not paste it into a terminal command, chat, repository file, CI log or issue.
+
+Copy `config/openrouter.local.example.ps1` to `config/openrouter.local.ps1` and set `OPENROUTER_MODEL` to the explicitly chosen model. The example contains no secret. The local copy and `*.dpapi` files are ignored by Git. The provisional `qwen/qwen3-coder:free` value still requires a bounded live qualification in a later increment.
+
+Start the backend from the same Windows account with `scripts/Invoke-OpenRouterLocal.ps1 -BackendCommand <backend executable> -BackendArguments <arguments>`. The loader reads and decrypts the user-bound file in memory, sets `OPENROUTER_API_KEY` for the launched process, and restores the caller's original key and model presence and values on success or error. It rejects a pre-existing key without changing it. The local model file must not set an API key. The backend receives both variables from the launcher; nested qualification processes launched by that backend inherit them. An independently launched process must use the loader again. Spring maps them to `gsuif.generation.openrouter.api-key` and `.model`; neither has an operational default. A local `.env` file is not loaded automatically.
+
+For a presence-only check, launch a child through the loader. For example, `.\scripts\Invoke-OpenRouterLocal.ps1 -BackendCommand powershell.exe -BackendArguments @('-NoProfile', '-Command', 'if (-not $env:OPENROUTER_API_KEY -or -not $env:OPENROUTER_MODEL) { exit 1 }')` checks inside the launched child and prints neither value. An unrelated terminal or the caller after cleanup does not inherit the temporary values. Ordinary CI uses mocks and does not need the key. Deployment-platform runtime-secret wiring remains deferred until hosting is selected.

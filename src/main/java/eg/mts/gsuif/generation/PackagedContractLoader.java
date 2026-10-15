@@ -16,9 +16,11 @@ final class PackagedContractLoader {
     record Operation(String verb, String path, String kind, String request, Set<String> requestFields,
                      CrudAction action) { }
     record UpdateField(boolean required, boolean nullable) { }
+    record FieldSchema(String type, String format, String enumName, List<String> values, boolean nullable) { }
     record Contract(Map<String, Object> api, Map<String, Operation> operations,
                     Map<String, Object> dtoProperties, Map<String, List<String>> enums,
-                    PackagedContractRegistry.Entry descriptor, Map<String, UpdateField> updateFields) { }
+                    PackagedContractRegistry.Entry descriptor, Map<String, UpdateField> updateFields,
+                    Map<String, FieldSchema> updateSchemas, Map<String, FieldSchema> dtoSchemas) { }
 
     @SuppressWarnings("unchecked")
     Contract load(OpenApiSpec spec, List<String> errors) {
@@ -156,11 +158,16 @@ final class PackagedContractLoader {
             Map<String, Object> updateProperties = nested(updateSchema, "properties");
             List<String> updateRequired = (List<String>) updateSchema.getOrDefault("required", List.of());
             Map<String, UpdateField> updateFields = new LinkedHashMap<>();
+            Map<String, FieldSchema> updateSchemas = new LinkedHashMap<>();
             for (var field : updateProperties.entrySet()) {
                 Map<String, Object> property = nested(updateProperties, field.getKey());
                 updateFields.put(field.getKey(), new UpdateField(updateRequired.contains(field.getKey()),
                         Boolean.TRUE.equals(property.get("nullable"))));
+                updateSchemas.put(field.getKey(), fieldSchema(property, schemas));
             }
+            Map<String, FieldSchema> dtoSchemas = new LinkedHashMap<>();
+            for (var field : nested(nested(schemas, dto), "properties").entrySet())
+                dtoSchemas.put(field.getKey(), fieldSchema(nested(nested(schemas, dto), "properties", field.getKey()), schemas));
             if (descriptor.fullUpdate()) {
                 if (updateFields.isEmpty() || !updateFields.keySet().equals(Set.copyOf(updateRequired)))
                     errors.add("contract.update: every editable field must be required for full update");
@@ -171,7 +178,7 @@ final class PackagedContractLoader {
                         errors.add("contract.update." + field + ": absent from response DTO");
             }
             return new Contract(Map.copyOf(api), Map.copyOf(operations), nested(nested(schemas, dto), "properties"),
-                    Map.copyOf(enums), descriptor, Map.copyOf(updateFields));
+                    Map.copyOf(enums), descriptor, Map.copyOf(updateFields), Map.copyOf(updateSchemas), Map.copyOf(dtoSchemas));
         } catch (Exception ex) {
             errors.add("specification.openApi.contractId (" + spec.contractId() + "): packaged contract "
                     + resource + " has an unsupported or unreadable shape (" + ex.getClass().getSimpleName() + ")");
@@ -189,6 +196,16 @@ final class PackagedContractLoader {
     private static String refName(Object ref) {
         if (!(ref instanceof String value)) return "";
         return value.substring(value.lastIndexOf('/') + 1);
+    }
+
+    private static FieldSchema fieldSchema(Map<String, Object> property, Map<String, Object> schemas) {
+        String enumName = refName(property.get("$ref"));
+        Map<String, Object> resolved = enumName.isEmpty() ? property : nested(schemas, enumName);
+        Object rawValues = resolved.get("enum");
+        List<String> values = rawValues instanceof List<?> list ? list.stream().map(String::valueOf).toList() : List.of();
+        return new FieldSchema(String.valueOf(resolved.getOrDefault("type", "")),
+                String.valueOf(resolved.getOrDefault("format", "")), enumName, values,
+                Boolean.TRUE.equals(property.get("nullable")) || Boolean.TRUE.equals(resolved.get("nullable")));
     }
 
     private static boolean validErrorEnvelope(Map<String, Object> schema) {

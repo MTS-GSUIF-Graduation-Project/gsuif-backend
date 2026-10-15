@@ -48,6 +48,8 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+*.dpapi
+/config/openrouter.local.ps1
 
 # Pilot local validation caches
 /.pilot-cache/

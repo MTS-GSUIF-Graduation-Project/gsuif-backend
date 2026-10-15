@@ -10,6 +10,10 @@ server:
   port: 8080
 
 gsuif:
+  generation:
+    openrouter:
+      api-key: ${OPENROUTER_API_KEY:}
+      model: ${OPENROUTER_MODEL:}
   security:
     mode: prod # Options: dev (open endpoints for testing) | test | prod (enforced JWT)
     jwt:

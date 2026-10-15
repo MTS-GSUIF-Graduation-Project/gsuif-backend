@@ -125,6 +125,42 @@ class ContractPreflightTest {
         assertTrue(error.diagnostics().stream().anyMatch(s -> s.contains("unsupported type")));
     }
 
+    @Test void backendRejectsContractStringMappedToIntegerWithoutAngularComponents() throws Exception {
+        var spec = gadgetSpec(true);
+        var fields = new ArrayList<>(spec.entity().fields());
+        fields.set(0, new FieldSpec("title", "title", "Integer", false, null, null));
+        var changed = new GenerationSpecification(spec.specVersion(), spec.basePackage(),
+                new EntitySpec("Gadget", "gadget", fields, false), spec.openApi(),
+                spec.operationRoles(), spec.angular());
+        var error = assertThrows(GenerationValidationException.class,
+                () -> new GenerationCapabilityPreflight(builder(gadgetRegistry()), gadgetRegistry())
+                        .check(version(bindings()), changed, GenerationCapabilityPreflight.OutputMode.BACKEND));
+        assertTrue(error.diagnostics().stream().anyMatch(s -> s.contains("contract.update.title: type or format differs")),
+                error.diagnostics().toString());
+        assertTrue(error.diagnostics().stream().anyMatch(s -> s.contains("contract.dto.title: type or format differs")),
+                error.diagnostics().toString());
+    }
+
+    @Test void backendChecksFormatsAndEnumsWithoutAngularComponents() throws Exception {
+        var spec = gadgetSpec(true);
+        var preflight = new GenerationCapabilityPreflight(builder(gadgetRegistry()), gadgetRegistry());
+        var fields = new ArrayList<>(spec.entity().fields());
+        fields.set(0, new FieldSpec("title", "title", "UUID", false, null, null));
+        var wrongFormat = new GenerationSpecification(spec.specVersion(), spec.basePackage(),
+                new EntitySpec("Gadget", "gadget", fields, false), spec.openApi(), spec.operationRoles(), spec.angular());
+        var error = assertThrows(GenerationValidationException.class,
+                () -> preflight.check(version(bindings()), wrongFormat, GenerationCapabilityPreflight.OutputMode.BACKEND));
+        assertTrue(error.diagnostics().stream().anyMatch(s -> s.contains("contract.update.title: type or format differs")));
+
+        fields = new ArrayList<>(spec.entity().fields());
+        fields.set(1, new FieldSpec("status", "status", "String", false, 40, null));
+        var wrongEnum = new GenerationSpecification(spec.specVersion(), spec.basePackage(),
+                new EntitySpec("Gadget", "gadget", fields, false), spec.openApi(), spec.operationRoles(), spec.angular());
+        error = assertThrows(GenerationValidationException.class,
+                () -> preflight.check(version(bindings()), wrongEnum, GenerationCapabilityPreflight.OutputMode.BACKEND));
+        assertTrue(error.diagnostics().stream().anyMatch(s -> s.contains("contract.update.status: unexpected contract enum")));
+    }
+
     private PackagedContractRegistry gadgetRegistry() {
         return new PackagedContractRegistry("/generation/gadget-contracts.yaml");
     }

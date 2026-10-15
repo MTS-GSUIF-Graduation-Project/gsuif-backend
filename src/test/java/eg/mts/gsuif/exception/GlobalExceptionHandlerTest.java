@@ -35,10 +35,104 @@ import static org.mockito.Mockito.when;
 class GlobalExceptionHandlerTest {
 
     private GlobalExceptionHandler handler;
+    private eg.mts.gsuif.generation.GenerationRunService runs;
 
     @BeforeEach
     void setUp() {
-        handler = new GlobalExceptionHandler();
+        runs = mock(eg.mts.gsuif.generation.GenerationRunService.class);
+        handler = new GlobalExceptionHandler(runs);
+    }
+
+    @Test
+    void generationFailureUsesPersistedHeadersAndCleanErrorMap() {
+        UUID runId = UUID.randomUUID();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("owner", "n/a",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_USER"))));
+        try {
+            when(runs.persistedFailure(runId, "owner")).thenReturn(java.util.Optional.of(
+                    new eg.mts.gsuif.generation.GenerationRunService.PersistedFailure(runId,
+                            eg.mts.gsuif.generation.GenerationFailureStage.CONFIG,
+                            eg.mts.gsuif.generation.GenerationFailureCode.CONFIG_MISSING)));
+            // The exception carries different values; only the persisted stage/code may be returned.
+            var response = handler.handleGenerationStage(new eg.mts.gsuif.generation.GenerationStageException(
+                    eg.mts.gsuif.generation.GenerationFailureStage.AI,
+                    eg.mts.gsuif.generation.GenerationFailureCode.MODEL_UNAVAILABLE, runId));
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+            assertThat(response.getHeaders().getFirst("X-Generation-Run-Id")).isEqualTo(runId.toString());
+            assertThat(response.getHeaders().getFirst("X-Generation-Failure-Stage")).isEqualTo("CONFIG");
+            assertThat(response.getHeaders().getFirst("X-Generation-Failure-Code")).isEqualTo("CONFIG_MISSING");
+            assertThat(response.getBody().body()).isNull();
+            assertThat(response.getBody().errors()).containsOnlyKeys("_global");
+            assertThat(response.getBody().errors()).doesNotContainKeys("runId", "failureStage", "failureCode");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    void missingOrFailedDiagnosticLookupKeepsSafeResponseWithoutHeaders() {
+        UUID runId = UUID.randomUUID();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("owner", "n/a",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_USER"))));
+        try {
+            var ex = new eg.mts.gsuif.generation.GenerationStageException(
+                    eg.mts.gsuif.generation.GenerationFailureStage.AI,
+                    eg.mts.gsuif.generation.GenerationFailureCode.MODEL_UNAVAILABLE, runId);
+            var missing = handler.handleGenerationStage(ex);
+            assertThat(missing.getHeaders().toSingleValueMap()).doesNotContainKeys("X-Generation-Run-Id",
+                    "X-Generation-Failure-Stage", "X-Generation-Failure-Code");
+            assertThat(missing.getBody().errors()).containsOnlyKeys("_global");
+            when(runs.persistedFailure(runId, "owner")).thenThrow(new IllegalStateException("private provider output"));
+            var lookupFailure = handler.handleGenerationStage(ex);
+            assertThat(lookupFailure.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+            assertThat(lookupFailure.getHeaders().toSingleValueMap()).doesNotContainKeys("X-Generation-Run-Id",
+                    "X-Generation-Failure-Stage", "X-Generation-Failure-Code");
+            assertThat(lookupFailure.getBody().errors()).containsOnlyKeys("_global");
+            assertThat(lookupFailure.getBody().toString()).doesNotContain("private provider output");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    void persistedValidationFailureUsesClean400AndSavedHeaders() {
+        UUID runId = UUID.randomUUID();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("owner", "n/a",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_USER"))));
+        try {
+            when(runs.persistedFailure(runId, "owner")).thenReturn(java.util.Optional.of(
+                    new eg.mts.gsuif.generation.GenerationRunService.PersistedFailure(runId,
+                            eg.mts.gsuif.generation.GenerationFailureStage.CONTRACT,
+                            eg.mts.gsuif.generation.GenerationFailureCode.VALIDATION_FAILED)));
+            var response = handler.handleGenerationValidation(
+                    new eg.mts.gsuif.generation.GenerationValidationException(
+                            List.of("private provider response"), runId));
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(response.getHeaders().getFirst("X-Generation-Run-Id")).isEqualTo(runId.toString());
+            assertThat(response.getHeaders().getFirst("X-Generation-Failure-Stage")).isEqualTo("CONTRACT");
+            assertThat(response.getHeaders().getFirst("X-Generation-Failure-Code")).isEqualTo("VALIDATION_FAILED");
+            assertThat(response.getBody().body()).isNull();
+            assertThat(response.getBody().errors()).containsOnlyKeys("_global");
+            assertThat(response.getBody().toString()).doesNotContain("private provider response");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    void anonymousAndAuthorizationFailuresNeverReceiveTrackingHeaders() {
+        UUID runId = UUID.randomUUID();
+        var ex = new eg.mts.gsuif.generation.GenerationStageException(
+                eg.mts.gsuif.generation.GenerationFailureStage.AI,
+                eg.mts.gsuif.generation.GenerationFailureCode.MODEL_UNAVAILABLE, runId);
+        assertThat(handler.handleGenerationStage(ex).getHeaders().toSingleValueMap()).isEmpty();
+        var denied = handler.handleGenerationAccessDenied(new org.springframework.security.access.AccessDeniedException("private"));
+        assertThat(denied.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(denied.getHeaders().toSingleValueMap()).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(runs);
     }
 
     @Test

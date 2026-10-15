@@ -40,15 +40,51 @@ final class GenerationCapabilityPreflight {
             for (FieldSpec field : specification.entity().fields()) fields.put(field.name(), field);
             if (!fields.keySet().equals(contract.updateFields().keySet()))
                 errors.add("contract.update: editable fields must match explicit entity fields");
+            @SuppressWarnings("unchecked")
+            List<String> dtoRequired = (List<String>) contract.api().getOrDefault("dtoRequired", List.of());
             for (var update : contract.updateFields().entrySet()) {
                 FieldSpec field = fields.get(update.getKey());
                 if (!update.getValue().required())
                     errors.add("contract.update." + update.getKey() + ": editable field must be required");
-                if (field != null && field.nullable() != update.getValue().nullable())
-                    errors.add("contract.update." + update.getKey() + ": nullability differs from entity field");
+                if (!dtoRequired.contains(update.getKey()))
+                    errors.add("contract.dto." + update.getKey() + ": response field must be required");
+                if (field != null) {
+                    compatible(field, contract.updateSchemas().get(update.getKey()), "contract.update." + update.getKey(), errors);
+                    compatible(field, contract.dtoSchemas().get(update.getKey()), "contract.dto." + update.getKey(), errors);
+                    var requestSchema = contract.updateSchemas().get(update.getKey());
+                    var responseSchema = contract.dtoSchemas().get(update.getKey());
+                    if (requestSchema != null && responseSchema != null
+                            && !requestSchema.values().equals(responseSchema.values()))
+                        errors.add("contract.dto." + update.getKey() + ": enum values differ from update request");
+                }
             }
         }
         if (!errors.isEmpty()) throw new GenerationValidationException(errors);
         return context;
+    }
+
+    private static void compatible(FieldSpec entity, PackagedContractLoader.FieldSchema schema,
+            String path, List<String> errors) {
+        if (schema == null) { errors.add(path + ": field missing from contract"); return; }
+        if (entity.nullable() != schema.nullable()) errors.add(path + ": nullability differs from entity field");
+        String javaType = entity.javaType();
+        String expected = switch (javaType) {
+            case "String" -> "string:";
+            case "UUID" -> "string:uuid";
+            case "LocalDate" -> "string:date";
+            case "LocalDateTime" -> "string:date-time";
+            case "Integer" -> "integer:int32";
+            case "Long" -> "integer:int64";
+            case "BigDecimal" -> "number:";
+            case "Boolean" -> "boolean:";
+            default -> entity.enumType() == null ? "unsupported" : "string:";
+        };
+        if (!expected.equals(schema.type() + ":" + schema.format()))
+            errors.add(path + ": type or format differs from entity field");
+        if (entity.enumType() == null) {
+            if (!schema.enumName().isEmpty() || !schema.values().isEmpty())
+                errors.add(path + ": unexpected contract enum");
+        } else if (!entity.enumType().equals(schema.enumName()) || schema.values().isEmpty())
+            errors.add(path + ": enum differs from entity field");
     }
 }

@@ -152,6 +152,43 @@ class GenerationApiServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> service.run(UUID.randomUUID()));
     }
 
+    @Test void failedAttemptIsClosedUntilScrum61ResourcePermissionsCanBeEnforced() {
+        UUID id = UUID.randomUUID();
+        GenerationRun run = mock(GenerationRun.class);
+        GsuifUser owner = mock(GsuifUser.class);
+        when(runs.findById(id)).thenReturn(Optional.of(run));
+        when(run.getTriggeringUser()).thenReturn(owner);
+        when(owner.getUsername()).thenReturn("owner");
+        when(run.getStatus()).thenReturn(GenerationRunStatus.FAILED);
+
+        assertThrows(org.springframework.security.authentication.InsufficientAuthenticationException.class,
+                () -> service.failedAttempt(id, null));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> service.failedAttempt(id, "other"));
+        // Ownership alone cannot substitute for either SCRUM-61 resource permission.
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> service.failedAttempt(id, "owner"));
+        // Claimed authorities for Page only, Version only, or both cannot bypass
+        // the absent SCRUM-61 database-backed checker. These are fail-closed tests,
+        // not a substitute for the positive integration test after SCRUM-61 lands.
+        for (List<String> codes : List.of(
+                List.of("ENTITY_ACCESS:GsuifPage"),
+                List.of("ENTITY_ACCESS:MetadataVersion"),
+                List.of("ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion"))) {
+            var context = org.springframework.security.core.context.SecurityContextHolder.getContext();
+            context.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                    "owner", "n/a", codes.stream()
+                    .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new).toList()));
+            try {
+                assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                        () -> service.failedAttempt(id, "owner"));
+            } finally {
+                org.springframework.security.core.context.SecurityContextHolder.clearContext();
+            }
+        }
+        verifyNoInteractions(artifacts);
+    }
+
     private static GenerationSpecification specification() {
         return new GenerationSpecification("1.0.0", "com.example.fixture", null, null, null, null);
     }

@@ -5,6 +5,10 @@ import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.generation.GenerationApiService;
 import eg.mts.gsuif.generation.GenerationExportService;
 import eg.mts.gsuif.generation.GenerationValidationException;
+import eg.mts.gsuif.generation.GenerationRunService;
+import eg.mts.gsuif.generation.GenerationStageException;
+import eg.mts.gsuif.generation.GenerationFailureStage;
+import eg.mts.gsuif.generation.GenerationFailureCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -25,7 +29,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -36,6 +42,7 @@ class GenerationControllerIntegrationTest {
     @Autowired MockMvc mvc;
     @MockitoBean GenerationApiService service;
     @MockitoBean GenerationExportService exports;
+    @MockitoBean GenerationRunService runs;
 
     @Test void generateReturnsCreatedEnvelopeAndArtifactText() throws Exception {
         UUID page = UUID.randomUUID(), run = UUID.randomUUID(), version = UUID.randomUUID();
@@ -53,7 +60,10 @@ class GenerationControllerIntegrationTest {
                 .andExpect(jsonPath("$.body.artifacts[0].content").value("class Thing {}"))
                 .andExpect(jsonPath("$.body.artifacts[0].sha256").value("abc"))
                 .andExpect(jsonPath("$.body.validationScope.passedTargets[0]").value("JAVA_COMPILE"))
-                .andExpect(jsonPath("$.body.validationScope.notValidatedTargets[0]").value("ANGULAR"));
+                .andExpect(jsonPath("$.body.validationScope.notValidatedTargets[0]").value("ANGULAR"))
+                .andExpect(header().doesNotExist("X-Generation-Run-Id"))
+                .andExpect(header().doesNotExist("X-Generation-Failure-Stage"))
+                .andExpect(header().doesNotExist("X-Generation-Failure-Code"));
     }
 
     @Test void missingSpecificationIsRejectedBeforeService() throws Exception {
@@ -71,7 +81,49 @@ class GenerationControllerIntegrationTest {
                         .content("{\"pageId\":\"" + UUID.randomUUID() + "\",\"generationType\":\"OTHER\",\"specification\":{\"specVersion\":\"1.0.0\"}}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.statusCode").value(400))
-                .andExpect(jsonPath("$.errors._global").value("generationType: unsupported value"));
+                .andExpect(jsonPath("$.errors._global").value("generationType: unsupported value"))
+                .andExpect(header().doesNotExist("X-Generation-Run-Id"));
+    }
+
+    @Test void persistedGenerationFailureReturnsOnlySavedTrackingHeaders() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(service.generate(any(), eq("esraa.abdelrazek")))
+                .thenThrow(new GenerationStageException(GenerationFailureStage.AI,
+                        GenerationFailureCode.MODEL_UNAVAILABLE, runId));
+        when(runs.persistedFailure(runId, "esraa.abdelrazek")).thenReturn(java.util.Optional.of(
+                new GenerationRunService.PersistedFailure(runId, GenerationFailureStage.CONFIG,
+                        GenerationFailureCode.CONFIG_MISSING)));
+        mvc.perform(post("/api/v1/generation/generate").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pageId\":\"" + UUID.randomUUID() + "\",\"generationType\":\"ENTITY\",\"specification\":{\"specVersion\":\"1.0.0\"}}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(header().string("X-Generation-Run-Id", runId.toString()))
+                .andExpect(header().string("X-Generation-Failure-Stage", "CONFIG"))
+                .andExpect(header().string("X-Generation-Failure-Code", "CONFIG_MISSING"))
+                .andExpect(jsonPath("$.body").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.errors._global").value("Generation attempt failed"))
+                .andExpect(jsonPath("$.errors.runId").doesNotExist())
+                .andExpect(jsonPath("$.errors.failureStage").doesNotExist())
+                .andExpect(jsonPath("$.errors.failureCode").doesNotExist());
+    }
+
+    @Test void persistedContractFailureReturnsClean400WithSavedTrackingHeaders() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(service.generate(any(), eq("esraa.abdelrazek")))
+                .thenThrow(new GenerationValidationException(List.of("private provider text"), runId));
+        when(runs.persistedFailure(runId, "esraa.abdelrazek")).thenReturn(java.util.Optional.of(
+                new GenerationRunService.PersistedFailure(runId, GenerationFailureStage.CONTRACT,
+                        GenerationFailureCode.VALIDATION_FAILED)));
+        mvc.perform(post("/api/v1/generation/generate").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pageId\":\"" + UUID.randomUUID() + "\",\"generationType\":\"ENTITY\",\"specification\":{\"specVersion\":\"1.0.0\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string("X-Generation-Run-Id", runId.toString()))
+                .andExpect(header().string("X-Generation-Failure-Stage", "CONTRACT"))
+                .andExpect(header().string("X-Generation-Failure-Code", "VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.body").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.errors._global").value("Generation request failed validation"))
+                .andExpect(jsonPath("$.errors.runId").doesNotExist())
+                .andExpect(jsonPath("$.errors.failureStage").doesNotExist())
+                .andExpect(jsonPath("$.errors.failureCode").doesNotExist());
     }
 
     @Test void providersAndPersistedRunDetailsAreWrapped() throws Exception {
@@ -101,6 +153,29 @@ class GenerationControllerIntegrationTest {
         mvc.perform(get("/api/v1/generation/runs/{id}", id))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.statusCode").value(404));
+    }
+
+    @Test void failedAttemptEndpointReturnsStandard403WhileResourcePolicyIsUnavailable() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(service.failedAttempt(id, "esraa.abdelrazek"))
+                .thenThrow(new org.springframework.security.access.AccessDeniedException("Generation diagnostic access unavailable"));
+        mvc.perform(get("/api/v1/generation/runs/{id}/failure", id))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.statusCode").value(403))
+                .andExpect(jsonPath("$.clientMessage").value("Access denied"))
+                .andExpect(jsonPath("$.body").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.errors").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(header().doesNotExist("X-Generation-Run-Id"))
+                .andExpect(header().doesNotExist("X-Generation-Failure-Stage"))
+                .andExpect(header().doesNotExist("X-Generation-Failure-Code"));
+    }
+
+    @Test void anonymousCannotReachFailedAttemptEndpoint() throws Exception {
+        mvc.perform(get("/api/v1/generation/runs/{id}/failure", UUID.randomUUID()).with(anonymous()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.statusCode").value(401));
+        verifyNoInteractions(service);
     }
 
     @Test void invalidDestinationTypesReturnValidationEnvelope() throws Exception {

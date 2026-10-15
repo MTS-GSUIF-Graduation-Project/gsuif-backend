@@ -89,6 +89,7 @@ public class OpenApiIntegrationTest {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertEquals(Set.of("POST /api/v1/generation/generate", "GET /api/v1/generation/providers",
                 "GET /api/v1/generation/runs/{id}",
+                "GET /api/v1/generation/runs/{id}/failure",
                 "GET /api/v1/generation/runs/{id}/artifacts/download",
                 "PUT /api/v1/generation/projects/{projectId}/destinations/{name}",
                 "POST /api/v1/generation/runs/{id}/exports/{name}",
@@ -96,6 +97,16 @@ public class OpenApiIntegrationTest {
         assertAllOperationsProtected(generationDocs);
         assertFalse(generationDocs.at("/paths/~1api~1v1~1generation~1generate/post/requestBody/content/application~1json/schema")
                 .isMissingNode(), "Generate request schema missing");
+        for (String responseCode : Set.of("400", "500")) {
+            JsonNode headers = generationDocs.at("/paths/~1api~1v1~1generation~1generate/post/responses/"
+                    + responseCode + "/headers");
+            for (String name : Set.of("X-Generation-Run-Id", "X-Generation-Failure-Stage",
+                    "X-Generation-Failure-Code")) {
+                assertFalse(headers.path(name).isMissingNode(),
+                        "Generation " + responseCode + " response must document " + name + "; actual responses: "
+                                + generationDocs.at("/paths/~1api~1v1~1generation~1generate/post/responses"));
+            }
+        }
 
         // Auth API Group
         String authApiJson = mockMvc.perform(get("/v3/api-docs/auth-api"))

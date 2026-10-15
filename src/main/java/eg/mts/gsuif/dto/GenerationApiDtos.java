@@ -37,4 +37,7 @@ public final class GenerationApiDtos {
                              UUID metadataVersionId, List<LinkedArtifact> artifacts,
                              Integer compileExitCode, String compileOutput,
                              Integer testExitCode, String testOutput, ValidationScope validationScope) { }
+
+    public record FailedAttempt(UUID runId, UUID attemptId, UUID metadataVersionId,
+                                String status, String failureStage, String failureCode) { }
 }

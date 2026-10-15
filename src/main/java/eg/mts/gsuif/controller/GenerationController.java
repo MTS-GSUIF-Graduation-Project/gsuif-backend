@@ -44,10 +44,26 @@ public class GenerationController {
             description = "Uses the page's selected immutable metadata version and an explicit versioned specification.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Run recorded"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid generation input"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page or selected version not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid generation input. Tracking headers appear only for a persisted failed attempt owned by the requester.",
+                    content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)),
+                    headers = {
+                            @io.swagger.v3.oas.annotations.headers.Header(name = "X-Generation-Run-Id", description = "UUID of the persisted failed attempt; absent for preflight failures", schema = @io.swagger.v3.oas.annotations.media.Schema(type = "string", format = "uuid")),
+                            @io.swagger.v3.oas.annotations.headers.Header(name = "X-Generation-Failure-Stage", description = "Bounded stage saved on the failed attempt", schema = @io.swagger.v3.oas.annotations.media.Schema(type = "string")),
+                            @io.swagger.v3.oas.annotations.headers.Header(name = "X-Generation-Failure-Code", description = "Bounded code saved on the failed attempt", schema = @io.swagger.v3.oas.annotations.media.Schema(type = "string"))
+                    }),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Generation failed after attempt reservation. Tracking headers appear only for a persisted failed attempt owned by the requester.",
+                    content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)),
+                    headers = {
+                            @io.swagger.v3.oas.annotations.headers.Header(name = "X-Generation-Run-Id", description = "UUID of the persisted failed attempt", schema = @io.swagger.v3.oas.annotations.media.Schema(type = "string", format = "uuid")),
+                            @io.swagger.v3.oas.annotations.headers.Header(name = "X-Generation-Failure-Stage", description = "Bounded stage saved on the failed attempt", schema = @io.swagger.v3.oas.annotations.media.Schema(type = "string")),
+                            @io.swagger.v3.oas.annotations.headers.Header(name = "X-Generation-Failure-Code", description = "Bounded code saved on the failed attempt", schema = @io.swagger.v3.oas.annotations.media.Schema(type = "string"))
+                    }),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Page or selected version not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized",
+                    content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "415", description = "Unsupported Media Type",
+                    content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = eg.mts.gsuif.dto.ErrorApiResponse.class)))
     })
-    @ApiCommonWriteResponses
     public ResponseEntity<ApiResponse<GenerationApiDtos.CreatedRun>> generate(
             @Valid @RequestBody GenerationApiDtos.GenerateRequest request, Authentication authentication) {
         var result = service.generate(request, authentication == null ? null : authentication.getName());
@@ -68,6 +84,15 @@ public class GenerationController {
     @ApiCommonResponses
     public ApiResponse<GenerationApiDtos.RunDetails> run(@PathVariable UUID id) {
         return ApiResponse.success(service.run(id), "Generation run retrieved");
+    }
+
+    @GetMapping("/runs/{id}/failure")
+    @Operation(summary = "Inspect a failed generation attempt", operationId = "getFailedGenerationAttempt",
+            description = "Unavailable until SCRUM-61 Page and MetadataVersion permissions are enforced together with run ownership.")
+    @ApiCommonResponses
+    public ApiResponse<GenerationApiDtos.FailedAttempt> failedAttempt(@PathVariable UUID id, Authentication authentication) {
+        return ApiResponse.success(service.failedAttempt(id, authentication == null ? null : authentication.getName()),
+                "Failed generation attempt retrieved");
     }
 
     @GetMapping("/runs/{id}/artifacts/download")
