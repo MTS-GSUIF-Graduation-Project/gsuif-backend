@@ -126,10 +126,14 @@ final class CompleteBackendApiRenderer {
                     case UPDATE -> "id, request"; default -> throw new IllegalStateException(); };
         String roleExpression = "hasAnyAuthority(" + op.roles().stream().map(role -> "'" + role.name() + "'")
                 .sorted().reduce((a, b) -> a + ", " + b).orElseThrow() + ")";
-        return Map.of("operationId", op.operationId(), "verb", verb, "path", op.path(),
-                "serviceMethod", SERVICE_METHODS.get(action), "arguments", arguments,
-                "payloadType", payloadType, "status", op.successStatus(), "roles", roleExpression,
-                "parameters", List.copyOf(params), "delete", action == CrudAction.DELETE);
+        Map<String, Object> model = new TreeMap<>();
+        model.put("operationId", op.operationId()); model.put("verb", verb); model.put("path", op.path());
+        model.put("serviceMethod", SERVICE_METHODS.get(action)); model.put("arguments", arguments);
+        model.put("payloadType", payloadType); model.put("status", op.successStatus());
+        model.put("roles", roleExpression); model.put("parameters", List.copyOf(params));
+        model.put("delete", action == CrudAction.DELETE);
+        model.put("item", item); model.put("write", action == CrudAction.CREATE || action == CrudAction.UPDATE);
+        return Collections.unmodifiableMap(model);
     }
 
     private static String scalarType(PackagedContractLoader.FieldSchema schema) {

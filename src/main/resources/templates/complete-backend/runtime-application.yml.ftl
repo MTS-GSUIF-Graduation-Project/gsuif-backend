@@ -18,6 +18,11 @@ spring:
   sql:
     init:
       mode: never
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 ---
 spring:
   config:
@@ -25,3 +30,18 @@ spring:
       on-profile: dev
 server:
   address: 127.0.0.1
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

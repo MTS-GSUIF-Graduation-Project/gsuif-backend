@@ -198,6 +198,7 @@ class CompleteBackendObservabilityTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         Map<String, byte[]> sources = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         sources.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        sources.putAll(new CompleteBackendOpenApiRenderer().render(descriptor, plan));
         sources.putAll(new CompleteBackendErrorRenderer().render(descriptor, plan));
         sources.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan));
         Path classes = Files.createDirectories(scratch.resolve("classes"));

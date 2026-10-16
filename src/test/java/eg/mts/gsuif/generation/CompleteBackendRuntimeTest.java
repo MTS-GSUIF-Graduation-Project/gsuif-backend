@@ -44,7 +44,7 @@ class CompleteBackendRuntimeTest {
         assertTrue(pom.contains("<version>4.0.8</version>"));
         assertTrue(pom.contains("<artifactId>flyway-database-postgresql</artifactId><version>11.14.1</version>"));
         assertTrue(pom.contains("<artifactId>postgresql</artifactId><version>42.7.13</version>"));
-        assertTrue(pom.contains("<artifactId>springdoc-openapi-starter-webmvc-api</artifactId><version>3.0.3</version>"));
+        assertTrue(pom.contains("<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId><version>3.0.3</version>"));
         assertTrue(pom.contains("<artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version>"));
         assertTrue(pom.contains("<artifactId>maven-surefire-plugin</artifactId><version>3.5.6</version>"));
         assertFalse(pom.contains("hibernate-envers"));

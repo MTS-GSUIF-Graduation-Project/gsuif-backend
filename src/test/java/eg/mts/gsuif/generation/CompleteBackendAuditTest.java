@@ -439,6 +439,9 @@ class CompleteBackendAuditTest {
         sources.putAll(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         sources.putAll(new CompleteBackendSecurityRenderer().render(descriptor, plan));
         sources.putAll(new CompleteBackendErrorRenderer().render(descriptor, plan));
+        sources.putAll(new CompleteBackendOpenApiRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith("ErrorApiResponse.java"))
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         sources.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
                 .filter(entry -> entry.getKey().endsWith("SafeFailureLogger.java"))
                 .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));

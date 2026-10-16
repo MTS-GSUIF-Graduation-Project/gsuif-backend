@@ -111,6 +111,9 @@ class CompleteBackendTransportTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var source = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         source.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        source.putAll(new CompleteBackendOpenApiRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(e -> e.getKey().endsWith("ErrorApiResponse.java"))
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         source.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
                 .filter(e -> e.getKey().endsWith("Loggable.java")).collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         Path classes = Files.createDirectories(scratch.resolve("classes"));
@@ -196,6 +199,9 @@ class CompleteBackendTransportTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var source = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         source.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        source.putAll(new CompleteBackendOpenApiRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(e -> e.getKey().endsWith("ErrorApiResponse.java"))
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         source.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
                 .filter(e -> e.getKey().endsWith("Loggable.java")).collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         String api = new String(source.entrySet().stream().filter(e -> e.getKey().endsWith("StockUnitApi.java"))
@@ -259,6 +265,9 @@ class CompleteBackendTransportTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var files = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         files.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        files.putAll(new CompleteBackendOpenApiRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(e -> e.getKey().endsWith("ErrorApiResponse.java"))
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         files.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
                 .filter(e -> e.getKey().endsWith("Loggable.java")).collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         Path classes = Files.createDirectories(scratch.resolve("classes"));

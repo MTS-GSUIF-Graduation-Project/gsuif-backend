@@ -71,6 +71,8 @@ record GenerationFilePlan(List<Entry> entries) {
                     "filter/CorrelationIdFilter.java", "logging/SensitiveDataMasker.java",
                     "logging/MaskingPatternLayout.java", "logging/SafeFailureLogger.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "generated-app observability");
+            for (String relative : List.of("api/ErrorApiResponse.java", "config/OpenApiConfig.java"))
+                add(entries, root + relative, Owner.DETERMINISTIC, "generated-app runtime OpenAPI documentation");
             for (String relative : List.of("audit/AuditActorConfig.java", "audit/GeneratedAppAuditorAware.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "generated-app audit actor");
             if (descriptor.enversAudited())

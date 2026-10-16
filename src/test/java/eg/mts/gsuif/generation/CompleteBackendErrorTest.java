@@ -105,6 +105,9 @@ class CompleteBackendErrorTest {
                 .render(gadget, GenerationFilePlan.forDescriptor(gadget)).files());
         gadgetSources.putAll(new CompleteBackendApiRenderer().render(gadget, GenerationFilePlan.forDescriptor(gadget)));
         gadgetSources.putAll(gadgetFiles);
+        gadgetSources.putAll(new CompleteBackendOpenApiRenderer().render(gadget, GenerationFilePlan.forDescriptor(gadget))
+                .entrySet().stream().filter(e -> e.getKey().endsWith("ErrorApiResponse.java"))
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         gadgetSources.putAll(new CompleteBackendObservabilityRenderer().render(gadget, GenerationFilePlan.forDescriptor(gadget))
                 .entrySet().stream().filter(e -> e.getKey().endsWith("Loggable.java") || e.getKey().endsWith("SafeFailureLogger.java"))
                 .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
@@ -154,6 +157,9 @@ class CompleteBackendErrorTest {
         var files = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         files.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
         files.putAll(new CompleteBackendErrorRenderer().render(descriptor, plan));
+        files.putAll(new CompleteBackendOpenApiRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(e -> e.getKey().endsWith("ErrorApiResponse.java"))
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         files.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan)
                 .entrySet().stream().filter(e -> e.getKey().endsWith("Loggable.java") || e.getKey().endsWith("SafeFailureLogger.java"))
                 .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));

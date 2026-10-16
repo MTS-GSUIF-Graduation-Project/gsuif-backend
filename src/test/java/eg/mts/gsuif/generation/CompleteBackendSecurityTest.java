@@ -905,6 +905,7 @@ class CompleteBackendSecurityTest {
         sources.putAll(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         sources.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
         sources.putAll(new CompleteBackendErrorRenderer().render(descriptor, plan));
+        sources.putAll(new CompleteBackendOpenApiRenderer().render(descriptor, plan));
         sources.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
                 .filter(entry -> entry.getKey().endsWith(".java"))
                 .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
