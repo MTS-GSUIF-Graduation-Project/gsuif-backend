@@ -521,7 +521,8 @@ class CompleteOutputDescriptorTest {
         var failure = assertThrows(IllegalArgumentException.class,
                 () -> new CompleteBackendInitialMigrationRenderer().render(audited,
                         GenerationFilePlan.forDescriptor(audited)));
-        assertTrue(failure.getMessage().contains("audit CHECK constraint"), failure.getMessage());
+        assertEquals("Invalid or reserved PostgreSQL identifier for audit CHECK constraint",
+                failure.getMessage());
     }
 
     private static CompleteOutputDescriptor auditedSchemaDescriptor(CompleteOutputDescriptor d, String table) {

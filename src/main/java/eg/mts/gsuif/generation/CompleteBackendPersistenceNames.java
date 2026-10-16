@@ -34,12 +34,16 @@ final class CompleteBackendPersistenceNames {
             add(used, auditTable);
             add(used, "pk_" + auditTable);
             add(used, "fk_" + auditTable + "_rev");
-            for (String check : enumChecks) add(used, check + AUDIT_SUFFIX);
+            for (String check : enumChecks) add(used, check + AUDIT_SUFFIX, "audit CHECK constraint");
         }
     }
 
     private static void add(Set<String> used, String name) {
-        CompleteBackendEntitySchema.identifier(name, "generated relation or constraint");
+        add(used, name, "generated relation or constraint");
+    }
+
+    private static void add(Set<String> used, String name, String purpose) {
+        CompleteBackendEntitySchema.identifier(name, purpose);
         if (!used.add(name))
             throw new IllegalArgumentException("Generated relation-name collision: " + name);
     }
