@@ -66,12 +66,12 @@ class CompleteBackendSecurityTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var renderer = new CompleteBackendSecurityRenderer();
         var files = renderer.render(descriptor, plan);
-        assertEquals(6, files.size());
+        assertEquals(7, files.size());
         assertTrue(files.keySet().stream().allMatch(path -> path.contains("/security/") && path.endsWith(".java")));
         String all = files.values().stream().map(bytes -> new String(bytes, StandardCharsets.UTF_8))
                 .reduce("", String::concat);
         assertFalse(all.contains("AssetTicket") || all.contains("Gadget") || all.contains("WorkOrder"));
-        assertFalse(all.contains("OPENROUTER_API_KEY") || all.contains("GENERATED_APP_JWT_SECRET"));
+        assertFalse(all.contains("OPENROUTER_API_KEY"));
         assertTrue(all.contains("findByUsername(String username)"));
         assertTrue(all.contains("@Transactional(readOnly = true)"));
         assertTrue(all.contains("httpBasic(basic -> basic.disable())"));
@@ -83,10 +83,10 @@ class CompleteBackendSecurityTest {
         files.values().iterator().next()[0] ^= 1;
         assertEquals(original, renderer.render(descriptor, plan).values().iterator().next()[0]);
         var absent = new GenerationFilePlan(plan.entries().stream()
-                .filter(entry -> !entry.path().endsWith("/security/AccountIdentityService.java")).toList());
+                .filter(entry -> !entry.path().endsWith("/security/JwtService.java")).toList());
         assertThrows(IllegalArgumentException.class, () -> renderer.render(descriptor, absent));
         var wrong = new GenerationFilePlan(plan.entries().stream().map(entry ->
-                entry.path().endsWith("/security/SecurityConfig.java")
+                entry.path().endsWith("/security/JwtService.java")
                         ? new Entry(entry.path(), Owner.MODEL, entry.purpose()) : entry).toList());
         assertThrows(IllegalArgumentException.class, () -> renderer.render(descriptor, wrong));
         var frontend = fixture.preflight().describe(fixture.version(fixture.snapshot("condition")),
@@ -134,12 +134,17 @@ class CompleteBackendSecurityTest {
             var idField = accountType.getDeclaredField("id"); idField.setAccessible(true); idField.set(account, id);
             accountType.getMethod("setUsername", String.class).invoke(account, "Alice");
             accountType.getMethod("setEnabled", boolean.class).invoke(account, true);
+            accountType.getMethod("setPasswordHash", String.class).invoke(account,
+                    new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode("disposable-password"));
             Set roles = (Set) accountType.getMethod("getRoles").invoke(account);
             roles.add(Enum.valueOf((Class) loader.loadClass(root + "UserAccount$Role"), "ROLE_USER"));
             Object repository = mock(repoType);
             when(repoType.getMethod("findByUsername", String.class).invoke(repository, "Alice"))
                     .thenReturn(Optional.of(account));
-            Object service = serviceType.getConstructor(repoType).newInstance(repository);
+            when(repoType.getMethod("findById", UUID.class).invoke(repository, id))
+                    .thenReturn(Optional.of(account));
+        Object service = serviceType.getConstructor(repoType, org.springframework.security.crypto.password.PasswordEncoder.class)
+                .newInstance(repository, new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder());
             UserDetailsService users = (UserDetailsService) service;
             var principal = users.loadUserByUsername("Alice");
             assertEquals("Alice", principal.getUsername());
@@ -155,11 +160,226 @@ class CompleteBackendSecurityTest {
             assertTrue(transaction.readOnly());
             assertNotNull(repoType.getMethod("findByUsername", String.class)
                     .getAnnotation(org.springframework.data.jpa.repository.EntityGraph.class));
+            assertNotNull(repoType.getMethod("findById", UUID.class)
+                    .getAnnotation(org.springframework.data.jpa.repository.EntityGraph.class));
+            var authenticate = serviceType.getMethod("authenticate", String.class, String.class);
+            var verified = authenticate.invoke(service, "Alice", "disposable-password");
+            assertEquals(id, verified.getClass().getMethod("id").invoke(verified));
+            assertNull(verified.getClass().getMethod("getPassword").invoke(verified));
+            assertFalse(verified.toString().contains("disposable-password"));
+            assertFalse(verified.toString().contains("$2"));
+            assertTrue(serviceType.getMethod("authenticate", String.class, String.class)
+                    .getAnnotation(org.springframework.transaction.annotation.Transactional.class).readOnly());
+            assertTrue(serviceType.getMethod("loadById", UUID.class)
+                    .getAnnotation(org.springframework.transaction.annotation.Transactional.class).readOnly());
+            for (String username : List.of("alice", "missing")) {
+                var rejected = assertThrows(InvocationTargetException.class,
+                        () -> authenticate.invoke(service, username, "disposable-password"));
+                assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class,
+                        rejected.getCause());
+                assertEquals("Authentication failed", rejected.getCause().getMessage());
+            }
+            var wrongPassword = assertThrows(InvocationTargetException.class,
+                    () -> authenticate.invoke(service, "Alice", "wrong"));
+            assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class,
+                    wrongPassword.getCause());
+            assertEquals("Authentication failed", wrongPassword.getCause().getMessage());
+            Object current = serviceType.getMethod("loadById", UUID.class).invoke(service, id);
+            assertEquals(id, current.getClass().getMethod("id").invoke(current));
+            assertTrue(((org.springframework.security.core.userdetails.UserDetails) current).getAuthorities().isEmpty());
+            assertTrue(((UserDetailsService) service).loadUserByUsername("Alice").getAuthorities().isEmpty());
+            when(repoType.getMethod("findByUsername", String.class).invoke(repository, "broken"))
+                    .thenThrow(new IllegalStateException("disposable repository outage"));
+            var infrastructure = assertThrows(InvocationTargetException.class,
+                    () -> authenticate.invoke(service, "broken", "disposable-password"));
+            assertInstanceOf(IllegalStateException.class, infrastructure.getCause());
             assertThrows(org.springframework.security.core.userdetails.UsernameNotFoundException.class,
                     () -> users.loadUserByUsername("alice"));
             accountType.getMethod("setEnabled", boolean.class).invoke(account, false);
+            var disabled = assertThrows(InvocationTargetException.class,
+                    () -> authenticate.invoke(service, "Alice", "disposable-password"));
+            assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class, disabled.getCause());
+            assertEquals("Authentication failed", disabled.getCause().getMessage());
+            var disabledId = assertThrows(InvocationTargetException.class,
+                    () -> serviceType.getMethod("loadById", UUID.class).invoke(service, id));
+            assertInstanceOf(org.springframework.security.core.userdetails.UsernameNotFoundException.class,
+                    disabledId.getCause());
             assertThrows(org.springframework.security.core.userdetails.UsernameNotFoundException.class,
                     () -> users.loadUserByUsername("Alice"));
+        }
+    }
+
+    @Test void credentialVerificationAlwaysChecksBcryptBeforeSafeAuthenticationFailure(@TempDir Path scratch)
+            throws Exception {
+        try (var loader = compiled(scratch)) {
+            String root = "com.example.inventory.security.";
+            Class<?> accountType = loader.loadClass(root + "UserAccount");
+            Class<?> repoType = loader.loadClass(root + "UserAccountRepository");
+            Class<?> serviceType = loader.loadClass(root + "AccountIdentityService");
+            Object account = accountType.getConstructor().newInstance();
+            accountType.getMethod("setUsername", String.class).invoke(account, "Alice");
+            accountType.getMethod("setPasswordHash", String.class).invoke(account, "real-test-hash");
+            Object repository = mock(repoType);
+            when(repoType.getMethod("findByUsername", String.class).invoke(repository, "disabled"))
+                    .thenReturn(Optional.of(account));
+            when(repoType.getMethod("findByUsername", String.class).invoke(repository, "Alice"))
+                    .thenReturn(Optional.of(account));
+            var passwords = mock(org.springframework.security.crypto.password.PasswordEncoder.class);
+            Object service = serviceType.getConstructor(repoType, org.springframework.security.crypto.password.PasswordEncoder.class)
+                    .newInstance(repository, passwords);
+            var authenticate = serviceType.getMethod("authenticate", String.class, String.class);
+            for (String username : List.of("missing", "disabled")) {
+                var error = assertThrows(InvocationTargetException.class,
+                        () -> authenticate.invoke(service, username, "disposable-password"));
+                assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class,
+                        error.getCause());
+                assertEquals("Authentication failed", error.getCause().getMessage());
+            }
+            accountType.getMethod("setEnabled", boolean.class).invoke(account, true);
+            var wrong = assertThrows(InvocationTargetException.class,
+                    () -> authenticate.invoke(service, "Alice", "disposable-password"));
+            assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class,
+                    wrong.getCause());
+            assertEquals("Authentication failed", wrong.getCause().getMessage());
+            var hashes = org.mockito.ArgumentCaptor.forClass(String.class);
+            verify(passwords, times(3)).matches(eq("disposable-password"), hashes.capture());
+            assertEquals(hashes.getAllValues().get(0), hashes.getAllValues().get(1));
+            assertTrue(hashes.getAllValues().get(0).matches("\\$2[aby]\\$10\\$.{53}"));
+            assertEquals("real-test-hash", hashes.getAllValues().get(2));
+        }
+    }
+
+    @Test void emittedTokenServiceEnforcesClaimsAndClockBoundaries(@TempDir Path scratch) throws Exception {
+        try (var loader = compiled(scratch)) {
+            String root = "com.example.inventory.security.";
+            Class<?> serviceType = loader.loadClass(root + "JwtService");
+            Class<?> principalType = loader.loadClass(root + "AuthenticatedAccount");
+            byte[] fakeKey = new byte[64]; java.util.Arrays.fill(fakeKey, (byte) 7);
+            String fakeSecret = java.util.Base64.getEncoder().encodeToString(fakeKey);
+            var environment = new MockEnvironment().withProperty("GENERATED_APP_JWT_SECRET", fakeSecret);
+            var start = java.time.Instant.parse("2026-10-16T00:00:00Z");
+            var clock = new java.time.Clock() {
+                private java.time.Instant current = start;
+                @Override public java.time.ZoneId getZone() { return java.time.ZoneOffset.UTC; }
+                @Override public java.time.Clock withZone(java.time.ZoneId zone) { return this; }
+                @Override public java.time.Instant instant() { return current; }
+                void advance(java.time.Duration duration) { current = current.plus(duration); }
+            };
+            Object codec = serviceType.getConstructor(org.springframework.core.env.Environment.class, java.time.Clock.class)
+                    .newInstance(environment, clock);
+            UUID id = UUID.randomUUID();
+            Object principal = principalType.getConstructor(UUID.class, String.class, Set.class)
+                    .newInstance(id, "Alice", Set.of());
+            String token = (String) serviceType.getMethod("issue", principalType).invoke(codec, principal);
+            var decoderField = serviceType.getDeclaredField("decoder"); decoderField.setAccessible(true);
+            var decoded = ((org.springframework.security.oauth2.jwt.NimbusJwtDecoder)
+                    decoderField.get(codec)).decode(token);
+            assertEquals(id.toString(), decoded.getSubject());
+            assertEquals("urn:generated-app:com.example.inventory:stock-unit-api:2.0.0", decoded.getClaimAsString("iss"));
+            assertEquals(List.of("com.example.inventory"), decoded.getAudience());
+            assertEquals(start, decoded.getIssuedAt());
+            assertEquals(start, decoded.getNotBefore());
+            assertEquals(start.plusSeconds(900), decoded.getExpiresAt());
+            assertEquals(id, serviceType.getMethod("validate", String.class).invoke(codec, token));
+            assertFalse(codec.toString().contains(fakeSecret));
+            var payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                    java.util.Base64.getUrlDecoder().decode(token.split("\\.")[1]));
+            assertEquals(id.toString(), payload.get("sub").asText());
+            assertEquals("urn:generated-app:com.example.inventory:stock-unit-api:2.0.0", payload.get("iss").asText());
+            assertEquals(List.of("com.example.inventory"), decoded.getAudience());
+            assertEquals(900, payload.get("exp").asLong() - payload.get("iat").asLong());
+            assertEquals(payload.get("iat").asLong(), payload.get("nbf").asLong());
+            var header = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                    java.util.Base64.getUrlDecoder().decode(token.split("\\.")[0]));
+            assertEquals("HS256", header.get("alg").asText());
+            var encoderField = serviceType.getDeclaredField("encoder"); encoderField.setAccessible(true);
+            var encoder = (org.springframework.security.oauth2.jwt.NimbusJwtEncoder) encoderField.get(codec);
+            java.util.function.Function<org.springframework.security.oauth2.jwt.JwtClaimsSet, String> sign = claims ->
+                    encoder.encode(org.springframework.security.oauth2.jwt.JwtEncoderParameters.from(
+                            org.springframework.security.oauth2.jwt.JwsHeader.with(
+                                    org.springframework.security.oauth2.jose.jws.MacAlgorithm.HS256).build(), claims))
+                            .getTokenValue();
+            java.util.function.Function<org.springframework.security.oauth2.jwt.JwtClaimsSet.Builder,
+                    org.springframework.security.oauth2.jwt.JwtClaimsSet.Builder> standard = builder -> builder
+                    .issuer("urn:generated-app:com.example.inventory:stock-unit-api:2.0.0")
+                    .audience(List.of("com.example.inventory")).subject(id.toString())
+                    .issuedAt(start).notBefore(start).expiresAt(start.plusSeconds(900));
+            var hs384Key = new javax.crypto.spec.SecretKeySpec(fakeKey, "HmacSHA384");
+            var hs384Encoder = org.springframework.security.oauth2.jwt.NimbusJwtEncoder.withSecretKey(hs384Key)
+                    .algorithm(org.springframework.security.oauth2.jose.jws.MacAlgorithm.HS384).build();
+            String signedHs384 = hs384Encoder.encode(org.springframework.security.oauth2.jwt.JwtEncoderParameters.from(
+                    org.springframework.security.oauth2.jwt.JwsHeader.with(
+                            org.springframework.security.oauth2.jose.jws.MacAlgorithm.HS384).build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder()).build()))
+                    .getTokenValue();
+            var nonHs256Header = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                    java.util.Base64.getUrlDecoder().decode(signedHs384.split("\\.")[0]));
+            assertEquals("HS384", nonHs256Header.get("alg").asText());
+            assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class,
+                    assertThrows(InvocationTargetException.class,
+                            () -> serviceType.getMethod("validate", String.class).invoke(codec, signedHs384))
+                            .getCause());
+            List<org.springframework.security.oauth2.jwt.JwtClaimsSet> rejectedClaims = List.of(
+                    org.springframework.security.oauth2.jwt.JwtClaimsSet.builder().subject(id.toString()).build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .claims(claims -> claims.remove("iat")).build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .claims(claims -> claims.remove("nbf")).build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .claims(claims -> claims.remove("exp")).build(),
+                    org.springframework.security.oauth2.jwt.JwtClaimsSet.builder()
+                            .issuer("urn:generated-app:com.example.inventory:stock-unit-api:2.0.0")
+                            .audience(List.of("com.example.inventory"))
+                            .issuedAt(start).notBefore(start).expiresAt(start.plusSeconds(900)).build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .issuer("urn:generated-app:other:stock-unit-api:2.0.0").build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .audience(List.of("other-app")).build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .subject("not-a-uuid").build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .notBefore(start.plusSeconds(31)).build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .issuedAt(start.plusSeconds(31)).build(),
+                    standard.apply(org.springframework.security.oauth2.jwt.JwtClaimsSet.builder())
+                            .expiresAt(start.plusSeconds(901)).build());
+            for (var claims : rejectedClaims) {
+                String rejectedToken = sign.apply(claims);
+                assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class,
+                        assertThrows(InvocationTargetException.class,
+                                () -> serviceType.getMethod("validate", String.class).invoke(codec, rejectedToken))
+                                .getCause());
+            }
+            String[] segments = token.split("\\.");
+            String tampered = segments[0] + "." + (segments[1].startsWith("A") ? "B" : "A")
+                    + segments[1].substring(1) + "." + segments[2];
+            assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class,
+                    assertThrows(InvocationTargetException.class,
+                            () -> serviceType.getMethod("validate", String.class).invoke(codec, tampered)).getCause());
+            clock.advance(java.time.Duration.ofMinutes(15).plusSeconds(29));
+            assertEquals(id, serviceType.getMethod("validate", String.class).invoke(codec, token));
+            clock.advance(java.time.Duration.ofSeconds(1));
+            assertInstanceOf(org.springframework.security.authentication.BadCredentialsException.class,
+                    assertThrows(InvocationTargetException.class,
+                            () -> serviceType.getMethod("validate", String.class).invoke(codec, token)).getCause());
+        }
+    }
+
+    @Test void tokenSecretValidationHasNoSecretInFailureAndDevNeedsNoTokenBean(@TempDir Path scratch) throws Exception {
+        try (var loader = compiled(scratch)) {
+            Class<?> serviceType = loader.loadClass("com.example.inventory.security.JwtService");
+            for (String invalid : List.of("", "not-base64!", java.util.Base64.getEncoder().encodeToString(new byte[8]))) {
+                var error = assertThrows(InvocationTargetException.class,
+                        () -> serviceType.getConstructor(org.springframework.core.env.Environment.class)
+                                .newInstance(new MockEnvironment().withProperty("GENERATED_APP_JWT_SECRET", invalid)));
+                assertInstanceOf(IllegalStateException.class, error.getCause());
+                assertEquals("Invalid generated-app JWT secret configuration", error.getCause().getMessage());
+                assertFalse(error.getCause().getMessage().contains(invalid.isEmpty() ? "not-base64!" : invalid));
+            }
+            var missing = assertThrows(InvocationTargetException.class,
+                    () -> serviceType.getConstructor(org.springframework.core.env.Environment.class)
+                            .newInstance(new MockEnvironment()));
+            assertEquals("Invalid generated-app JWT secret configuration", missing.getCause().getMessage());
         }
     }
 
@@ -179,19 +399,23 @@ class CompleteBackendSecurityTest {
                 Class<?> mode = loader.loadClass("com.example.inventory.security.SecurityMode");
                 Class<?> enforced = loader.loadClass("com.example.inventory.security.EnforcedMethodSecurityConfig");
                 Class<?> identity = loader.loadClass("com.example.inventory.security.AccountIdentityService");
+                Class<?> jwt = loader.loadClass("com.example.inventory.security.JwtService");
                 Class<?> repository = loader.loadClass("com.example.inventory.security.UserAccountRepository");
                 for (String profile : List.of("dev", "test", "prod", "default")) {
                     var builder = new SpringApplicationBuilder(
-                            BootProbe.class, security, mode, enforced, identity, HttpProbe.class, MethodProbe.class)
+                            BootProbe.class, security, mode, enforced, identity, jwt, HttpProbe.class, MethodProbe.class)
                             .web(WebApplicationType.SERVLET)
                             .properties("spring.main.banner-mode=off")
                             .initializers(application -> application.getBeanFactory()
                                     .registerSingleton("accountRepositoryProbe", mock(repository)));
-                    try (ConfigurableApplicationContext context = builder.run(
+                    List<String> args = new ArrayList<>(List.of(
                             "--spring.profiles.active=" + (profile.equals("default") ? "" : profile),
                             "--spring.config.location=" + config.toUri(), "--server.port=0",
                             "--spring.main.banner-mode=off", "--logging.level.root=OFF",
-                            "--gsuif.security.probe=true")) {
+                            "--gsuif.security.probe=true"));
+                    if (!profile.equals("dev")) args.add("--GENERATED_APP_JWT_SECRET="
+                            + java.util.Base64.getEncoder().encodeToString(new byte[32]));
+                    try (ConfigurableApplicationContext context = builder.run(args.toArray(String[]::new))) {
                         assertArrayEquals(profile.equals("default") ? new String[0] : new String[] {profile},
                                 context.getEnvironment().getActiveProfiles());
                         if (profile.equals("default"))
@@ -199,6 +423,7 @@ class CompleteBackendSecurityTest {
                         var mvc = MockMvcBuilders.webAppContextSetup((WebApplicationContext) context)
                                 .apply(SecurityMockMvcConfigurers.springSecurity()).build();
                         assertEquals(1, context.getBeansOfType(UserDetailsService.class).size());
+                        assertEquals(profile.equals("dev") ? 0 : 1, context.getBeansOfType(jwt).size());
                         assertNotNull(context.getBean("springSecurityFilterChain"));
                         assertTrue(context.getBeansOfType(UserDetailsService.class).values().stream()
                                 .noneMatch(bean -> bean.getClass().getName().contains("InMemoryUserDetailsManager")));
@@ -261,8 +486,17 @@ class CompleteBackendSecurityTest {
                         assertFalse(basic.containsHeader("WWW-Authenticate"));
                     }
                 }
+                var missingSecret = new SpringApplicationBuilder(
+                        BootProbe.class, security, mode, enforced, identity, jwt, HttpProbe.class, MethodProbe.class)
+                        .web(WebApplicationType.SERVLET)
+                        .initializers(application -> application.getBeanFactory()
+                                .registerSingleton("accountRepositoryProbe", mock(repository)));
+                assertThrows(Exception.class, () -> missingSecret.run(
+                        "--spring.profiles.active=prod", "--spring.config.location=" + config.toUri(),
+                        "--server.port=0", "--spring.main.banner-mode=off", "--logging.level.root=OFF",
+                        "--gsuif.security.probe=true", "--GENERATED_APP_JWT_SECRET="));
                 assertThrows(Exception.class, () -> new SpringApplicationBuilder(
-                        BootProbe.class, security, mode, enforced, identity, HttpProbe.class, MethodProbe.class)
+                        BootProbe.class, security, mode, enforced, identity, jwt, HttpProbe.class, MethodProbe.class)
                         .web(WebApplicationType.SERVLET)
                         .initializers(application -> application.getBeanFactory()
                                 .registerSingleton("accountRepositoryProbe", mock(repository)))

@@ -9,4 +9,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> {
     @EntityGraph(attributePaths = "roles")
     Optional<UserAccount> findByUsername(String username);
+
+    @Override
+    @EntityGraph(attributePaths = "roles")
+    Optional<UserAccount> findById(UUID id);
 }

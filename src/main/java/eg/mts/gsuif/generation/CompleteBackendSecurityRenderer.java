@@ -10,7 +10,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** Emits only the security-mode and account-identity subset; JWT and bootstrap remain deferred. */
+/** Emits the security-mode, account-identity, and token-service subset. */
 final class CompleteBackendSecurityRenderer {
     private static final Map<String, String> TEMPLATES = Map.of(
             "SecurityMode.java", "security-mode.java.ftl",
@@ -18,7 +18,8 @@ final class CompleteBackendSecurityRenderer {
             "EnforcedMethodSecurityConfig.java", "enforced-method-security-config.java.ftl",
             "AuthenticatedAccount.java", "authenticated-account.java.ftl",
             "AccountIdentityService.java", "account-identity-service.java.ftl",
-            "UserAccountRepository.java", "user-account-repository.java.ftl");
+            "UserAccountRepository.java", "user-account-repository.java.ftl",
+            "JwtService.java", "jwt-service.java.ftl");
     private final Configuration templates = new Configuration(Configuration.VERSION_2_3_34);
 
     CompleteBackendSecurityRenderer() {
@@ -40,7 +41,7 @@ final class CompleteBackendSecurityRenderer {
             GenerationArtifactStore.safeRelative(path);
             if (owners.get(path) != Owner.DETERMINISTIC)
                 throw new IllegalArgumentException("Security path absent or incorrectly owned: " + path);
-            emitted.put(path, renderTemplate(template, descriptor.basePackage()));
+            emitted.put(path, renderTemplate(template, descriptor));
         });
         if (emitted.size() != TEMPLATES.size())
             throw new IllegalArgumentException("Security subset differs from required definitions");
@@ -49,11 +50,13 @@ final class CompleteBackendSecurityRenderer {
         return Collections.unmodifiableMap(frozen);
     }
 
-    private byte[] renderTemplate(String name, String packageName) {
+    private byte[] renderTemplate(String name, CompleteOutputDescriptor descriptor) {
         try {
             StringWriter writer = new StringWriter();
             templates.getTemplate("templates/complete-backend/" + name)
-                    .process(Map.of("packageName", packageName), writer);
+                    .process(Map.of("packageName", descriptor.basePackage(),
+                            "contractId", descriptor.contractId(),
+                            "contractVersion", descriptor.contractVersion()), writer);
             return writer.toString().replace("\r\n", "\n").replace('\r', '\n')
                     .getBytes(StandardCharsets.UTF_8);
         } catch (Exception ex) {
