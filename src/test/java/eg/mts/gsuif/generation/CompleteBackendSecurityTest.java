@@ -66,7 +66,7 @@ class CompleteBackendSecurityTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var renderer = new CompleteBackendSecurityRenderer();
         var files = renderer.render(descriptor, plan);
-        assertEquals(7, files.size());
+        assertEquals(11, files.size());
         assertTrue(files.keySet().stream().allMatch(path -> path.contains("/security/") && path.endsWith(".java")));
         String all = files.values().stream().map(bytes -> new String(bytes, StandardCharsets.UTF_8))
                 .reduce("", String::concat);
@@ -76,7 +76,7 @@ class CompleteBackendSecurityTest {
         assertTrue(all.contains("@Transactional(readOnly = true)"));
         assertTrue(all.contains("httpBasic(basic -> basic.disable())"));
         assertTrue(all.contains("formLogin(form -> form.disable())"));
-        assertTrue(all.contains("anyRequest().denyAll()"));
+        assertTrue(all.contains("anyRequest().authenticated()"));
         var again = renderer.render(descriptor, plan);
         for (var path : files.keySet()) assertArrayEquals(files.get(path), again.get(path));
         byte original = files.values().iterator().next()[0];
@@ -89,6 +89,16 @@ class CompleteBackendSecurityTest {
                 entry.path().endsWith("/security/JwtService.java")
                         ? new Entry(entry.path(), Owner.MODEL, entry.purpose()) : entry).toList());
         assertThrows(IllegalArgumentException.class, () -> renderer.render(descriptor, wrong));
+        for (String filename : List.of("AuthController.java", "LoginRequest.java", "LoginResponse.java",
+                "JwtAuthenticationFilter.java")) {
+            var missingNewPath = new GenerationFilePlan(plan.entries().stream()
+                    .filter(entry -> !entry.path().endsWith("/security/" + filename)).toList());
+            assertThrows(IllegalArgumentException.class, () -> renderer.render(descriptor, missingNewPath));
+            var wrongOwner = new GenerationFilePlan(plan.entries().stream().map(entry ->
+                    entry.path().endsWith("/security/" + filename)
+                            ? new Entry(entry.path(), Owner.MODEL, entry.purpose()) : entry).toList());
+            assertThrows(IllegalArgumentException.class, () -> renderer.render(descriptor, wrongOwner));
+        }
         var frontend = fixture.preflight().describe(fixture.version(fixture.snapshot("condition")),
                 fixture.specification(), OutputMode.FRONTEND);
         assertThrows(IllegalArgumentException.class, () -> renderer.render(frontend,
@@ -400,10 +410,11 @@ class CompleteBackendSecurityTest {
                 Class<?> enforced = loader.loadClass("com.example.inventory.security.EnforcedMethodSecurityConfig");
                 Class<?> identity = loader.loadClass("com.example.inventory.security.AccountIdentityService");
                 Class<?> jwt = loader.loadClass("com.example.inventory.security.JwtService");
+                Class<?> auth = loader.loadClass("com.example.inventory.security.AuthController");
                 Class<?> repository = loader.loadClass("com.example.inventory.security.UserAccountRepository");
                 for (String profile : List.of("dev", "test", "prod", "default")) {
                     var builder = new SpringApplicationBuilder(
-                            BootProbe.class, security, mode, enforced, identity, jwt, HttpProbe.class, MethodProbe.class)
+                            BootProbe.class, security, mode, enforced, identity, jwt, auth, HttpProbe.class, MethodProbe.class)
                             .web(WebApplicationType.SERVLET)
                             .properties("spring.main.banner-mode=off")
                             .initializers(application -> application.getBeanFactory()
@@ -424,6 +435,7 @@ class CompleteBackendSecurityTest {
                                 .apply(SecurityMockMvcConfigurers.springSecurity()).build();
                         assertEquals(1, context.getBeansOfType(UserDetailsService.class).size());
                         assertEquals(profile.equals("dev") ? 0 : 1, context.getBeansOfType(jwt).size());
+                        assertEquals(profile.equals("dev") ? 0 : 1, context.getBeansOfType(auth).size());
                         assertNotNull(context.getBean("springSecurityFilterChain"));
                         assertTrue(context.getBeansOfType(UserDetailsService.class).values().stream()
                                 .noneMatch(bean -> bean.getClass().getName().contains("InMemoryUserDetailsManager")));
@@ -457,21 +469,12 @@ class CompleteBackendSecurityTest {
                                 var forbidden = mvc.perform(get("/probe")
                                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
                                                 .authentication(user))).andReturn().getResponse();
-                                assertEquals(403, forbidden.getStatus());
-                                var deniedEnvelope = new com.fasterxml.jackson.databind.ObjectMapper()
-                                        .readTree(forbidden.getContentAsString());
-                                assertEquals(5, deniedEnvelope.size());
-                                assertEquals("FORBIDDEN", deniedEnvelope.get("status").asText());
-                                assertEquals("Access denied", deniedEnvelope.get("clientMessage").asText());
-                                assertEquals(403, deniedEnvelope.get("statusCode").asInt());
-                                assertTrue(deniedEnvelope.get("body").isNull());
-                                assertEquals(1, deniedEnvelope.get("errors").size());
-                                assertEquals("Access denied", deniedEnvelope.get("errors").get("_global").asText());
+                                assertEquals(200, forbidden.getStatus());
                                 var admin = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
                                         "Alice", "unused", List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")));
                                 org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(admin);
                                 assertEquals("ok", context.getBean(MethodProbe.class).admin());
-                                assertEquals(403, mvc.perform(get("/probe")
+                                assertEquals(200, mvc.perform(get("/probe")
                                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
                                                 .authentication(admin))).andReturn().getResponse().getStatus());
                             } finally {
@@ -487,7 +490,7 @@ class CompleteBackendSecurityTest {
                     }
                 }
                 var missingSecret = new SpringApplicationBuilder(
-                        BootProbe.class, security, mode, enforced, identity, jwt, HttpProbe.class, MethodProbe.class)
+                        BootProbe.class, security, mode, enforced, identity, jwt, auth, HttpProbe.class, MethodProbe.class)
                         .web(WebApplicationType.SERVLET)
                         .initializers(application -> application.getBeanFactory()
                                 .registerSingleton("accountRepositoryProbe", mock(repository)));
@@ -496,7 +499,7 @@ class CompleteBackendSecurityTest {
                         "--server.port=0", "--spring.main.banner-mode=off", "--logging.level.root=OFF",
                         "--gsuif.security.probe=true", "--GENERATED_APP_JWT_SECRET="));
                 assertThrows(Exception.class, () -> new SpringApplicationBuilder(
-                        BootProbe.class, security, mode, enforced, identity, jwt, HttpProbe.class, MethodProbe.class)
+                        BootProbe.class, security, mode, enforced, identity, jwt, auth, HttpProbe.class, MethodProbe.class)
                         .web(WebApplicationType.SERVLET)
                         .initializers(application -> application.getBeanFactory()
                                 .registerSingleton("accountRepositoryProbe", mock(repository)))
@@ -510,6 +513,191 @@ class CompleteBackendSecurityTest {
         assertEquals(inheritedActiveProfiles, System.getProperty("spring.profiles.active"));
     }
 
+    @Test void emittedHttpLoginBearerAndCrudDenialUseCurrentAccountState(@TempDir Path scratch) throws Exception {
+        try (var loader = compiled(scratch)) {
+            String base = "com.example.inventory.";
+            Class<?> security = loader.loadClass(base + "security.SecurityConfig");
+            Class<?> mode = loader.loadClass(base + "security.SecurityMode");
+            Class<?> enforced = loader.loadClass(base + "security.EnforcedMethodSecurityConfig");
+            Class<?> identity = loader.loadClass(base + "security.AccountIdentityService");
+            Class<?> jwt = loader.loadClass(base + "security.JwtService");
+            Class<?> auth = loader.loadClass(base + "security.AuthController");
+            Class<?> handler = loader.loadClass(base + "exception.GlobalExceptionHandler");
+            Class<?> controller = loader.loadClass(base + "controller.StockUnitController");
+            Class<?> service = loader.loadClass(base + "service.StockUnitService");
+            Class<?> repository = loader.loadClass(base + "security.UserAccountRepository");
+            Class<?> accountType = loader.loadClass(base + "security.UserAccount");
+            UUID accountId = UUID.randomUUID();
+            Object account = accountType.getConstructor().newInstance();
+            var idField = accountType.getDeclaredField("id"); idField.setAccessible(true);
+            idField.set(account, accountId);
+            accountType.getMethod("setUsername", String.class).invoke(account, "Alice");
+            accountType.getMethod("setEnabled", boolean.class).invoke(account, true);
+            accountType.getMethod("setPasswordHash", String.class).invoke(account,
+                    new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode("disposable-password"));
+            Set roles = (Set) accountType.getMethod("getRoles").invoke(account);
+            Class<? extends Enum> roleType = (Class<? extends Enum>) loader.loadClass(base + "security.UserAccount$Role");
+            roles.add(Enum.valueOf(roleType, "ROLE_USER"));
+            var currentAccount = new java.util.concurrent.atomic.AtomicReference<>(account);
+            Object accounts = mock(repository);
+            when(repository.getMethod("findByUsername", String.class).invoke(accounts, "Alice"))
+                    .thenAnswer(invocation -> Optional.ofNullable(currentAccount.get()));
+            when(repository.getMethod("findById", UUID.class).invoke(accounts, accountId))
+                    .thenAnswer(invocation -> Optional.ofNullable(currentAccount.get()));
+            when(repository.getMethod("findByUsername", String.class).invoke(accounts, "broken"))
+                    .thenThrow(new IllegalStateException("disposable infrastructure diagnostic"));
+            var calls = new java.util.concurrent.atomic.AtomicInteger();
+            UUID itemId = UUID.randomUUID();
+            Class<?> conditionType = loader.loadClass(base + "dto.StockUnitCondition");
+            Object dto = loader.loadClass(base + "dto.StockUnitDto")
+                    .getConstructors()[0].newInstance(itemId, "sample", conditionType.getEnumConstants()[0], null);
+            Object stockService = java.lang.reflect.Proxy.newProxyInstance(loader, new Class<?>[] {service},
+                    (proxy, method, values) -> {
+                        if (method.getDeclaringClass() == Object.class) return method.getName().equals("toString")
+                                ? "stock-service-probe" : null;
+                        calls.incrementAndGet();
+                        return method.getName().equals("getById") ? dto : null;
+                    });
+            var descriptor = descriptor();
+            var runtime = new CompleteBackendRuntimeRenderer(new PackagedContractRegistry(
+                    "/generation/stock-unit-contracts.yaml"))
+                    .render(descriptor, GenerationFilePlan.forDescriptor(descriptor));
+            Path config = scratch.resolve("generated-application.yml");
+            Files.write(config, runtime.get("backend/src/main/resources/application.yml"));
+            byte[] fakeKey = new byte[32]; java.util.Arrays.fill(fakeKey, (byte) 9);
+            String fakeSecret = java.util.Base64.getEncoder().encodeToString(fakeKey);
+            ClassLoader previous = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(loader);
+            try (var context = new SpringApplicationBuilder(BootProbe.class, security, mode, enforced,
+                    identity, jwt, auth, handler, controller)
+                    .web(WebApplicationType.SERVLET)
+                    .initializers(application -> {
+                        application.getBeanFactory().registerSingleton("accountRepositoryProbe", accounts);
+                        application.getBeanFactory().registerSingleton("stockServiceProbe", stockService);
+                    })
+                    .run("--spring.profiles.active=test", "--spring.config.location=" + config.toUri(),
+                            "--server.port=0", "--spring.main.banner-mode=off", "--logging.level.root=OFF",
+                            "--gsuif.security.probe=true", "--GENERATED_APP_JWT_SECRET=" + fakeSecret)) {
+                var mvc = MockMvcBuilders.webAppContextSetup((WebApplicationContext) context)
+                        .apply(SecurityMockMvcConfigurers.springSecurity()).build();
+                String login = "{\"username\":\"Alice\",\"password\":\"disposable-password\"}";
+                var successResult = mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content(login)).andReturn();
+                var success = successResult.getResponse();
+                assertEquals(200, success.getStatus());
+                var body = new com.fasterxml.jackson.databind.ObjectMapper().readTree(success.getContentAsString());
+                assertEquals(5, body.size());
+                assertEquals("OK", body.get("status").asText());
+                assertEquals(200, body.get("statusCode").asInt());
+                assertEquals("Bearer", body.get("body").get("tokenType").asText());
+                assertEquals(900, body.get("body").get("expiresInSeconds").asInt());
+                String token = body.get("body").get("accessToken").asText();
+                assertFalse(token.isBlank());
+                assertNull(success.getHeader("Set-Cookie"));
+                assertNull(successResult.getRequest().getSession(false));
+                Class<?> requestType = loader.loadClass(base + "security.LoginRequest");
+                Class<?> responseType = loader.loadClass(base + "security.LoginResponse");
+                assertFalse(requestType.getConstructor(String.class, String.class)
+                        .newInstance("Alice", "disposable-password").toString().contains("disposable-password"));
+                assertFalse(responseType.getConstructor(String.class).newInstance(token).toString().contains(token));
+                assertInstanceOf(IllegalArgumentException.class,
+                        assertThrows(InvocationTargetException.class,
+                                () -> responseType.getConstructor(String.class).newInstance("")).getCause());
+                org.mockito.Mockito.clearInvocations(accounts);
+                assertSafeEnvelope(mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"Alice\"}")).andReturn().getResponse(), 400);
+                verifyNoInteractions(accounts);
+                assertSafeEnvelope(mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"Alice\",\"password\":\"wrong\"}"))
+                        .andReturn().getResponse(), 401);
+                assertSafeEnvelope(mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"nobody\",\"password\":\"wrong\"}"))
+                        .andReturn().getResponse(), 401);
+                accountType.getMethod("setEnabled", boolean.class).invoke(account, false);
+                assertSafeEnvelope(mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content(login)).andReturn().getResponse(), 401);
+                accountType.getMethod("setEnabled", boolean.class).invoke(account, true);
+                var infrastructure = mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"broken\",\"password\":\"wrong\"}"))
+                        .andReturn().getResponse();
+                assertSafeEnvelope(infrastructure, 500);
+                assertFalse(infrastructure.getContentAsString().contains("infrastructure diagnostic"));
+                String itemPath = "/api/v1/stock-units/" + itemId;
+                assertSafeEnvelope(mvc.perform(get(itemPath)).andReturn().getResponse(), 401);
+                var session = new org.springframework.mock.web.MockHttpSession();
+                var sessionContext = new org.springframework.security.core.context.SecurityContextImpl();
+                sessionContext.setAuthentication(org.springframework.security.authentication
+                        .UsernamePasswordAuthenticationToken.authenticated("stale", null,
+                                List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+                session.setAttribute(org.springframework.security.web.context.HttpSessionSecurityContextRepository
+                        .SPRING_SECURITY_CONTEXT_KEY, sessionContext);
+                assertSafeEnvelope(mvc.perform(get(itemPath).session(session)).andReturn().getResponse(), 401);
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer invalid.token.value"))
+                        .andReturn().getResponse(), 401);
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse(), 403);
+                assertEquals(0, calls.get());
+                roles.clear(); roles.add(Enum.valueOf(roleType, "ROLE_ADMIN"));
+                assertEquals(200, mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse().getStatus());
+                assertEquals(1, calls.get());
+                roles.clear();
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse(), 403);
+                assertEquals(1, calls.get());
+                accountType.getMethod("setEnabled", boolean.class).invoke(account, false);
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse(), 401);
+                accountType.getMethod("setEnabled", boolean.class).invoke(account, true);
+                currentAccount.set(null);
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse(), 401);
+                currentAccount.set(account);
+                var oldClock = java.time.Clock.fixed(java.time.Instant.now().minusSeconds(1000),
+                        java.time.ZoneOffset.UTC);
+                Object oldCodec = jwt.getConstructor(org.springframework.core.env.Environment.class, java.time.Clock.class)
+                        .newInstance(new MockEnvironment().withProperty("GENERATED_APP_JWT_SECRET", fakeSecret), oldClock);
+                Object principal = loader.loadClass(base + "security.AuthenticatedAccount")
+                        .getConstructor(UUID.class, String.class, Set.class).newInstance(accountId, "Alice", Set.of());
+                String expired = (String) jwt.getMethod("issue", principal.getClass()).invoke(oldCodec, principal);
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer " + expired))
+                        .andReturn().getResponse(), 401);
+                when(repository.getMethod("findById", UUID.class).invoke(accounts, accountId))
+                        .thenThrow(new IllegalStateException("disposable infrastructure diagnostic"));
+                var bearerInfrastructure = mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse();
+                assertSafeEnvelope(bearerInfrastructure, 500);
+                assertFalse(bearerInfrastructure.getContentAsString().contains("infrastructure diagnostic"));
+                assertEquals(1, calls.get());
+            } finally {
+                Thread.currentThread().setContextClassLoader(previous);
+                org.springframework.security.core.context.SecurityContextHolder.clearContext();
+            }
+        }
+    }
+
+    private void assertSafeEnvelope(org.springframework.mock.web.MockHttpServletResponse response, int status)
+            throws Exception {
+        assertEquals(status, response.getStatus());
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.getContentAsString());
+        assertEquals(5, json.size());
+        assertEquals(org.springframework.http.HttpStatus.valueOf(status).name(), json.get("status").asText());
+        assertEquals(status, json.get("statusCode").asInt());
+        assertTrue(json.get("body").isNull());
+        assertEquals(1, json.get("errors").size());
+        assertTrue(json.get("errors").has("_global"));
+        String message = switch (status) {
+            case 400 -> "Invalid request";
+            case 401 -> "Authentication required";
+            case 403 -> "Access denied";
+            case 500 -> "Unexpected server error";
+            default -> throw new IllegalArgumentException("Unexpected test status");
+        };
+        assertEquals(message, json.get("clientMessage").asText());
+        assertEquals(message, json.get("errors").get("_global").asText());
+        assertFalse(response.getContentAsString().contains("disposable-password"));
+    }
+
     private boolean isDev(Class<?> mode, MockEnvironment environment) throws Exception {
         environment.setDefaultProfiles("prod");
         if ("dev".equals(environment.getProperty("spring.profiles.active"))) environment.setActiveProfiles("dev");
@@ -521,9 +709,9 @@ class CompleteBackendSecurityTest {
         var descriptor = descriptor();
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         Map<String, byte[]> sources = new TreeMap<>(new CompleteBackendSecurityRenderer().render(descriptor, plan));
-        sources.putAll(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files().entrySet().stream()
-                .filter(entry -> entry.getKey().endsWith("/ApiResponse.java"))
-                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+        sources.putAll(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
+        sources.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        sources.putAll(new CompleteBackendErrorRenderer().render(descriptor, plan));
         sources.putAll(new CompleteBackendInitialMigrationRenderer().render(descriptor, plan).entrySet().stream()
                 .filter(entry -> entry.getKey().endsWith("/UserAccount.java"))
                 .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));

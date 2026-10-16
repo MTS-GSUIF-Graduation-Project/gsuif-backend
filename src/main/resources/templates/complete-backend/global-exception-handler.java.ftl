@@ -55,6 +55,20 @@ public final class GlobalExceptionHandler {
                 Map.of("_global", "Resource not found")));
     }
 
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Void>> unauthenticated(
+            org.springframework.security.core.AuthenticationException exception) {
+        return ResponseEntity.status(401).body(ApiResponse.error(401, "Authentication required",
+                Map.of("_global", "Authentication required")));
+    }
+
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> denied(
+            org.springframework.security.access.AccessDeniedException exception) {
+        return ResponseEntity.status(403).body(ApiResponse.error(403, "Access denied",
+                Map.of("_global", "Access denied")));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> unexpected(Exception exception) {
         if (exception instanceof org.springframework.web.ErrorResponse protocol) {

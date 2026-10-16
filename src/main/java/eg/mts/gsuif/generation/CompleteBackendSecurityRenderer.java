@@ -12,14 +12,18 @@ import java.util.TreeMap;
 
 /** Emits the security-mode, account-identity, and token-service subset. */
 final class CompleteBackendSecurityRenderer {
-    private static final Map<String, String> TEMPLATES = Map.of(
-            "SecurityMode.java", "security-mode.java.ftl",
-            "SecurityConfig.java", "security-config.java.ftl",
-            "EnforcedMethodSecurityConfig.java", "enforced-method-security-config.java.ftl",
-            "AuthenticatedAccount.java", "authenticated-account.java.ftl",
-            "AccountIdentityService.java", "account-identity-service.java.ftl",
-            "UserAccountRepository.java", "user-account-repository.java.ftl",
-            "JwtService.java", "jwt-service.java.ftl");
+    private static final Map<String, String> TEMPLATES = Map.ofEntries(
+            Map.entry("SecurityMode.java", "security-mode.java.ftl"),
+            Map.entry("SecurityConfig.java", "security-config.java.ftl"),
+            Map.entry("EnforcedMethodSecurityConfig.java", "enforced-method-security-config.java.ftl"),
+            Map.entry("AuthenticatedAccount.java", "authenticated-account.java.ftl"),
+            Map.entry("AccountIdentityService.java", "account-identity-service.java.ftl"),
+            Map.entry("UserAccountRepository.java", "user-account-repository.java.ftl"),
+            Map.entry("JwtService.java", "jwt-service.java.ftl"),
+            Map.entry("JwtAuthenticationFilter.java", "jwt-authentication-filter.java.ftl"),
+            Map.entry("AuthController.java", "auth-controller.java.ftl"),
+            Map.entry("LoginRequest.java", "login-request.java.ftl"),
+            Map.entry("LoginResponse.java", "login-response.java.ftl"));
     private final Configuration templates = new Configuration(Configuration.VERSION_2_3_34);
 
     CompleteBackendSecurityRenderer() {

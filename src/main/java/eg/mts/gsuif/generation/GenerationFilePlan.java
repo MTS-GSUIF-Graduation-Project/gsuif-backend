@@ -61,7 +61,9 @@ record GenerationFilePlan(List<Entry> entries) {
                     "security/SecurityMode.java", "security/EnforcedMethodSecurityConfig.java",
                     "security/AuthenticatedAccount.java", "security/AccountIdentityService.java",
                     "security/FirstAdminBootstrap.java", "security/UserAccount.java", "security/UserAccountRepository.java",
-                    "security/AuthController.java", "security/JwtService.java"))
+                    "security/AuthController.java", "security/LoginRequest.java",
+                    "security/LoginResponse.java", "security/JwtAuthenticationFilter.java",
+                    "security/JwtService.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "backend contract or framework");
             if (descriptor.enversAudited())
                 add(entries, root + "audit/AppRevision.java", Owner.DETERMINISTIC, "app-owned Envers revision");
