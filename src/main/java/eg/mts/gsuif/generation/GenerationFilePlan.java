@@ -65,6 +65,8 @@ record GenerationFilePlan(List<Entry> entries) {
                     "security/LoginResponse.java", "security/JwtAuthenticationFilter.java",
                     "security/JwtService.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "backend contract or framework");
+            for (String relative : List.of("audit/AuditActorConfig.java", "audit/GeneratedAppAuditorAware.java"))
+                add(entries, root + relative, Owner.DETERMINISTIC, "generated-app audit actor");
             if (descriptor.enversAudited())
                 add(entries, root + "audit/AppRevision.java", Owner.DETERMINISTIC, "app-owned Envers revision");
             enumNames(descriptor).forEach(enumName ->
