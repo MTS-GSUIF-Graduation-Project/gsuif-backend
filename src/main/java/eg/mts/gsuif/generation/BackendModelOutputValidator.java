@@ -28,9 +28,20 @@ final class BackendModelOutputValidator {
         Reason reason() { return reason; }
     }
     @FunctionalInterface interface Compiler { boolean compile(BackendModelInput input, byte[] source); }
-    record Accepted(String path, byte[] source) {
-        Accepted { source = source.clone(); }
-        @Override public byte[] source() { return source.clone(); }
+    static final class Accepted {
+        private final BackendModelInput invocation;
+        private final String path;
+        private final byte[] source;
+
+        private Accepted(BackendModelInput invocation, String path, byte[] source) {
+            this.invocation = invocation;
+            this.path = path;
+            this.source = source.clone();
+        }
+
+        String path() { return path; }
+        byte[] source() { return source.clone(); }
+        boolean belongsTo(BackendModelInput input) { return invocation == input; }
     }
 
     private static final int MAX_RESPONSE_BYTES = 65536;
@@ -77,7 +88,7 @@ final class BackendModelOutputValidator {
             if (ex instanceof BackendCompileClasspath.Failed) throw ex;
             throw new Rejected(Reason.COMPILE_FAILED);
         }
-        return new Accepted(input.writablePath(), selected);
+        return new Accepted(input, input.writablePath(), selected);
     }
 
     static JsonNode strictJson(ObjectMapper mapper, byte[] bytes) throws IOException {
