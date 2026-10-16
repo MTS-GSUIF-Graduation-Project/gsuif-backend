@@ -164,6 +164,7 @@ class CompleteBackendSecurityTest {
     }
 
     @Test void emittedBootSecurityIsOpenOnlyForLoopbackDevAndHasNoDefaultLogin(@TempDir Path scratch) throws Exception {
+        String inheritedActiveProfiles = System.getProperty("spring.profiles.active");
         try (var loader = compiled(scratch)) {
             var descriptor = descriptor();
             var runtime = new CompleteBackendRuntimeRenderer(new PackagedContractRegistry(
@@ -186,11 +187,15 @@ class CompleteBackendSecurityTest {
                             .properties("spring.main.banner-mode=off")
                             .initializers(application -> application.getBeanFactory()
                                     .registerSingleton("accountRepositoryProbe", mock(repository)));
-                    if (!profile.equals("default")) builder.profiles(profile);
                     try (ConfigurableApplicationContext context = builder.run(
+                            "--spring.profiles.active=" + (profile.equals("default") ? "" : profile),
                             "--spring.config.location=" + config.toUri(), "--server.port=0",
                             "--spring.main.banner-mode=off", "--logging.level.root=OFF",
                             "--gsuif.security.probe=true")) {
+                        assertArrayEquals(profile.equals("default") ? new String[0] : new String[] {profile},
+                                context.getEnvironment().getActiveProfiles());
+                        if (profile.equals("default"))
+                            assertArrayEquals(new String[] {"prod"}, context.getEnvironment().getDefaultProfiles());
                         var mvc = MockMvcBuilders.webAppContextSetup((WebApplicationContext) context)
                                 .apply(SecurityMockMvcConfigurers.springSecurity()).build();
                         assertEquals(1, context.getBeansOfType(UserDetailsService.class).size());
@@ -258,16 +263,17 @@ class CompleteBackendSecurityTest {
                 }
                 assertThrows(Exception.class, () -> new SpringApplicationBuilder(
                         BootProbe.class, security, mode, enforced, identity, HttpProbe.class, MethodProbe.class)
-                        .web(WebApplicationType.SERVLET).profiles("dev")
+                        .web(WebApplicationType.SERVLET)
                         .initializers(application -> application.getBeanFactory()
                                 .registerSingleton("accountRepositoryProbe", mock(repository)))
-                        .run("--spring.config.location=" + config.toUri(), "--server.port=0",
+                        .run("--spring.profiles.active=dev", "--spring.config.location=" + config.toUri(), "--server.port=0",
                                 "--server.address=0.0.0.0", "--spring.main.banner-mode=off",
                                 "--logging.level.root=OFF", "--gsuif.security.probe=true"));
             } finally {
                 Thread.currentThread().setContextClassLoader(previous);
             }
         }
+        assertEquals(inheritedActiveProfiles, System.getProperty("spring.profiles.active"));
     }
 
     private boolean isDev(Class<?> mode, MockEnvironment environment) throws Exception {
