@@ -941,6 +941,95 @@ class CompleteOutputDescriptorTest {
         }
     }
 
+    @Test void emittedRequestsDistinguishRequiredPresenceAndNullWithPinnedJackson(@TempDir Path scratch) throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        var plan = GenerationFilePlan.forDescriptor(descriptor);
+        var files = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
+        files.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        Path classes = Files.createDirectories(scratch.resolve("classes"));
+        List<String> sources = new ArrayList<>();
+        for (var entry : files.entrySet()) {
+            Path file = scratch.resolve(entry.getKey());
+            Files.createDirectories(file.getParent());
+            Files.write(file, entry.getValue());
+            sources.add(file.toString());
+        }
+        List<String> compiler = new ArrayList<>(List.of("-classpath", System.getProperty("java.class.path"),
+                "-d", classes.toString()));
+        compiler.addAll(sources);
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, compiler.toArray(String[]::new)));
+        try (var loader = new URLClassLoader(new java.net.URL[]{classes.toUri().toURL()}, getClass().getClassLoader())) {
+            ClassLoader previous = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(loader);
+            try {
+                var json = tools.jackson.databind.json.JsonMapper.builder().build();
+                var validator = new org.springframework.validation.beanvalidation.LocalValidatorFactoryBean();
+                validator.afterPropertiesSet();
+                try {
+                    for (String requestName : List.of("CreateStockUnitRequest", "UpdateStockUnitRequest")) {
+                        Class<?> requestType = loader.loadClass("com.example.inventory.dto." + requestName);
+                        Object explicitNull = json.readValue("{\"label\":\"A\",\"condition\":\"OPEN\",\"retiredOn\":null}", requestType);
+                        assertNull(requestType.getMethod("retiredOn").invoke(explicitNull));
+                        assertTrue(validator.validate(explicitNull).isEmpty());
+                        assertThrows(tools.jackson.core.JacksonException.class,
+                                () -> json.readValue("{\"label\":\"A\",\"condition\":\"OPEN\"}", requestType),
+                                "Required nullable field must reject omission");
+                        for (String missing : List.of(
+                                "{\"condition\":\"OPEN\",\"retiredOn\":null}",
+                                "{\"label\":\"A\",\"retiredOn\":null}"))
+                            assertThrows(tools.jackson.core.JacksonException.class,
+                                    () -> json.readValue(missing, requestType));
+                        for (var fieldAndJson : Map.of(
+                                "label", "{\"label\":null,\"condition\":\"OPEN\",\"retiredOn\":null}",
+                                "condition", "{\"label\":\"A\",\"condition\":null,\"retiredOn\":null}").entrySet()) {
+                            Object nullNonnullable = json.readValue(fieldAndJson.getValue(), requestType);
+                            assertTrue(validator.validate(nullNonnullable).stream().anyMatch(v ->
+                                    v.getPropertyPath().toString().equals(fieldAndJson.getKey())));
+                        }
+                    }
+                    Class<?> serviceType = loader.loadClass("com.example.inventory.service.StockUnitService");
+                    Class<?> controllerType = loader.loadClass("com.example.inventory.controller.StockUnitController");
+                    AtomicInteger calls = new AtomicInteger();
+                    AtomicReference<Object[]> received = new AtomicReference<>();
+                    Object service = Proxy.newProxyInstance(loader, new Class<?>[]{serviceType}, (proxy, method, args) -> {
+                        calls.incrementAndGet();
+                        received.set(args == null ? null : args.clone());
+                        return null;
+                    });
+                    Object controller = controllerType.getConstructor(serviceType).newInstance(service);
+                    var mvc = MockMvcBuilders.standaloneSetup(controller).setValidator(validator)
+                            .setMessageConverters(new org.springframework.http.converter.json.JacksonJsonHttpMessageConverter(json))
+                            .build();
+                    String valid = "{\"label\":\"A\",\"condition\":\"OPEN\",\"retiredOn\":null}";
+                    String omittedNullable = "{\"label\":\"A\",\"condition\":\"OPEN\"}";
+                    String missingRequired = "{\"condition\":\"OPEN\",\"retiredOn\":null}";
+                    String nullRequired = "{\"label\":null,\"condition\":\"OPEN\",\"retiredOn\":null}";
+                    String missingCondition = "{\"label\":\"A\",\"retiredOn\":null}";
+                    String nullCondition = "{\"label\":\"A\",\"condition\":null,\"retiredOn\":null}";
+                    for (String path : List.of("/api/v1/stock-units", "/api/v1/stock-units/00000000-0000-0000-0000-000000000001")) {
+                        boolean create = !path.contains("/00000000-");
+                        int callsBeforePath = calls.get();
+                        for (String invalid : List.of(omittedNullable, missingRequired, nullRequired,
+                                missingCondition, nullCondition)) {
+                            var request = create ? org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                                    : org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path);
+                            mvc.perform(request.contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(invalid))
+                                    .andExpect(status().isBadRequest());
+                            assertEquals(callsBeforePath, calls.get(), "Rejected request must not invoke the service");
+                        }
+                        var request = create ? org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                                : org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path);
+                        mvc.perform(request.contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(valid))
+                                .andExpect(create ? status().isCreated() : status().isOk());
+                        assertEquals(callsBeforePath + 1, calls.get());
+                        Object accepted = received.get()[create ? 0 : 1];
+                        assertNull(accepted.getClass().getMethod("retiredOn").invoke(accepted));
+                    }
+                } finally { validator.close(); }
+            } finally { Thread.currentThread().setContextClassLoader(previous); }
+        }
+    }
+
     @Test void backendDefinitionsUseOnlyRequiredSubsetAndBindExactBytes() throws Exception {
         var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
         var plan = GenerationFilePlan.forDescriptor(descriptor);
