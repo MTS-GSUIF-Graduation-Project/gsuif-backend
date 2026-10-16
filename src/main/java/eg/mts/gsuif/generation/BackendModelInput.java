@@ -12,11 +12,12 @@ final class BackendModelInput {
     private final GenerationFilePlan plan;
     private final RenderedModelHandoff handoff;
     private final byte[] contract;
+    private final byte[] pom;
     private final String writablePath;
 
-    BackendModelInput(CompleteOutputDescriptor descriptor, GenerationFilePlan plan,
-            RenderedModelHandoff handoff, byte[] contract) {
-        if (descriptor == null || plan == null || handoff == null || contract == null)
+    private BackendModelInput(CompleteOutputDescriptor descriptor, GenerationFilePlan plan,
+            RenderedModelHandoff handoff, byte[] contract, byte[] pom) {
+        if (descriptor == null || plan == null || handoff == null || contract == null || pom == null)
             throw new IllegalArgumentException("Missing backend model input");
         if (descriptor.mode() == GenerationCapabilityPreflight.OutputMode.FRONTEND)
             throw new IllegalArgumentException("Backend model input requires backend output");
@@ -36,19 +37,22 @@ final class BackendModelInput {
         this.plan = plan;
         this.handoff = handoff;
         this.contract = contract.clone();
+        this.pom = pom.clone();
         this.writablePath = expected;
     }
 
     static BackendModelInput from(CompleteOutputDescriptor descriptor, GenerationFilePlan plan,
             CompleteBackendDefinitionRenderer.Rendered rendered, CompleteBackendRuntimeRenderer runtime) {
         String path = "contracts/" + descriptor.contractId() + "-" + descriptor.contractVersion() + ".yaml";
-        return new BackendModelInput(descriptor, plan, rendered.handoff(), runtime.render(descriptor, plan).get(path));
+        var files = runtime.render(descriptor, plan);
+        return new BackendModelInput(descriptor, plan, rendered.handoff(), files.get(path), files.get("backend/pom.xml"));
     }
 
     CompleteOutputDescriptor descriptor() { return descriptor; }
     GenerationFilePlan plan() { return plan; }
     RenderedModelHandoff handoff() { return handoff; }
     byte[] contract() { return contract.clone(); }
+    byte[] pom() { return pom.clone(); }
     String writablePath() { return writablePath; }
 
     private static String sha256(byte[] bytes) {

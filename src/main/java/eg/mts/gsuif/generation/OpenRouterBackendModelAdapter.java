@@ -26,7 +26,8 @@ import java.util.function.LongSupplier;
 /** Internal backend-only model call. It does not publish, assemble, or persist results. */
 final class OpenRouterBackendModelAdapter {
     enum Failure { CONFIG, TRANSPORT, HTTP_REJECTED, RESPONSE_TOO_LARGE, RETRY_EXHAUSTED, DEADLINE,
-        INVALID_PROVIDER_RESPONSE, INVALID_MODEL_OUTPUT, COMPILATION }
+        INVALID_PROVIDER_RESPONSE, INVALID_MODEL_OUTPUT, COMPILATION, DEPENDENCY_CONFIG,
+        DEPENDENCY_TIMEOUT, DEPENDENCY_UNAVAILABLE, DEPENDENCY_INTEGRITY }
     static final class Failed extends RuntimeException {
         private final Failure reason;
         Failed(Failure reason) { super(reason.name()); this.reason = reason; }
@@ -43,6 +44,9 @@ final class OpenRouterBackendModelAdapter {
     @FunctionalInterface interface IsolatedCompiler {
         boolean compile(BackendModelInput input, byte[] source, Duration remaining);
     }
+    @FunctionalInterface interface CompilerFactory {
+        IsolatedCompiler prepare(BackendModelInput input);
+    }
 
     static final String MODEL = "qwen/qwen3-coder";
     private static final int MAX_TOKENS = 4096;
@@ -52,27 +56,46 @@ final class OpenRouterBackendModelAdapter {
     private static final Duration RETRY_DELAY = Duration.ofSeconds(2);
     private final ObjectMapper json = new ObjectMapper();
     private final Transport transport;
-    private final IsolatedCompiler compiler;
+    private final CompilerFactory compilerFactory;
     private final LongSupplier clock;
     private final Sleeper sleeper;
 
     OpenRouterBackendModelAdapter(Transport transport, IsolatedCompiler compiler,
             LongSupplier clock, Sleeper sleeper) {
+        this(transport, input -> compiler, clock, sleeper);
+    }
+
+    OpenRouterBackendModelAdapter(Transport transport, CompilerFactory compilerFactory,
+            LongSupplier clock, Sleeper sleeper) {
         this.transport = java.util.Objects.requireNonNull(transport);
-        this.compiler = java.util.Objects.requireNonNull(compiler);
+        this.compilerFactory = java.util.Objects.requireNonNull(compilerFactory);
         this.clock = java.util.Objects.requireNonNull(clock);
         this.sleeper = java.util.Objects.requireNonNull(sleeper);
     }
 
     static OpenRouterBackendModelAdapter local(String pinnedImageId) {
         var docker = new DockerBackendJavaCompiler(pinnedImageId);
-        return new OpenRouterBackendModelAdapter(new HttpsTransport(), docker::compile,
+        var provisioner = BackendMavenDependencyProvisioner.local();
+        return new OpenRouterBackendModelAdapter(new HttpsTransport(), input -> {
+            BackendCompileClasspath dependencies = provisioner.provision(input);
+            return (selected, source, remaining) -> docker.compile(selected, source, dependencies, remaining);
+        },
                 System::nanoTime, duration -> Thread.sleep(duration.toMillis()));
     }
 
     BackendModelOutputValidator.Accepted generate(BackendModelInput input, String key, String selectedModel) {
         if (input == null || key == null || key.isBlank() || !MODEL.equals(selectedModel))
             throw new Failed(Failure.CONFIG);
+        IsolatedCompiler compiler;
+        try { compiler = java.util.Objects.requireNonNull(compilerFactory.prepare(input)); }
+        catch (BackendMavenDependencyProvisioner.Failed ex) {
+            throw new Failed(switch (ex.reason()) {
+                case CONFIGURATION -> Failure.DEPENDENCY_CONFIG;
+                case TIMEOUT -> Failure.DEPENDENCY_TIMEOUT;
+                case RESOLUTION, MISSING_ARTIFACT -> Failure.DEPENDENCY_UNAVAILABLE;
+                case INVALID_ARTIFACT -> Failure.DEPENDENCY_INTEGRITY;
+            });
+        }
         long deadline = clock.getAsLong() + OVERALL_NANOS;
         byte[] payload = request(input);
         for (int attempt = 1; attempt <= 2; attempt++) {
@@ -99,6 +122,7 @@ final class OpenRouterBackendModelAdapter {
                     throw new Failed(ex.reason() == BackendModelOutputValidator.Reason.COMPILE_FAILED
                             ? Failure.COMPILATION : Failure.INVALID_MODEL_OUTPUT);
                 }
+                catch (BackendCompileClasspath.Failed ex) { throw new Failed(Failure.DEPENDENCY_INTEGRITY); }
             }
             boolean transientFailure = reply == null || reply.status() == 429 || reply.status() >= 500 && reply.status() <= 599;
             if (!transientFailure) throw new Failed(Failure.HTTP_REJECTED);

@@ -74,6 +74,7 @@ final class BackendModelOutputValidator {
         try {
             if (!compiler.compile(input, selected)) throw new Rejected(Reason.COMPILE_FAILED);
         } catch (RuntimeException ex) {
+            if (ex instanceof BackendCompileClasspath.Failed) throw ex;
             throw new Rejected(Reason.COMPILE_FAILED);
         }
         return new Accepted(input.writablePath(), selected);

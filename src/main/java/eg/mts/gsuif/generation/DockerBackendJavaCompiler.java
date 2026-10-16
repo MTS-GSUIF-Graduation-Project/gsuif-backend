@@ -21,8 +21,8 @@ final class DockerBackendJavaCompiler {
         this.image = image;
     }
 
-    boolean compile(BackendModelInput input, byte[] source, Duration limit) {
-        if (limit == null || limit.isNegative() || limit.isZero()) return false;
+    boolean compile(BackendModelInput input, byte[] source, BackendCompileClasspath dependencies, Duration limit) {
+        if (input == null || dependencies == null || limit == null || limit.isNegative() || limit.isZero()) return false;
         long deadline = System.nanoTime() + limit.toNanos();
         Path staged = null;
         boolean dockerInvoked = false;
@@ -46,18 +46,9 @@ final class DockerBackendJavaCompiler {
             Files.createDirectories(serviceFile.getParent());
             Files.write(serviceFile, source);
             names.add("/input/sources/" + service.replace('\\', '/'));
-            String[] classpath = System.getProperty("surefire.test.class.path",
-                    System.getProperty("java.class.path", "")).split(Pattern.quote(java.io.File.pathSeparator));
-            List<String> jars = new ArrayList<>();
-            for (String item : classpath) {
-                if (System.nanoTime() >= deadline) return false;
-                Path path = Path.of(item);
-                if (Files.isRegularFile(path) && item.endsWith(".jar")) {
-                    String name = "lib" + jars.size() + ".jar";
-                    Files.copy(path, libraries.resolve(name));
-                    jars.add("/input/lib/" + name);
-                }
-            }
+            if (System.nanoTime() >= deadline) return false;
+            List<String> jars = dependencies.stage(input.pom(), libraries);
+            if (System.nanoTime() >= deadline) return false;
             PosixCompileStaging.makeContainerReadable(staged);
             StringBuilder command = new StringBuilder("mkdir -p /work/classes && javac -proc:none -encoding UTF-8 -d /work/classes");
             if (!jars.isEmpty()) command.append(" -cp '").append(String.join(":", jars)).append("'");
@@ -73,6 +64,7 @@ final class DockerBackendJavaCompiler {
             return completed && process.exitValue() == 0;
         } catch (IOException | InterruptedException | RuntimeException ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            if (ex instanceof BackendCompileClasspath.Failed failed) throw failed;
             return false;
         } finally {
             if (staged != null) {

@@ -330,10 +330,143 @@ class BackendModelIntegrationTest {
         assertFalse(String.join(" ", command).contains("OPENROUTER_API_KEY"));
     }
 
+    @Test void trustedPomSelectsConditionalEnversAndLoadsWithoutCheckout(@org.junit.jupiter.api.io.TempDir Path scratch)
+            throws Exception {
+        BackendModelInput plain = input();
+        assertFalse(new String(plain.pom(), StandardCharsets.UTF_8).contains("hibernate-envers"));
+        var auditedDescriptor = fixture.auditedSchemaDescriptor(plain.descriptor(), "stock_unit");
+        var auditedPlan = GenerationFilePlan.forDescriptor(auditedDescriptor);
+        var runtime = new CompleteBackendRuntimeRenderer(
+                new PackagedContractRegistry("/generation/stock-unit-contracts.yaml"));
+        BackendModelInput audited = BackendModelInput.from(auditedDescriptor, auditedPlan,
+                new CompleteBackendDefinitionRenderer().render(auditedDescriptor, auditedPlan), runtime);
+        assertTrue(new String(audited.pom(), StandardCharsets.UTF_8).contains("hibernate-envers"));
+        String original = System.getProperty("user.dir");
+        try {
+            System.setProperty("user.dir", scratch.toString());
+            assertArrayEquals(plain.pom(), input().pom());
+        } finally { System.setProperty("user.dir", original); }
+    }
+
+    @Test void provisionerBindsExactPomCoordinatesAndCopiedJarHashes(@org.junit.jupiter.api.io.TempDir Path scratch)
+            throws Exception {
+        BackendModelInput input = input();
+        Path repository = Files.createDirectory(scratch.resolve("repository"));
+        Path jar = repository.resolve("org/example/compile-api/1.2.3/compile-api-1.2.3.jar");
+        Files.createDirectories(jar.getParent());
+        Files.writeString(jar, "disposable jar bytes");
+        Path executable = Files.writeString(scratch.resolve("mvn.cmd"), "disposable");
+        var provisioner = new BackendMavenDependencyProvisioner(executable, repository, (command, directory, timeout) -> {
+            assertTrue(command.contains(BackendMavenDependencyProvisioner.DEPENDENCY_PLUGIN));
+            assertTrue(command.contains("-DincludeScope=compile"));
+            assertTrue(!timeout.isNegative() && !timeout.isZero()
+                    && timeout.compareTo(BackendMavenDependencyProvisioner.TIMEOUT) <= 0);
+            assertArrayEquals(input.pom(), Files.readAllBytes(directory.resolve("pom.xml")));
+            Files.writeString(directory.resolve("classpath.txt"), jar.toString());
+            return BackendMavenDependencyProvisioner.Exit.SUCCESS;
+        });
+        var manifest = provisioner.provision(input);
+        assertEquals(BackendCompileClasspath.hash(input.pom()), manifest.pomSha256());
+        assertEquals("org.example:compile-api:1.2.3", manifest.artifacts().getFirst().coordinates());
+        assertEquals(BackendCompileClasspath.hash(jar), manifest.artifacts().getFirst().sha256());
+        Path staged = Files.createDirectory(scratch.resolve("staged"));
+        assertEquals(List.of("/input/lib/lib0.jar"), manifest.stage(input.pom(), staged));
+        assertArrayEquals(Files.readAllBytes(jar), Files.readAllBytes(staged.resolve("lib0.jar")));
+        byte[] changedPom = input.pom(); changedPom[0] ^= 1;
+        assertEquals(BackendCompileClasspath.Reason.INVALID_MANIFEST,
+                assertThrows(BackendCompileClasspath.Failed.class,
+                        () -> manifest.stage(changedPom, scratch.resolve("wrong-pom"))).reason());
+        Files.writeString(jar, "tampered jar bytes");
+        assertEquals(BackendCompileClasspath.Reason.CHANGED_ARTIFACT,
+                assertThrows(BackendCompileClasspath.Failed.class,
+                        () -> manifest.stage(input.pom(), scratch.resolve("tampered"))).reason());
+        Files.delete(jar);
+        assertEquals(BackendCompileClasspath.Reason.MISSING_ARTIFACT,
+                assertThrows(BackendCompileClasspath.Failed.class,
+                        () -> manifest.stage(input.pom(), scratch.resolve("missing"))).reason());
+    }
+
+    @Test void missingDependencyAndTimeoutFailBeforeAnyProviderRequest(@org.junit.jupiter.api.io.TempDir Path scratch)
+            throws Exception {
+        BackendModelInput input = input();
+        Path repository = Files.createDirectory(scratch.resolve("repository"));
+        Path executable = Files.writeString(scratch.resolve("mvn.cmd"), "disposable");
+        var absent = new BackendMavenDependencyProvisioner(executable, repository, (command, directory, timeout) -> {
+            Files.writeString(directory.resolve("classpath.txt"),
+                    repository.resolve("org/example/missing/1.0/missing-1.0.jar").toString());
+            return BackendMavenDependencyProvisioner.Exit.SUCCESS;
+        });
+        assertEquals(BackendMavenDependencyProvisioner.Reason.MISSING_ARTIFACT,
+                assertThrows(BackendMavenDependencyProvisioner.Failed.class,
+                        () -> absent.provision(input)).reason());
+        var timedOut = new BackendMavenDependencyProvisioner(executable, repository,
+                (command, directory, timeout) -> BackendMavenDependencyProvisioner.Exit.TIMEOUT);
+        assertEquals(BackendMavenDependencyProvisioner.Reason.TIMEOUT,
+                assertThrows(BackendMavenDependencyProvisioner.Failed.class,
+                        () -> timedOut.provision(input)).reason());
+        AtomicInteger requests = new AtomicInteger();
+        var adapter = new OpenRouterBackendModelAdapter((body, key, timeout) -> {
+            requests.incrementAndGet(); throw new AssertionError("Provider must not be called");
+        }, (OpenRouterBackendModelAdapter.CompilerFactory) selected -> {
+            absent.provision(selected);
+            throw new AssertionError("Missing dependency must fail during preparation");
+        }, System::nanoTime, ignored -> { });
+        assertEquals(OpenRouterBackendModelAdapter.Failure.DEPENDENCY_UNAVAILABLE,
+                assertThrows(OpenRouterBackendModelAdapter.Failed.class,
+                        () -> adapter.generate(input, "disposable-key", OpenRouterBackendModelAdapter.MODEL)).reason());
+        assertEquals(0, requests.get());
+    }
+
+    @Test void trustedMavenChildDropsDisposableProviderCredential() {
+        Map<String, String> environment = new java.util.HashMap<>();
+        environment.put("OpenRouter_Api_Key", "disposable-fake-key");
+        environment.put("MAVEN_REPOSITORY_TOKEN", "disposable-repository-value");
+        BackendMavenDependencyProvisioner.removeProviderCredential(environment);
+        assertFalse(environment.keySet().stream().anyMatch(key -> key.equalsIgnoreCase("OPENROUTER_API_KEY")));
+        assertEquals("disposable-repository-value", environment.get("MAVEN_REPOSITORY_TOKEN"));
+    }
+
+    @Test void pinnedMavenSelectsAuditedAndUnauditedCompileDependencies() throws Exception {
+        String maven = System.getProperty("gsuif.test.maven-command");
+        String repository = System.getProperty("maven.repo.local");
+        org.junit.jupiter.api.Assumptions.assumeTrue(maven != null && repository != null,
+                "Generated-POM Maven provisioning is an explicit opt-in");
+        var input = input();
+        var provisioner = new BackendMavenDependencyProvisioner(Path.of(maven), Path.of(repository));
+        var plain = provisioner.provision(input);
+        assertTrue(plain.artifacts().stream().noneMatch(artifact ->
+                artifact.coordinates().startsWith("org.postgresql:postgresql:")));
+        assertTrue(plain.artifacts().stream().noneMatch(artifact ->
+                artifact.coordinates().contains("hibernate-envers")));
+        for (String required : List.of("spring-boot-starter-webmvc", "spring-boot-starter-data-jpa",
+                "spring-security-oauth2-jose", "springdoc-openapi-starter-webmvc-ui"))
+            assertTrue(plain.artifacts().stream().anyMatch(artifact ->
+                    artifact.artifactId().equals(required)), "Missing compile dependency: " + required);
+        var auditedDescriptor = fixture.auditedSchemaDescriptor(input.descriptor(), "stock_unit");
+        var auditedPlan = GenerationFilePlan.forDescriptor(auditedDescriptor);
+        var auditedInput = BackendModelInput.from(auditedDescriptor, auditedPlan,
+                new CompleteBackendDefinitionRenderer().render(auditedDescriptor, auditedPlan),
+                new CompleteBackendRuntimeRenderer(new PackagedContractRegistry("/generation/stock-unit-contracts.yaml")));
+        var audited = provisioner.provision(auditedInput);
+        assertTrue(audited.artifacts().stream().noneMatch(artifact ->
+                artifact.coordinates().startsWith("org.postgresql:postgresql:")));
+        assertTrue(audited.artifacts().stream().anyMatch(artifact ->
+                artifact.coordinates().equals("org.hibernate.orm:hibernate-envers:7.2.24.Final")));
+        for (String required : List.of("spring-boot-starter-webmvc", "spring-boot-starter-data-jpa",
+                "spring-security-oauth2-jose", "springdoc-openapi-starter-webmvc-ui"))
+            assertTrue(audited.artifacts().stream().anyMatch(artifact ->
+                    artifact.artifactId().equals(required)), "Missing compile dependency: " + required);
+        assertNotEquals(plain.pomSha256(), audited.pomSha256());
+    }
+
     @Test void pinnedSandboxCompilesDefinitionsWithoutExecutingModelCode() throws Exception {
         String image = System.getProperty("gsuif.test.jdk-image");
         org.junit.jupiter.api.Assumptions.assumeTrue(image != null && !image.isBlank(),
                 "Pinned Docker image is an explicit opt-in");
+        String maven = System.getProperty("gsuif.test.maven-command");
+        String repository = System.getProperty("maven.repo.local");
+        org.junit.jupiter.api.Assumptions.assumeTrue(maven != null && repository != null,
+                "Generated-POM Maven provisioning is an explicit opt-in");
         var input = input();
         String source = """
                 package com.example.inventory.service;
@@ -345,8 +478,19 @@ class BackendModelIntegrationTest {
                   public void delete(java.util.UUID id) { }
                 }
                 """;
+        var dependencies = new BackendMavenDependencyProvisioner(Path.of(maven), Path.of(repository)).provision(input);
         assertTrue(new DockerBackendJavaCompiler(image).compile(input,
-                source.getBytes(StandardCharsets.UTF_8), Duration.ofSeconds(90)),
+                source.getBytes(StandardCharsets.UTF_8), dependencies, Duration.ofSeconds(90)),
                 "Emitted definitions and model-owned service must compile in the isolated JDK");
+        String hostOnly = source.replace("public class StockUnitServiceImpl implements StockUnitService {",
+                "public class StockUnitServiceImpl implements StockUnitService {\n"
+                        + "  private eg.mts.gsuif.generation.GenerationResult hostOnly;\n");
+        String testOnly = source.replace("public class StockUnitServiceImpl implements StockUnitService {",
+                "public class StockUnitServiceImpl implements StockUnitService {\n"
+                        + "  private org.junit.jupiter.api.Assertions testOnly;\n");
+        assertFalse(new DockerBackendJavaCompiler(image).compile(input,
+                hostOnly.getBytes(StandardCharsets.UTF_8), dependencies, Duration.ofSeconds(90)));
+        assertFalse(new DockerBackendJavaCompiler(image).compile(input,
+                testOnly.getBytes(StandardCharsets.UTF_8), dependencies, Duration.ofSeconds(90)));
     }
 }
