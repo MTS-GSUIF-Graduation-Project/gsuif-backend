@@ -64,11 +64,15 @@ class CompleteBackendRuntimeTest {
             assertTrue(((Element) plugins.item(i)).getElementsByTagName("version").item(0).getTextContent()
                     .matches("[0-9]+\\.[0-9]+\\.[0-9]+"));
         for (String key : List.of("GENERATED_APP_DB_URL", "GENERATED_APP_DB_USER",
-                "GENERATED_APP_DB_PASSWORD", "GENERATED_APP_JWT_SECRET")) {
+                "GENERATED_APP_DB_PASSWORD")) {
             assertTrue(config.contains("${" + key + "}"));
             assertTrue(readme.contains(key));
             assertFalse(config.contains("${" + key + ":"), "No default may be embedded");
         }
+        assertFalse(config.contains("GENERATED_APP_JWT_SECRET"));
+        assertTrue(readme.contains("GENERATED_APP_JWT_SECRET"));
+        assertTrue(config.contains("default: prod"));
+        assertTrue(config.contains("address: 127.0.0.1"));
         assertTrue(config.contains("ddl-auto: validate"));
         assertTrue(config.contains("clean-disabled: true"));
         assertTrue(readme.contains("cannot yet start"));

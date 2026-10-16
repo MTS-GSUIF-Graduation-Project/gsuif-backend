@@ -58,6 +58,8 @@ record GenerationFilePlan(List<Entry> entries) {
                     "dto/" + descriptor.createRequestName() + ".java", "dto/" + descriptor.updateRequestName() + ".java",
                     "api/" + entity + "Api.java", "controller/" + entity + "Controller.java",
                     "service/" + entity + "Service.java", "security/SecurityConfig.java",
+                    "security/SecurityMode.java", "security/EnforcedMethodSecurityConfig.java",
+                    "security/AuthenticatedAccount.java", "security/AccountIdentityService.java",
                     "security/FirstAdminBootstrap.java", "security/UserAccount.java", "security/UserAccountRepository.java",
                     "security/AuthController.java", "security/JwtService.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "backend contract or framework");

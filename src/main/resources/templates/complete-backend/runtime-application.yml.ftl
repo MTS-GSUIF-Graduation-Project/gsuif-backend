@@ -1,5 +1,7 @@
 <#ftl strip_whitespace=true encoding="UTF-8">
 spring:
+  profiles:
+    default: prod
   datasource:
     url: <#noparse>${GENERATED_APP_DB_URL}</#noparse>
     username: <#noparse>${GENERATED_APP_DB_USER}</#noparse>
@@ -16,6 +18,10 @@ spring:
   sql:
     init:
       mode: never
-generated-app:
-  security:
-    jwt-secret: <#noparse>${GENERATED_APP_JWT_SECRET}</#noparse>
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+server:
+  address: 127.0.0.1
