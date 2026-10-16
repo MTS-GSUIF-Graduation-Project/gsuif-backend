@@ -46,6 +46,14 @@ class CompleteBackendSecurityTest {
     @EnableAutoConfiguration(exclude = org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration.class)
     static class BootProbe { }
 
+    @Configuration(proxyBeanMethods = false)
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "gsuif.security.database-probe", havingValue = "true")
+    @EnableAutoConfiguration
+    @org.springframework.boot.persistence.autoconfigure.EntityScan(basePackages = "com.example.inventory.security")
+    @org.springframework.data.jpa.repository.config.EnableJpaRepositories(basePackages = "com.example.inventory.security")
+    static class DatabaseBootProbe { }
+
     @RestController
     static class HttpProbe {
         @GetMapping("/probe") public String probe() { return "ok"; }
@@ -668,6 +676,185 @@ class CompleteBackendSecurityTest {
                         .andReturn().getResponse();
                 assertSafeEnvelope(bearerInfrastructure, 500);
                 assertFalse(bearerInfrastructure.getContentAsString().contains("infrastructure diagnostic"));
+                assertEquals(1, calls.get());
+            } finally {
+                Thread.currentThread().setContextClassLoader(previous);
+                org.springframework.security.core.context.SecurityContextHolder.clearContext();
+            }
+        }
+    }
+
+    @Test void emittedHttpSecurityUsesCommittedPostgresAccountState(@TempDir Path scratch) throws Exception {
+        String baseUrl = System.getenv("SCRUM65_SECURITY_TEST_URL");
+        org.junit.jupiter.api.Assumptions.assumeTrue(baseUrl != null
+                && baseUrl.startsWith("jdbc:postgresql://127.0.0.1:"),
+                "Requires the newly created disposable localhost PostgreSQL container");
+        String password = System.getenv("SCRUM65_SECURITY_TEST_PASSWORD");
+        assertNotNull(password);
+        var descriptor = descriptor();
+        var plan = GenerationFilePlan.forDescriptor(descriptor);
+        var migrationFiles = new CompleteBackendInitialMigrationRenderer().render(descriptor, plan);
+        Path migration = scratch.resolve("backend/src/main/resources/db/migration");
+        for (var file : migrationFiles.entrySet()) {
+            if (!file.getKey().endsWith(".sql")) continue;
+            Path target = scratch.resolve(file.getKey());
+            Files.createDirectories(target.getParent());
+            Files.write(target, file.getValue());
+        }
+        String schema = "security_" + UUID.randomUUID().toString().replace("-", "");
+        try (var connection = java.sql.DriverManager.getConnection(baseUrl, "postgres", password);
+                var statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA " + schema);
+        }
+        String url = baseUrl + (baseUrl.contains("?") ? "&" : "?") + "currentSchema=" + schema;
+        var flyway = org.flywaydb.core.Flyway.configure().dataSource(url, "postgres", password)
+                .locations("filesystem:" + migration).load();
+        assertEquals(1, flyway.migrate().migrationsExecuted);
+        try (var connection = java.sql.DriverManager.getConnection(url, "postgres", password);
+                var statement = connection.createStatement();
+                var rows = statement.executeQuery("SELECT count(*) FROM user_accounts")) {
+            assertTrue(rows.next());
+            assertEquals(0, rows.getLong(1), "V1 must not seed accounts");
+        }
+        try (var loader = compiled(scratch)) {
+            String base = "com.example.inventory.";
+            Class<?> accountType = loader.loadClass(base + "security.UserAccount");
+            Class<?> roleType = loader.loadClass(base + "security.UserAccount$Role");
+            Class<?> serviceType = loader.loadClass(base + "service.StockUnitService");
+            var calls = new java.util.concurrent.atomic.AtomicInteger();
+            UUID itemId = UUID.randomUUID();
+            Class<?> conditionType = loader.loadClass(base + "dto.StockUnitCondition");
+            Object dto = loader.loadClass(base + "dto.StockUnitDto").getConstructors()[0]
+                    .newInstance(itemId, "sample", conditionType.getEnumConstants()[0], null);
+            Object crud = java.lang.reflect.Proxy.newProxyInstance(loader, new Class<?>[] {serviceType},
+                    (proxy, method, values) -> {
+                        if (method.getDeclaringClass() == Object.class) return null;
+                        calls.incrementAndGet();
+                        return method.getName().equals("getById") ? dto : null;
+                    });
+            var runtime = new CompleteBackendRuntimeRenderer(new PackagedContractRegistry(
+                    "/generation/stock-unit-contracts.yaml")).render(descriptor, plan);
+            Path config = scratch.resolve("generated-application.yml");
+            Files.write(config, runtime.get("backend/src/main/resources/application.yml"));
+            byte[] fakeKey = new byte[32];
+            java.util.Arrays.fill(fakeKey, (byte) 9);
+            String fakeSecret = java.util.Base64.getEncoder().encodeToString(fakeKey);
+            ClassLoader previous = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(loader);
+            try (var context = new SpringApplicationBuilder(DatabaseBootProbe.class,
+                    loader.loadClass(base + "security.SecurityConfig"),
+                    loader.loadClass(base + "security.SecurityMode"),
+                    loader.loadClass(base + "security.EnforcedMethodSecurityConfig"),
+                    loader.loadClass(base + "security.AccountIdentityService"),
+                    loader.loadClass(base + "security.JwtService"),
+                    loader.loadClass(base + "security.AuthController"),
+                    loader.loadClass(base + "exception.GlobalExceptionHandler"),
+                    loader.loadClass(base + "controller.StockUnitController"))
+                    .web(WebApplicationType.SERVLET)
+                    .initializers(application -> {
+                        application.getBeanFactory().registerSingleton("stockServiceProbe", crud);
+                        application.getEnvironment().getPropertySources().addFirst(
+                                new org.springframework.core.env.MapPropertySource("disposable-security-db", Map.of(
+                                        "spring.datasource.url", url,
+                                        "spring.datasource.username", "postgres",
+                                        "spring.datasource.password", password,
+                                        "spring.flyway.locations", "filesystem:" + migration,
+                                        "GENERATED_APP_JWT_SECRET", fakeSecret)));
+                    })
+                    .run("--spring.profiles.active=test", "--spring.config.location=" + config.toUri(),
+                            "--server.port=0", "--spring.main.banner-mode=off", "--logging.level.root=OFF",
+                            "--gsuif.security.database-probe=true")) {
+                assertEquals("false", context.getEnvironment().getProperty("spring.jpa.open-in-view"));
+                var identity = context.getBean(loader.loadClass(base + "security.AccountIdentityService"));
+                assertTrue(org.springframework.aop.support.AopUtils.isAopProxy(identity));
+                assertTrue(java.util.Arrays.stream(((org.springframework.aop.framework.Advised) identity).getAdvisors())
+                        .anyMatch(advisor -> advisor.getAdvice()
+                                instanceof org.springframework.transaction.interceptor.TransactionInterceptor));
+                var repository = (org.springframework.data.repository.CrudRepository) context.getBean(
+                        loader.loadClass(base + "security.UserAccountRepository"));
+                var transactions = new org.springframework.transaction.support.TransactionTemplate(
+                        context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+                assertEquals(0L, repository.count(), "V1 must not seed accounts");
+                Object account = accountType.getConstructor().newInstance();
+                accountType.getMethod("setUsername", String.class).invoke(account, "Alice");
+                accountType.getMethod("setEnabled", boolean.class).invoke(account, true);
+                accountType.getMethod("setPasswordHash", String.class).invoke(account,
+                        new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()
+                                .encode("disposable-password"));
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                Object adminRole = Enum.valueOf((Class<? extends Enum>) roleType, "ROLE_ADMIN");
+                @SuppressWarnings("unchecked")
+                Set<Object> roles = (Set<Object>) accountType.getMethod("getRoles").invoke(account);
+                roles.add(adminRole);
+                transactions.executeWithoutResult(status -> repository.save(account));
+                UUID accountId = (UUID) accountType.getMethod("getId").invoke(account);
+                assertNotNull(accountId);
+                Object principal = loader.loadClass(base + "security.AccountIdentityService")
+                        .getMethod("loadById", UUID.class).invoke(identity, accountId);
+                assertEquals(Set.of("ROLE_ADMIN"), ((org.springframework.security.core.userdetails.UserDetails) principal)
+                        .getAuthorities().stream().map(Object::toString).collect(java.util.stream.Collectors.toSet()));
+                var mvc = MockMvcBuilders.webAppContextSetup((WebApplicationContext) context)
+                        .apply(SecurityMockMvcConfigurers.springSecurity()).build();
+                var login = mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"Alice\",\"password\":\"disposable-password\"}"))
+                        .andReturn();
+                assertEquals(200, login.getResponse().getStatus());
+                var body = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(login.getResponse().getContentAsString());
+                assertEquals(5, body.size());
+                String token = body.get("body").get("accessToken").asText();
+                assertFalse(token.isBlank());
+                assertNull(login.getRequest().getSession(false));
+                assertSafeEnvelope(mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"alice\",\"password\":\"disposable-password\"}"))
+                        .andReturn().getResponse(), 401);
+                String itemPath = "/api/v1/stock-units/" + itemId;
+                assertEquals(200, mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse().getStatus());
+                assertEquals(1, calls.get());
+                transactions.executeWithoutResult(status -> {
+                    Object stored = repository.findById(accountId).orElseThrow();
+                    try {
+                        ((Set<?>) accountType.getMethod("getRoles").invoke(stored)).clear();
+                    } catch (ReflectiveOperationException exception) { throw new IllegalStateException(exception); }
+                });
+                try (var fresh = context.getBean(jakarta.persistence.EntityManagerFactory.class).createEntityManager()) {
+                    Object stored = fresh.find(accountType, accountId);
+                    assertTrue(((Set<?>) accountType.getMethod("getRoles").invoke(stored)).isEmpty());
+                }
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse(), 403);
+                assertEquals(1, calls.get());
+                transactions.executeWithoutResult(status -> {
+                    Object stored = repository.findById(accountId).orElseThrow();
+                    try { accountType.getMethod("setEnabled", boolean.class).invoke(stored, false); }
+                    catch (ReflectiveOperationException exception) { throw new IllegalStateException(exception); }
+                });
+                try (var fresh = context.getBean(jakarta.persistence.EntityManagerFactory.class).createEntityManager()) {
+                    assertFalse((boolean) accountType.getMethod("isEnabled").invoke(fresh.find(accountType, accountId)));
+                }
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse(), 401);
+                assertEquals(1, calls.get());
+                assertSafeEnvelope(mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"Alice\",\"password\":\"disposable-password\"}"))
+                        .andReturn().getResponse(), 401);
+                transactions.executeWithoutResult(status -> repository.deleteById(accountId));
+                assertSafeEnvelope(mvc.perform(get(itemPath).header("Authorization", "Bearer " + token))
+                        .andReturn().getResponse(), 401);
+                assertEquals(1, calls.get());
+                assertSafeEnvelope(mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"Alice\",\"password\":\"disposable-password\"}"))
+                        .andReturn().getResponse(), 401);
+                var staleSession = new org.springframework.mock.web.MockHttpSession();
+                var staleContext = new org.springframework.security.core.context.SecurityContextImpl();
+                staleContext.setAuthentication(org.springframework.security.authentication
+                        .UsernamePasswordAuthenticationToken.authenticated("stale", null,
+                                List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+                staleSession.setAttribute(org.springframework.security.web.context.HttpSessionSecurityContextRepository
+                        .SPRING_SECURITY_CONTEXT_KEY, staleContext);
+                assertSafeEnvelope(mvc.perform(get(itemPath).session(staleSession))
+                        .andReturn().getResponse(), 401);
                 assertEquals(1, calls.get());
             } finally {
                 Thread.currentThread().setContextClassLoader(previous);
