@@ -320,7 +320,7 @@ public final class GenerationContextBuilder {
         return ids;
     }
 
-    private static boolean identifier(String value, String regex) {
+    static boolean identifier(String value, String regex) {
         if (value == null || !value.matches(regex)) return false;
         for (String part : value.split("\\.")) if (RESERVED.contains(part)) return false;
         return true;

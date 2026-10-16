@@ -111,6 +111,8 @@ record CompleteBackendEntitySchema(String tableName, String auditTableName, List
         add(columns, usedColumns, new Column("created_by", "varchar(100)", false, false));
         add(columns, usedColumns, new Column("last_modified_by", "varchar(100)", false, false));
         constraints.sort(java.util.Comparator.comparing(Constraint::name));
+        CompleteBackendPersistenceNames.validateEmittedRelations(descriptor.tableName(), auditTable,
+                constraints.stream().map(Constraint::name).toList());
         String sql = render(descriptor.tableName(), columns, primaryName, constraints);
         return new CompleteBackendEntitySchema(descriptor.tableName(), auditTable, columns, constraints, sql);
     }

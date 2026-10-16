@@ -27,3 +27,12 @@ The harness fails with `SANDBOX_UNAVAILABLE` if the image ID or Docker isolation
 Each qualification attempt gets a new directory under ignored `target/openrouter-qualification/gadget/attempts`; its `result.json` and any accepted Java source stay together there. Earlier attempt directories are never reused or overwritten. The prompt, raw provider response, key and authorization header are not saved. Compilation diagnostics are intentionally not printed or persisted; `result.json` records only bounded outcome codes, boundary reasons and HTTP attempt statuses/categories. A failed qualification does not trigger another model or request beyond the stated retry policy.
 
 Source normalization accepts raw Java or one complete outer Markdown code fence labelled `java` or unlabelled, with only surrounding whitespace outside it. It rejects prose outside the fence, multiple or nested fences, and other fence labels. The report records `normalization=RAW_JAVA` or `normalization=OUTER_JAVA_FENCE` after a valid wrapper is identified; malformed wrappers retain `OUTPUT_BOUNDARY` and `FORMAT_MARKDOWN_FENCE`. The same source, contract and security checks apply to the unwrapped Java before any sandbox compilation or behavior check. The discarded earlier provider response is not retained and cannot be reclassified.
+
+## Locked qualification fixture bytes
+
+The Gadget qualification fixture pins SHA-256 over UTF-8 source bytes with LF
+line endings. The loader converts CRLF to LF before hashing and adding it to the
+prompt; both LF and CRLF may occur in one checkout. Bare CR and substantive
+content changes fail with `FIXTURE_CHANGED`. The committed Git
+blob is the canonical LF copy; a Windows worktree's line-ending conversion does
+not change the locked prompt.

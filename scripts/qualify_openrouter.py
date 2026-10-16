@@ -34,7 +34,7 @@ IMAGE_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
 CHILD_ENV_KEYS = ("PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP")
 FIXTURES = {
     "src/test/resources/generation/gadget-contracts.yaml": "77479c04af06b93d4da386e9ea0c152f1e36e97fdad9d8fe3ea9c61ef94ec455",
-    "src/test/resources/openapi/gadget-api.yaml": "48e132c7e8c74f647c9089ba878ccbce517a1e7611d40e1d4ceefe7e9541004f",
+    "src/test/resources/openapi/gadget-api.yaml": "e158c5399efa9afed3052b09c167e6a39433890d730c46a8c5c57bf2ffcfa5c3",
     "qualification/gadget/GadgetContract.java": "2d2b574bcf30f79ea0c0de991d1552cd5b9cd4d0b7bdeb5d0796a47abb764fa4",
 }
 BOUNDARY_REASONS = {
@@ -74,6 +74,12 @@ def locked_fixture():
     parts = []
     for relative, expected in FIXTURES.items():
         data = (ROOT / relative).read_bytes()
+        # Locked source text is hashed with LF line endings, independent of checkout settings.
+        # Canonical LF bytes match the committed blob even when Git produces CRLF or mixed endings.
+        if b"\r" in data:
+            if b"\r" in data.replace(b"\r\n", b""):
+                raise QualificationFailure("FIXTURE_CHANGED")
+            data = data.replace(b"\r\n", b"\n")
         if hashlib.sha256(data).hexdigest() != expected:
             raise QualificationFailure("FIXTURE_CHANGED")
         parts.append(f"FILE {relative}\n{data.decode('utf-8')}")

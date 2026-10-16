@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.io.IOException;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
 
 /** Stable, length-framed fingerprint of inputs that determine a generation/build attempt. */
@@ -47,6 +48,7 @@ final class GenerationAttemptFingerprint {
     static Prepared prepare(MetadataVersion version, GsuifUser user, GenerationSpecification spec,
             Set<GenerationContext.Target> targets, String framework, Map<String, byte[]> consumerInputs,
             Map<String, byte[]> resourceOverrides) {
+        validateClientShape(spec);
         var hash = new GenerationAttemptFingerprint(resourceOverrides);
         hash.add("generation-request-v1");
         hash.identity(version, user);
@@ -135,6 +137,30 @@ final class GenerationAttemptFingerprint {
                 "eg/mts/gsuif/config/JpaAuditingConfig.java")
                 .forEach(path -> hash.resource("consumer-support/" + path));
         return new Prepared(hash.finish(), hash.resourceUnavailable);
+    }
+
+    /** Reject malformed collection members before hashing or reserving an attempt. */
+    static void validateClientShape(GenerationSpecification spec) {
+        if (spec == null) return; // The existing context validator reports a missing specification.
+        var entity = spec.entity();
+        if (entity != null && entity.fields() != null) {
+            for (int i = 0; i < entity.fields().size(); i++)
+                if (entity.fields().get(i) == null)
+                    throw new GenerationValidationException(List.of("specification.entity.fields[" + i + "]: required"));
+        }
+        var api = spec.openApi();
+        if (api != null && api.bindingOperations() != null && api.bindingOperations().entrySet().stream()
+                .anyMatch(entry -> entry.getKey() == null || entry.getValue() == null))
+            throw new GenerationValidationException(List.of("specification.openApi.bindingOperations: null entry"));
+        if (spec.operationRoles() != null && spec.operationRoles().entrySet().stream()
+                .anyMatch(entry -> entry.getKey() == null || entry.getValue() == null
+                        || entry.getValue().stream().anyMatch(role -> role == null)))
+            throw new GenerationValidationException(List.of("specification.operationRoles: null entry"));
+        var angular = spec.angular();
+        if (angular != null && angular.tableColumns() != null && angular.tableColumns().entrySet().stream()
+                .anyMatch(entry -> entry.getKey() == null || entry.getValue() == null
+                        || entry.getValue().stream().anyMatch(column -> column == null)))
+            throw new GenerationValidationException(List.of("specification.angular.tableColumns: null entry"));
     }
 
     static String result(MetadataVersion version, GsuifUser user, GenerationResult result,

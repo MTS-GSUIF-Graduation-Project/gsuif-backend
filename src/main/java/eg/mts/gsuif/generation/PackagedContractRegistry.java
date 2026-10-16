@@ -50,7 +50,8 @@ final class PackagedContractRegistry {
                     EnumMap<CrudAction, String> mapped = new EnumMap<>(CrudAction.class);
                     for (var action : actions.entrySet()) {
                         CrudAction key = CrudAction.valueOf(String.valueOf(action.getKey()));
-                        if (!(action.getValue() instanceof String operationId) || !operationId.matches("[a-z][A-Za-z0-9]*"))
+                        if (!(action.getValue() instanceof String operationId)
+                                || !GenerationContextBuilder.identifier(operationId, "[a-z][A-Za-z0-9]*"))
                             throw new IllegalStateException("invalid CRUD operation in " + registryResource);
                         mapped.put(key, operationId);
                     }

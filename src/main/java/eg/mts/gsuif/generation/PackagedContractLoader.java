@@ -61,8 +61,9 @@ final class PackagedContractLoader {
                 for (String verb : List.of("get", "post", "put", "delete")) if (verbs.get(verb) instanceof Map<?, ?> raw) {
                     Map<String, Object> op = (Map<String, Object>) raw;
                     String id = String.valueOf(op.get("operationId"));
-                    if (op.get("operationId") == null || id.isBlank()) {
-                        errors.add("contract.paths." + pathEntry.getKey() + "." + verb + ".operationId: required");
+                    if (op.get("operationId") == null
+                            || !GenerationContextBuilder.identifier(id, "[a-z][A-Za-z0-9]*")) {
+                        errors.add("contract.paths." + pathEntry.getKey() + "." + verb + ".operationId: invalid Java identifier");
                         continue;
                     }
                     CrudAction action = actionsById.get(id);
@@ -286,7 +287,7 @@ final class PackagedContractLoader {
             String name = String.valueOf(item.getOrDefault("name", ""));
             String path = "contract." + operationId + ".parameters." + name;
             if (action != CrudAction.LIST || !"query".equals(item.get("in"))
-                    || !name.matches("[a-z][A-Za-z0-9]*")
+                    || !GenerationContextBuilder.identifier(name, "[a-z][A-Za-z0-9]*")
                     || item.keySet().stream().anyMatch(key -> !Set.of("name", "in", "required", "schema", "description").contains(key))
                     || (item.containsKey("required") && !(item.get("required") instanceof Boolean))) {
                 errors.add(path + ": unsupported parameter shape");

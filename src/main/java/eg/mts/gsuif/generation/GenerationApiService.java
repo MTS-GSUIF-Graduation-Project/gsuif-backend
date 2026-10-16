@@ -65,6 +65,7 @@ public class GenerationApiService {
         if (request.specification() == null) {
             throw new GenerationValidationException(List.of("specification: required"));
         }
+        GenerationAttemptFingerprint.validateClientShape(request.specification());
         if (username == null || username.isBlank()) {
             throw new InsufficientAuthenticationException("Authentication required");
         }

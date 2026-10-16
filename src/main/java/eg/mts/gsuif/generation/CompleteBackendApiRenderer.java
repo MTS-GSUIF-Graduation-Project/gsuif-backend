@@ -85,7 +85,7 @@ final class CompleteBackendApiRenderer {
         boolean item = action == CrudAction.READ || action == CrudAction.UPDATE || action == CrudAction.DELETE;
         if (!verb.equals(op.method()) || !op.path().startsWith("/")
                 || item != op.path().endsWith("/{id}") || op.path().contains("\"")
-                || !op.operationId().matches("[a-z][A-Za-z0-9]*")
+                || !GenerationContextBuilder.identifier(op.operationId(), "[a-z][A-Za-z0-9]*")
                 || op.roles().isEmpty() || op.successStatus() != (action == CrudAction.CREATE ? 201 : 200)
                 || op.successEnvelope() == null || op.successEnvelope().isBlank()
                 || !op.queryFields().isEmpty() && action != CrudAction.LIST)
@@ -101,7 +101,8 @@ final class CompleteBackendApiRenderer {
         if (item) params.add(Map.of("type", "java.util.UUID", "name", "id",
                 "annotation", "@org.springframework.web.bind.annotation.PathVariable(\"id\")"));
         if (action == CrudAction.LIST) op.queryFields().forEach((name, parameter) -> {
-            if (!name.matches("[a-z][A-Za-z0-9]*")) throw new IllegalArgumentException("Unsupported query name");
+            if (!GenerationContextBuilder.identifier(name, "[a-z][A-Za-z0-9]*"))
+                throw new IllegalArgumentException("Unsupported query name");
             String type = scalarType(parameter.schema());
             if (!parameter.schema().enumName().isEmpty()) type = d.basePackage() + ".dto." + type;
             String temporalFormat = switch (parameter.schema().format()) {

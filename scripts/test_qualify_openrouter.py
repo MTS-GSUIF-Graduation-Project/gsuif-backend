@@ -51,6 +51,28 @@ def single_attempt_report(root):
 
 
 class QualificationTests(unittest.TestCase):
+    def test_locked_fixtures_normalize_line_endings_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for relative in q.FIXTURES:
+                destination = root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes((q.ROOT / relative).read_bytes().replace(b"\r\n", b"\n"))
+            with patch.object(q, "ROOT", root):
+                locked_lf = q.locked_fixture()
+                self.assertIn("FILE src/test/resources/openapi/gadget-api.yaml", locked_lf)
+                gadget = root / "src/test/resources/openapi/gadget-api.yaml"
+                original = gadget.read_bytes()
+                gadget.write_bytes(original.replace(b"\n", b"\r\n"))
+                self.assertEqual(q.locked_fixture(), locked_lf)
+                gadget.write_bytes(original.replace(b"\n", b"\r\n", 1))
+                self.assertEqual(q.locked_fixture(), locked_lf)
+                for changed in (original + b"# changed\n", original.replace(b"\n", b"\r", 1)):
+                    gadget.write_bytes(changed)
+                    with self.assertRaises(q.QualificationFailure) as failure:
+                        q.locked_fixture()
+                    self.assertEqual(failure.exception.code, "FIXTURE_CHANGED")
+
     def test_request_is_exact_and_bounded(self):
         body = json.loads(q.request_body())
         self.assertEqual(body["model"], "qwen/qwen3-coder")

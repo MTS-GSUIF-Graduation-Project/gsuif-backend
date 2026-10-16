@@ -489,6 +489,26 @@ class CompleteOutputDescriptorTest {
         }
     }
 
+    @Test void migrationRejectsSupportIndexAndSequenceNamesBeforeOutput() throws Exception {
+        var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        for (String name : List.of("pk_user_accounts", "uq_user_accounts_username",
+                "pk_app_revision", "app_revision_rev_seq", "flyway_schema_history_pk",
+                "flyway_schema_history_s_idx")) {
+            var candidate = schemaDescriptor(descriptor, name, descriptor.fields());
+            assertThrows(IllegalArgumentException.class,
+                    () -> new CompleteBackendInitialMigrationRenderer().render(candidate,
+                            GenerationFilePlan.forDescriptor(candidate)), name);
+        }
+        var valid = schemaDescriptor(descriptor, "warehouse_entry", descriptor.fields());
+        assertTrue(new CompleteBackendInitialMigrationRenderer().render(valid,
+                GenerationFilePlan.forDescriptor(valid)).containsKey(
+                "backend/src/main/resources/db/migration/V1__initial_schema.sql"));
+        var audited = auditedSchemaDescriptor(descriptor, "warehouse_entry");
+        assertTrue(new CompleteBackendInitialMigrationRenderer().render(audited,
+                GenerationFilePlan.forDescriptor(audited)).containsKey(
+                "backend/src/main/resources/db/migration/V1__initial_schema.sql"));
+    }
+
     @Test void unauditedMigrationDoesNotValidateUnusedAuditCheckNames() throws Exception {
         var descriptor = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
         String table = "a".repeat(45);
@@ -1191,6 +1211,22 @@ class CompleteOutputDescriptorTest {
         var withoutAudit = new GenerationFilePlan(plan.entries().stream()
                 .filter(e -> !e.path().endsWith("entity/AuditableEntity.java")).toList());
         assertThrows(IllegalArgumentException.class, () -> ModelHandoffSpec.from(descriptor, withoutAudit));
+    }
+
+    @Test void registeredContractRejectsJavaKeywordQueryAndOperationNames() throws Exception {
+        var queryRegistry = new PackagedContractRegistry(
+                "/generation/stock-unit-keyword-query-contracts.yaml");
+        var queryPreflight = new GenerationCapabilityPreflight(
+                new GenerationContextBuilder(mapper, new MetadataSchemaValidator(), queryRegistry), queryRegistry);
+        var invalidQuery = assertThrows(GenerationValidationException.class,
+                () -> queryPreflight.describe(version(snapshot("class")), specification(), OutputMode.BACKEND));
+        assertTrue(invalidQuery.getMessage().contains("parameters.class: unsupported parameter shape"),
+                invalidQuery.getMessage());
+        assertThrows(IllegalStateException.class, () -> new PackagedContractRegistry(
+                "/generation/stock-unit-keyword-operation-contracts.yaml"));
+        var valid = preflight().describe(version(snapshot("condition")), specification(), OutputMode.BACKEND);
+        assertTrue(new CompleteBackendApiRenderer().render(valid, GenerationFilePlan.forDescriptor(valid))
+                .keySet().stream().anyMatch(path -> path.endsWith("StockUnitApi.java")));
     }
 
     @Test void unsupportedRequestConstraintsFailBeforeRendering() throws Exception {
