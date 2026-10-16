@@ -51,7 +51,8 @@ record GenerationFilePlan(List<Entry> entries) {
             for (String path : List.of("backend/pom.xml", "backend/src/main/resources/application.yml",
                     "backend/src/main/resources/db/migration/V1__initial_schema.sql"))
                 add(entries, path, Owner.DETERMINISTIC, "backend runtime");
-            for (String relative : List.of("Application.java", "api/ApiResponse.java", "api/GlobalExceptionHandler.java",
+            for (String relative : List.of("Application.java", "api/ApiResponse.java",
+                    "exception/GlobalExceptionHandler.java", "exception/RequestedRecordNotFoundException.java",
                     "entity/AuditableEntity.java", "entity/" + entity + ".java", "repository/" + entity + "Repository.java",
                     "dto/" + descriptor.dtoName() + ".java", "dto/" + descriptor.pageDtoName() + ".java",
                     "dto/" + descriptor.createRequestName() + ".java", "dto/" + descriptor.updateRequestName() + ".java",

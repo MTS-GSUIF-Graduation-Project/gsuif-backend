@@ -1,6 +1,8 @@
 <#ftl strip_whitespace=true encoding="UTF-8">
 package ${packageName}.service;
 
+/** getById, update and delete throw ${packageName}.exception.RequestedRecordNotFoundException
+ * only when the requested id is absent; other persistence failures propagate. */
 public interface ${serviceName} {
     ${dtoPackage}.${dtoName} create(${dtoPackage}.${createName} request);
     ${dtoPackage}.${dtoName} getById(java.util.UUID id);
