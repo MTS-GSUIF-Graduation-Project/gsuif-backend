@@ -13,4 +13,7 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
     @Override
     @EntityGraph(attributePaths = "roles")
     Optional<UserAccount> findById(UUID id);
+
+    @org.springframework.data.jpa.repository.Query("select count(u) from UserAccount u join u.roles role where role = :role")
+    long countWithRole(@org.springframework.data.repository.query.Param("role") UserAccount.Role role);
 }

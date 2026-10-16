@@ -15,6 +15,7 @@ final class CompleteBackendSecurityRenderer {
     private static final Map<String, String> TEMPLATES = Map.ofEntries(
             Map.entry("SecurityMode.java", "security-mode.java.ftl"),
             Map.entry("SecurityConfig.java", "security-config.java.ftl"),
+            Map.entry("PasswordEncodingConfig.java", "password-encoding-config.java.ftl"),
             Map.entry("EnforcedMethodSecurityConfig.java", "enforced-method-security-config.java.ftl"),
             Map.entry("AuthenticatedAccount.java", "authenticated-account.java.ftl"),
             Map.entry("AccountIdentityService.java", "account-identity-service.java.ftl"),

@@ -12,8 +12,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.http.HttpMethod;
@@ -60,9 +58,6 @@ public class SecurityConfig {
     UserDetailsService devRejectAllUsers() {
         return username -> { throw new UsernameNotFoundException("Account unavailable"); };
     }
-
-    @Bean
-    PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
     static void writeError(tools.jackson.databind.ObjectMapper mapper,
             HttpServletResponse response, int status) throws java.io.IOException {

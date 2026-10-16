@@ -60,7 +60,8 @@ record GenerationFilePlan(List<Entry> entries) {
                     "service/" + entity + "Service.java", "security/SecurityConfig.java",
                     "security/SecurityMode.java", "security/EnforcedMethodSecurityConfig.java",
                     "security/AuthenticatedAccount.java", "security/AccountIdentityService.java",
-                    "security/FirstAdminBootstrap.java", "security/UserAccount.java", "security/UserAccountRepository.java",
+                    "bootstrap/FirstAdminBootstrap.java", "bootstrap/FirstAdminBootstrapService.java",
+                    "security/PasswordEncodingConfig.java", "security/UserAccount.java", "security/UserAccountRepository.java",
                     "security/AuthController.java", "security/LoginRequest.java",
                     "security/LoginResponse.java", "security/JwtAuthenticationFilter.java",
                     "security/JwtService.java"))

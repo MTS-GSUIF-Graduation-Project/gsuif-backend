@@ -74,7 +74,7 @@ class CompleteBackendSecurityTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var renderer = new CompleteBackendSecurityRenderer();
         var files = renderer.render(descriptor, plan);
-        assertEquals(11, files.size());
+        assertEquals(12, files.size());
         assertTrue(files.keySet().stream().allMatch(path -> path.contains("/security/") && path.endsWith(".java")));
         String all = files.values().stream().map(bytes -> new String(bytes, StandardCharsets.UTF_8))
                 .reduce("", String::concat);
@@ -419,10 +419,12 @@ class CompleteBackendSecurityTest {
                 Class<?> identity = loader.loadClass("com.example.inventory.security.AccountIdentityService");
                 Class<?> jwt = loader.loadClass("com.example.inventory.security.JwtService");
                 Class<?> auth = loader.loadClass("com.example.inventory.security.AuthController");
+                Class<?> encoding = loader.loadClass("com.example.inventory.security.PasswordEncodingConfig");
                 Class<?> repository = loader.loadClass("com.example.inventory.security.UserAccountRepository");
                 for (String profile : List.of("dev", "test", "prod", "default")) {
                     var builder = new SpringApplicationBuilder(
-                            BootProbe.class, security, mode, enforced, identity, jwt, auth, HttpProbe.class, MethodProbe.class)
+                            BootProbe.class, security, mode, enforced, identity, jwt, auth, encoding,
+                            HttpProbe.class, MethodProbe.class)
                             .web(WebApplicationType.SERVLET)
                             .properties("spring.main.banner-mode=off")
                             .initializers(application -> application.getBeanFactory()
@@ -498,7 +500,8 @@ class CompleteBackendSecurityTest {
                     }
                 }
                 var missingSecret = new SpringApplicationBuilder(
-                        BootProbe.class, security, mode, enforced, identity, jwt, auth, HttpProbe.class, MethodProbe.class)
+                        BootProbe.class, security, mode, enforced, identity, jwt, auth, encoding,
+                        HttpProbe.class, MethodProbe.class)
                         .web(WebApplicationType.SERVLET)
                         .initializers(application -> application.getBeanFactory()
                                 .registerSingleton("accountRepositoryProbe", mock(repository)));
@@ -507,7 +510,8 @@ class CompleteBackendSecurityTest {
                         "--server.port=0", "--spring.main.banner-mode=off", "--logging.level.root=OFF",
                         "--gsuif.security.probe=true", "--GENERATED_APP_JWT_SECRET="));
                 assertThrows(Exception.class, () -> new SpringApplicationBuilder(
-                        BootProbe.class, security, mode, enforced, identity, jwt, auth, HttpProbe.class, MethodProbe.class)
+                        BootProbe.class, security, mode, enforced, identity, jwt, auth, encoding,
+                        HttpProbe.class, MethodProbe.class)
                         .web(WebApplicationType.SERVLET)
                         .initializers(application -> application.getBeanFactory()
                                 .registerSingleton("accountRepositoryProbe", mock(repository)))
@@ -577,7 +581,8 @@ class CompleteBackendSecurityTest {
             ClassLoader previous = Thread.currentThread().getContextClassLoader();
             Thread.currentThread().setContextClassLoader(loader);
             try (var context = new SpringApplicationBuilder(BootProbe.class, security, mode, enforced,
-                    identity, jwt, auth, handler, controller)
+                    identity, jwt, auth, loader.loadClass(base + "security.PasswordEncodingConfig"), handler,
+                    controller)
                     .web(WebApplicationType.SERVLET)
                     .initializers(application -> {
                         application.getBeanFactory().registerSingleton("accountRepositoryProbe", accounts);
@@ -746,6 +751,7 @@ class CompleteBackendSecurityTest {
                     loader.loadClass(base + "security.SecurityMode"),
                     loader.loadClass(base + "security.EnforcedMethodSecurityConfig"),
                     loader.loadClass(base + "security.AccountIdentityService"),
+                    loader.loadClass(base + "security.PasswordEncodingConfig"),
                     loader.loadClass(base + "security.JwtService"),
                     loader.loadClass(base + "security.AuthController"),
                     loader.loadClass(base + "exception.GlobalExceptionHandler"),
