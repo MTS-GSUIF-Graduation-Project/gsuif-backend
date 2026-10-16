@@ -28,7 +28,7 @@ final class CompleteBackendErrorRenderer {
             throw new IllegalArgumentException("Backend error handler requires BACKEND or FULL_STACK mode");
         String root = "backend/src/main/java/" + descriptor.basePackage().replace('.', '/') + "/exception/";
         String handler = root + "GlobalExceptionHandler.java";
-        String missing = root + "RequestedRecordNotFoundException.java";
+        String missing = ModelHandoffSpec.requestedRecordNotFoundPath(descriptor);
         Set<String> required = Set.of(handler, missing);
         Map<String, Owner> owners = new TreeMap<>();
         plan.entries().forEach(entry -> owners.put(entry.path(), entry.owner()));
@@ -43,13 +43,22 @@ final class CompleteBackendErrorRenderer {
         Map<String, byte[]> emitted = new TreeMap<>();
         emitted.put(handler, template("global-exception-handler.java.ftl",
                 Map.of("packageName", descriptor.basePackage(), "fieldKeys", keys)));
-        emitted.put(missing, template("requested-record-not-found.java.ftl",
-                Map.of("packageName", descriptor.basePackage())));
+        emitted.put(missing, requestedRecordNotFound(descriptor, plan));
         if (!required.equals(emitted.keySet()))
             throw new IllegalArgumentException("Error-contract output differs from required subset");
         Map<String, byte[]> frozen = new TreeMap<>();
         emitted.forEach((path, bytes) -> frozen.put(path, bytes.clone()));
         return Collections.unmodifiableMap(frozen);
+    }
+
+    byte[] requestedRecordNotFound(CompleteOutputDescriptor descriptor, GenerationFilePlan plan) {
+        if (descriptor == null || descriptor.mode() == GenerationCapabilityPreflight.OutputMode.FRONTEND)
+            throw new IllegalArgumentException("Backend exception requires BACKEND or FULL_STACK mode");
+        String path = ModelHandoffSpec.requestedRecordNotFoundPath(descriptor);
+        GenerationArtifactStore.safeRelative(path);
+        if (plan.entries().stream().noneMatch(entry -> entry.path().equals(path) && entry.owner() == Owner.DETERMINISTIC))
+            throw new IllegalArgumentException("Exception definition absent or incorrectly owned: " + path);
+        return template("requested-record-not-found.java.ftl", Map.of("packageName", descriptor.basePackage()));
     }
 
     private byte[] template(String name, Map<String, Object> model) {

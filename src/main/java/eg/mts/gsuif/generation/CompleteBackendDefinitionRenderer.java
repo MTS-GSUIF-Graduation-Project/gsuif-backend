@@ -72,6 +72,7 @@ final class CompleteBackendDefinitionRenderer {
         requireBackend(descriptor);
         Set<String> required = new TreeSet<>();
         for (ModelHandoffSpec.Definition definition : handoff.definitions()) required.add(definition.path());
+        required.remove(ModelHandoffSpec.requestedRecordNotFoundPath(descriptor));
         return Collections.unmodifiableSet(required);
     }
 
@@ -92,7 +93,10 @@ final class CompleteBackendDefinitionRenderer {
             if (entry.getValue() == null) throw new IllegalArgumentException("Missing backend definition bytes");
         }
         Map<String, byte[]> immutable = copy(emitted);
-        return new Rendered(immutable, RenderedModelHandoff.from(handoff, immutable));
+        Map<String, byte[]> handoffBytes = new TreeMap<>(immutable);
+        String exceptionPath = ModelHandoffSpec.requestedRecordNotFoundPath(descriptor);
+        handoffBytes.put(exceptionPath, new CompleteBackendErrorRenderer().requestedRecordNotFound(descriptor, plan));
+        return new Rendered(immutable, RenderedModelHandoff.from(handoff, handoffBytes));
     }
 
     private String entitySource(CompleteOutputDescriptor d) {

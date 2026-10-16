@@ -34,7 +34,7 @@ class CompleteOutputDescriptorContractTest {
         var required = CompleteBackendDefinitionRenderer.requiredDefinitionPaths(descriptor,
                 rendered.handoff().specification());
         assertEquals(required, rendered.files().keySet());
-        assertEquals(rendered.handoff().definitions().size(), required.size());
+        assertEquals(rendered.handoff().definitions().size(), required.size() + 1);
         assertTrue(required.stream().anyMatch(path -> path.endsWith("entity/AuditableEntity.java")));
         var audit = rendered.handoff().definitions().stream()
                 .filter(definition -> definition.role().equals("audit base")).findFirst().orElseThrow();
@@ -55,8 +55,13 @@ class CompleteOutputDescriptorContractTest {
         assertTrue(all.contains("java.time.LocalDate retiredOn"));
         assertTrue(all.contains("enum StockUnitCondition { OPEN, CLOSED }"));
         assertFalse(rendered.files().keySet().stream().anyMatch(p -> p.endsWith("StockUnitLabel.java")));
+        var authoritative = new TreeMap<>(rendered.files());
+        String exceptionPath = ModelHandoffSpec.requestedRecordNotFoundPath(descriptor);
+        authoritative.put(exceptionPath, new CompleteBackendErrorRenderer().render(descriptor, plan).get(exceptionPath));
+        assertEquals(authoritative.keySet(), rendered.handoff().definitions().stream()
+                .map(RenderedModelHandoff.Definition::path).collect(java.util.stream.Collectors.toSet()));
         for (var definition : rendered.handoff().definitions()) {
-            byte[] emitted = rendered.files().get(definition.path());
+            byte[] emitted = authoritative.get(definition.path());
             assertArrayEquals(emitted, definition.bytes());
             assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(emitted)),
                     definition.sha256());
@@ -69,6 +74,38 @@ class CompleteOutputDescriptorContractTest {
         var handoffBytes = rendered.handoff().definitions().getFirst().bytes();
         handoffBytes[0] ^= 1;
         assertEquals(original, rendered.handoff().definitions().getFirst().bytes()[0]);
+    }
+
+    @Test void missingRecordExceptionHandoffRejectsMissingOrWrongOwnershipAndDefendsBytes() throws Exception {
+        var descriptor = fixture.preflight().describe(fixture.version(fixture.snapshot("condition")),
+                fixture.specification(), OutputMode.BACKEND);
+        var plan = GenerationFilePlan.forDescriptor(descriptor);
+        var rendered = new CompleteBackendDefinitionRenderer().render(descriptor, plan);
+        String path = ModelHandoffSpec.requestedRecordNotFoundPath(descriptor);
+        var definition = rendered.handoff().definitions().stream()
+                .filter(item -> item.path().equals(path)).findFirst().orElseThrow();
+        assertEquals("missing-record exception", definition.role());
+        assertFalse(rendered.files().containsKey(path));
+        byte[] emitted = new CompleteBackendErrorRenderer().render(descriptor, plan).get(path);
+        assertArrayEquals(emitted, definition.bytes());
+        assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(emitted)),
+                definition.sha256());
+        assertThrows(IllegalArgumentException.class,
+                () -> RenderedModelHandoff.from(rendered.handoff().specification(), rendered.files()));
+        var absent = new GenerationFilePlan(plan.entries().stream().filter(entry -> !entry.path().equals(path)).toList());
+        assertThrows(IllegalArgumentException.class, () -> ModelHandoffSpec.from(descriptor, absent));
+        assertThrows(IllegalArgumentException.class, () -> new CompleteBackendDefinitionRenderer().render(descriptor, absent));
+        var wrongOwner = new GenerationFilePlan(plan.entries().stream().map(entry -> entry.path().equals(path)
+                ? new Entry(entry.path(), Owner.MODEL, entry.purpose()) : entry).toList());
+        assertThrows(IllegalArgumentException.class, () -> ModelHandoffSpec.from(descriptor, wrongOwner));
+        assertThrows(IllegalArgumentException.class,
+                () -> new CompleteBackendDefinitionRenderer().render(descriptor, wrongOwner));
+        byte first = definition.bytes()[0];
+        byte[] mutable = definition.bytes();
+        mutable[0] ^= 1;
+        assertEquals(first, definition.bytes()[0]);
+        emitted[0] ^= 1;
+        assertEquals(first, definition.bytes()[0]);
     }
 
     @Test void definitionSubsetRejectsMissingExtraAndIncorrectOwnership() throws Exception {
@@ -163,13 +200,15 @@ class CompleteOutputDescriptorContractTest {
         assertTrue(plan.entries().stream().noneMatch(e -> e.path().endsWith("StockUnitLabel.java")));
         var handoff = ModelHandoffSpec.from(descriptor, plan);
         assertEquals(List.of(modelPath), handoff.writablePaths());
-        assertEquals(10, handoff.definitions().size());
+        assertEquals(11, handoff.definitions().size());
         assertTrue(handoff.definitions().stream().anyMatch(d -> d.role().equals("audit base")
                 && d.path().endsWith("entity/AuditableEntity.java")));
         assertTrue(handoff.definitions().stream().anyMatch(d -> d.role().equals("page DTO")
                 && d.path().endsWith("StockUnitPage.java")));
         assertTrue(handoff.definitions().stream().anyMatch(d -> d.role().equals("contract enum")
                 && d.path().endsWith("StockUnitCondition.java")));
+        assertTrue(handoff.definitions().stream().anyMatch(d -> d.role().equals("missing-record exception")
+                && d.path().endsWith("exception/RequestedRecordNotFoundException.java")));
         assertTrue(handoff.definitions().stream().noneMatch(d -> d.path().endsWith("StockUnitLabel.java")));
         assertTrue(handoff.definitions().stream().allMatch(d -> plan.entries().stream().anyMatch(e ->
                 e.path().equals(d.path()) && e.owner() == Owner.DETERMINISTIC)));

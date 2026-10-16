@@ -51,7 +51,8 @@ record ModelHandoffSpec(String contractId, String contractVersion, String contra
                     new Definition("update request", root + "dto/" + descriptor.updateRequestName() + ".java"),
                     new Definition("response DTO", root + "dto/" + descriptor.dtoName() + ".java"),
                     new Definition("page DTO", root + "dto/" + descriptor.pageDtoName() + ".java"),
-                    new Definition("response envelope", root + "api/ApiResponse.java")));
+                    new Definition("response envelope", root + "api/ApiResponse.java"),
+                    new Definition("missing-record exception", requestedRecordNotFoundPath(descriptor))));
             GenerationFilePlan.enumNames(descriptor).stream().sorted().forEach(name ->
                     definitions.add(new Definition("contract enum", root + "dto/" + name + ".java")));
         }
@@ -63,5 +64,10 @@ record ModelHandoffSpec(String contractId, String contractVersion, String contra
                 descriptor.createRules(), descriptor.createFields(),
                 descriptor.updateRules(), descriptor.editableFields(), descriptor.responseFields(),
                 Set.of("java", "jakarta.persistence", "org.springframework", "com.fasterxml.jackson"), paths);
+    }
+
+    static String requestedRecordNotFoundPath(CompleteOutputDescriptor descriptor) {
+        return "backend/src/main/java/" + descriptor.basePackage().replace('.', '/')
+                + "/exception/RequestedRecordNotFoundException.java";
     }
 }
