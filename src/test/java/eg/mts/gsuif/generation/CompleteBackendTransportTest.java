@@ -102,7 +102,7 @@ class CompleteBackendTransportTest {
                 .render(descriptor, GenerationFilePlan.forDescriptor(descriptor)).entrySet().stream()
                 .filter(e -> e.getKey().endsWith("Controller.java")).findFirst().orElseThrow().getValue(),
                 StandardCharsets.UTF_8);
-        assertTrue(controller.contains("hasAnyAuthority('ROLE_USER')\")\n    public org.springframework.http.ResponseEntity<com.example.inventory.api.ApiResponse<com.example.inventory.dto.StockUnitDto>> inspectStockUnit"));
+        assertTrue(controller.contains("hasAnyAuthority('ROLE_USER')\")\n    @com.example.inventory.aspect.Loggable\n    public org.springframework.http.ResponseEntity<com.example.inventory.api.ApiResponse<com.example.inventory.dto.StockUnitDto>> inspectStockUnit"));
         assertTrue(controller.contains("hasAnyAuthority('ROLE_ADMIN')"));
     }
 
@@ -111,6 +111,8 @@ class CompleteBackendTransportTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var source = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         source.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        source.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(e -> e.getKey().endsWith("Loggable.java")).collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         Path classes = Files.createDirectories(scratch.resolve("classes"));
         List<String> inputs = new ArrayList<>();
         for (var entry : source.entrySet()) {
@@ -194,6 +196,8 @@ class CompleteBackendTransportTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var source = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         source.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        source.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(e -> e.getKey().endsWith("Loggable.java")).collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         String api = new String(source.entrySet().stream().filter(e -> e.getKey().endsWith("StockUnitApi.java"))
                 .findFirst().orElseThrow().getValue(), StandardCharsets.UTF_8);
         assertTrue(api.contains("DateTimeFormat.ISO.DATE)"));
@@ -255,6 +259,8 @@ class CompleteBackendTransportTest {
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var files = new TreeMap<>(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         files.putAll(new CompleteBackendApiRenderer().render(descriptor, plan));
+        files.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(e -> e.getKey().endsWith("Loggable.java")).collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         Path classes = Files.createDirectories(scratch.resolve("classes"));
         List<String> sources = new ArrayList<>();
         for (var entry : files.entrySet()) {

@@ -12,6 +12,7 @@ public class ${controllerName} implements ${basePackage}.api.${interfaceName} {
 <#list methods as method>
     @Override
     @org.springframework.security.access.prepost.PreAuthorize("${method.roles}")
+    @${basePackage}.aspect.Loggable
     public org.springframework.http.ResponseEntity<${basePackage}.api.ApiResponse<${method.payloadType}>> ${method.operationId}(<#list method.parameters as parameter>${parameter.type} ${parameter.name}<#if parameter_has_next>, </#if></#list>) {
 <#if method.delete>
         service.${method.serviceMethod}(${method.arguments});

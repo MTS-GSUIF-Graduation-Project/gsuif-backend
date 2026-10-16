@@ -439,6 +439,9 @@ class CompleteBackendAuditTest {
         sources.putAll(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files());
         sources.putAll(new CompleteBackendSecurityRenderer().render(descriptor, plan));
         sources.putAll(new CompleteBackendErrorRenderer().render(descriptor, plan));
+        sources.putAll(new CompleteBackendObservabilityRenderer().render(descriptor, plan).entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith("SafeFailureLogger.java"))
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         sources.putAll(new CompleteBackendInitialMigrationRenderer().render(descriptor, plan));
         Path classes = Files.createDirectories(scratch.resolve("classes"));
         List<String> arguments = new ArrayList<>(List.of("-classpath", System.getProperty("java.class.path"),

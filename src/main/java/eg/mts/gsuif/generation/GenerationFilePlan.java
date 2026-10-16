@@ -49,7 +49,8 @@ record GenerationFilePlan(List<Entry> entries) {
         String entity = descriptor.entityName();
         if (descriptor.mode() != OutputMode.FRONTEND) {
             for (String path : List.of("backend/pom.xml", "backend/src/main/resources/application.yml",
-                    "backend/src/main/resources/db/migration/V1__initial_schema.sql"))
+                    "backend/src/main/resources/db/migration/V1__initial_schema.sql",
+                    "backend/src/main/resources/logback-spring.xml"))
                 add(entries, path, Owner.DETERMINISTIC, "backend runtime");
             for (String relative : List.of("Application.java", "api/ApiResponse.java",
                     "exception/GlobalExceptionHandler.java", "exception/RequestedRecordNotFoundException.java",
@@ -66,6 +67,10 @@ record GenerationFilePlan(List<Entry> entries) {
                     "security/LoginResponse.java", "security/JwtAuthenticationFilter.java",
                     "security/JwtService.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "backend contract or framework");
+            for (String relative : List.of("aspect/Loggable.java", "aspect/LoggingAspect.java",
+                    "filter/CorrelationIdFilter.java", "logging/SensitiveDataMasker.java",
+                    "logging/MaskingPatternLayout.java", "logging/SafeFailureLogger.java"))
+                add(entries, root + relative, Owner.DETERMINISTIC, "generated-app observability");
             for (String relative : List.of("audit/AuditActorConfig.java", "audit/GeneratedAppAuditorAware.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "generated-app audit actor");
             if (descriptor.enversAudited())

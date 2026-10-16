@@ -52,7 +52,7 @@ class CompleteBackendRuntimeTest {
         var document = DocumentBuilderFactory.newInstance().newDocumentBuilder()
                 .parse(new ByteArrayInputStream(files.get("backend/pom.xml")));
         var dependencies = document.getElementsByTagName("dependency");
-        assertEquals(9, dependencies.getLength());
+        assertEquals(10, dependencies.getLength());
         assertTrue(pom.contains("<artifactId>spring-security-oauth2-jose</artifactId><version>7.0.7</version>"));
         for (int i = 0; i < dependencies.getLength(); i++) {
             var dependency = (Element) dependencies.item(i);
