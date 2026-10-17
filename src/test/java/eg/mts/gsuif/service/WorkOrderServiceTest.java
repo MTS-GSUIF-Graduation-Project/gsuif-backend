@@ -10,6 +10,7 @@ import eg.mts.gsuif.exception.DuplicateResourceException;
 import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.repository.WorkOrderRepository;
 import eg.mts.gsuif.service.impl.WorkOrderServiceImpl;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,12 +38,14 @@ class WorkOrderServiceTest {
 
     @Mock
     private WorkOrderRepository repository;
+    @Mock
+    private EntityPermissionChecker permissionChecker;
 
     private WorkOrderService service;
 
     @BeforeEach
     void setUp() {
-        service = new WorkOrderServiceImpl(repository);
+        service = new WorkOrderServiceImpl(repository, permissionChecker);
     }
 
     @Test

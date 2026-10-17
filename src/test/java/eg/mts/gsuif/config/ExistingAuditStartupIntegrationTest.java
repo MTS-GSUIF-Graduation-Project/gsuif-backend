@@ -36,9 +36,9 @@ class ExistingAuditStartupIntegrationTest {
     static void seedBeforeStartup(DynamicPropertyRegistry registry) {
         try (var connection = DriverManager.getConnection(
                 "jdbc:h2:mem:existing_audit_startup;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")) {
-            for (int version = 1; version <= 6; version++) {
+            for (int version = 1; version <= 7; version++) {
                 String[] names = {"init_schema", "add_build_diagnostics", "add_generated_artifact_registry",
-                        "add_generation_attempt_fingerprint", "add_permission_role_permission", "add_work_orders"};
+                        "add_generation_attempt_fingerprint", "add_permission_role_permission", "add_work_orders" , "bootstrap_entity_permissions"};
                 ScriptUtils.executeSqlScript(connection,
                         new ClassPathResource("sql/V" + version + "__" + names[version - 1] + ".sql"));
             }

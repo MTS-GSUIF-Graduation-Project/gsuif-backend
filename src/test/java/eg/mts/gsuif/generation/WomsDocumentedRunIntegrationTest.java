@@ -8,18 +8,24 @@ import eg.mts.gsuif.entity.GsuifProject;
 import eg.mts.gsuif.entity.GsuifUser;
 import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import eg.mts.gsuif.repository.GsuifProjectRepository;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.service.MetadataVersionService;
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import java.util.zip.ZipFile;
 
@@ -38,7 +44,13 @@ class WomsDocumentedRunIntegrationTest {
     @Autowired GsuifProjectRepository projects;
     @Autowired MetadataVersionService metadataVersions;
 
-    @Test void documentedFixtureBuildsAndItsSavedRunDownloadsAndExports() throws Exception {
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test void documentedFixtureBuildsAndItsSavedRunDownloadsAndExports(
+            @Autowired EntityPermissionChecker permissionChecker) throws Exception {
         var mapper = new ObjectMapper();
         var metadata = mapper.readTree(Files.readString(Path.of("demo/woms-sample-metadata.json")));
         var request = mapper.readTree(Files.readString(Path.of("demo/woms-generation-request.json")));
@@ -54,6 +66,12 @@ class WomsDocumentedRunIntegrationTest {
         user.setPasswordHash("hash");
         entities.persist(user);
         entities.flush();
+        // SCRUM-61: service-layer permission checks require an authenticated principal with
+        // ENTITY_ACCESS grants. "admin" is the fixture user seeded in test-support-schema.sql
+        // with ROLE_ADMIN which holds all ENTITY_ACCESS:* permissions via V6 bootstrap.
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("admin", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         var savedVersion = metadataVersions.create(page.getId(), new CreateMetadataVersionRequest(
                 metadata.path("schemaVersion").asText(),
                 new tools.jackson.databind.ObjectMapper().readTree(metadata.path("snapshot").toString())));
@@ -78,7 +96,7 @@ class WomsDocumentedRunIntegrationTest {
         assertTrue(api.artifactHistory(path).stream().anyMatch(trace ->
                 trace.runId().equals(created.runId()) && trace.metadataVersionId().equals(savedVersion.id())));
 
-        var exports = new GenerationExportService(temp.toString(), runs, artifacts, projects);
+        var exports = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissionChecker);
         exports.configure(project.getId(), "local", new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
         exports.configure(project.getId(), "zip", new GenerationExportService.DestinationConfig("ZIP", "delivery/archive"));
         Path folder = Path.of(URI.create(exports.export(created.runId(), "local").location()));

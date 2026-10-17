@@ -68,6 +68,8 @@ All other acceptance criteria remained unchanged.
 | ID | Decision | Source | Status | Approved by |
 |----|----------|--------|--------|-------------|
 | DEC-030 | SCRUM-47 owns build validation, persists bounded build output and exit codes, and makes diagnostics retrievable through an internal generation-run lookup by ID. SCRUM-48 owns the REST `GET /api/v1/generation/runs/{id}` response that exposes those diagnostics to clients. SCRUM-47 adds no REST endpoint. | Team decision, 2026-10-05 | CONFIRMED | Team |
+| DEC-031 | FIELD_DENY permission codes in SCRUM-61 apply to read-path DTO response masking only. Write-path field enforcement is deferred to Phase 2 or a dedicated authorization task. | SCRUM-61 PR #43 review, 2026-10-15 | CONFIRMED | Team |
+| DEC-032 | SCRUM-61 narrows DEC-017: entity-level and read-path field-level permission enforcement are accepted into Phase 1 scope through SCRUM-61. Write-path field enforcement and policy-engine authorization remain deferred per DEC-017. | SCRUM-61 PR #43 review, 2026-10-15 | CONFIRMED | Team |
 
 ### SCRUM-47 zero-test success rule
 
@@ -218,3 +220,13 @@ One additional compile-scope dependency is introduced:
 If `openapi-generator-maven-plugin` is upgraded across major versions in the future,
 `responseType.mustache` (1 line) should be verified against the new version's template
 hierarchy to confirm the sub-template name and rendering contract remain unchanged.
+
+## SCRUM-61 review alignment
+
+The team approved DEC-031 and DEC-032 during PR #43 review. These entries record the
+agreed SCRUM-61 authorization scope in the repository.
+
+| ID | Decision | Source | Status | Approved by |
+|----|----------|--------|--------|-------------|
+| DEC-031 | `FIELD_DENY` permission codes in SCRUM-61 apply to read-path DTO response masking only. Write-path field enforcement is deferred to Phase 2 or a dedicated authorization task. Resolves OQ-12. | SCRUM-61 PR #43 review | CONFIRMED | Team |
+| DEC-032 | SCRUM-61 narrows DEC-017: entity-level and read-path field-level permission enforcement are accepted into Phase 1 scope through SCRUM-61. Write-path field enforcement and policy-engine authorization remain deferred per DEC-017. Resolves OQ-11. | SCRUM-61 PR #43 review | CONFIRMED | Team |

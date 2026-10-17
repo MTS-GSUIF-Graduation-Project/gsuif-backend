@@ -5,6 +5,7 @@ import eg.mts.gsuif.entity.*;
 import eg.mts.gsuif.exception.MetadataValidationException;
 import eg.mts.gsuif.repository.*;
 import eg.mts.gsuif.service.impl.MetadataVersionServiceImpl;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -43,6 +44,7 @@ class MetadataBusinessPersistenceTest {
             });
             context.registerBean(ObjectMapper.class, () -> mapper);
             context.registerBean(MetadataVersionRepository.class, () -> versions);
+            context.registerBean(EntityPermissionChecker.class, () -> mock(EntityPermissionChecker.class));
             context.registerBean(MetadataVersionServiceImpl.class);
             if (extraRules) {
                 MetadataBusinessDiscoveryTest.register(context, "testA", "TestA", true, new AtomicInteger());

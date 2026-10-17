@@ -12,8 +12,10 @@ import eg.mts.gsuif.repository.GeneratedArtifactRepository;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.GsuifUserRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import eg.mts.gsuif.validator.MetadataSchemaValidator;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -34,8 +36,9 @@ class GenerationApiServiceTest {
     GeneratedArtifactRepository artifacts = mock(GeneratedArtifactRepository.class);
     GenerationWorkflow workflow = mock(GenerationWorkflow.class);
     GenerationRunService runs = mock(GenerationRunService.class);
+    EntityPermissionChecker permissionChecker = mock(EntityPermissionChecker.class);
     GenerationApiService service = new GenerationApiService(pages, versions, users, artifacts, workflow,
-            runs, mock(MetadataSchemaValidator.class));
+            runs, mock(MetadataSchemaValidator.class), permissionChecker);
 
     @Test void downloadRequiresSavedRunRegisteredSafePathAndVerifiedStorage() {
         UUID id = UUID.randomUUID();
@@ -150,6 +153,16 @@ class GenerationApiServiceTest {
         assertTrue(detail.validationScope().passedTargets().isEmpty());
         assertEquals(List.of("ANGULAR"), detail.validationScope().notValidatedTargets());
         assertThrows(ResourceNotFoundException.class, () -> service.run(UUID.randomUUID()));
+    }
+
+    @Test void runDeniedWhenPageAccessDenied() {
+        UUID runId = UUID.randomUUID();
+        doThrow(new AccessDeniedException("Entity access denied: GsuifPage"))
+                .when(permissionChecker).requireEntityAccess(eq("GsuifPage"), any());
+
+        assertThrows(AccessDeniedException.class, () -> service.run(runId));
+
+        verify(runs, never()).findById(any());
     }
 
     private static GenerationSpecification specification() {

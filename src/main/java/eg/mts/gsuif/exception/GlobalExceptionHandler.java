@@ -398,6 +398,16 @@ public class GlobalExceptionHandler {
 
     }
 
+    // Branch 4: Authenticated principal lacks a required permission → 403
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(
+            org.springframework.security.access.AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        return ResponseEntity
+                .status(403)
+                .body(ApiResponse.error(403, "Access denied", null));
+    }
+
     // HTTP method / media type errors
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiResponse<Void>> handleHttpRequestMethodNotSupported(HttpRequestMethodNotSupportedException ex) {

@@ -13,6 +13,7 @@ import eg.mts.gsuif.exception.ResourceNotFoundException;
 import eg.mts.gsuif.repository.GsuifPageRepository;
 import eg.mts.gsuif.repository.MetadataVersionRepository;
 import eg.mts.gsuif.service.impl.MetadataVersionServiceImpl;
+import eg.mts.gsuif.security.EntityPermissionChecker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +46,8 @@ class MetadataVersionServiceTest {
     private ObjectMapper objectMapper;
     @Mock
     private eg.mts.gsuif.validator.MetadataSchemaValidator schemaValidator;
+    @Mock
+    private EntityPermissionChecker permissionChecker;
 
     private MetadataVersionServiceImpl metadataVersionService;
 
@@ -58,7 +61,7 @@ class MetadataVersionServiceTest {
                 new eg.mts.gsuif.validator.MetadataBusinessValidator(List.of(
                         new eg.mts.gsuif.validator.ComponentIdUniquenessRule(),
                         new eg.mts.gsuif.validator.SupportedHttpMethodRule(),
-                        new eg.mts.gsuif.validator.SnapshotSizeRule())));
+                        new eg.mts.gsuif.validator.SnapshotSizeRule())), permissionChecker);
 
         GsuifProject project = new GsuifProject();
         org.springframework.test.util.ReflectionTestUtils.setField(project, "id", projectId);
