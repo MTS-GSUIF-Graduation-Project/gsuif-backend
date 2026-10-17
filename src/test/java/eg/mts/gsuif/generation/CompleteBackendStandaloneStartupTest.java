@@ -9,8 +9,6 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -29,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -44,7 +41,6 @@ class CompleteBackendStandaloneStartupTest {
     @TempDir Path scratch;
 
     private record Selected(BackendModelInput input, CompleteBackendPackageAssembler assembler, String source) { }
-    private record CommandResult(int exit, String output) { }
 
     @Test void unauditedStockUnitStartsAndRestartsAgainstDisposablePostgres() throws Exception {
         requireOptIn();
@@ -120,6 +116,7 @@ class CompleteBackendStandaloneStartupTest {
     }
 
     private void accept(String label, Selected selected, boolean audited, String protectedPath) throws Exception {
+        StandaloneBackendTestSupport processes = new StandaloneBackendTestSupport(scratch);
         BackendModelInput input = selected.input();
         ObjectNode response = JSON.createObjectNode();
         response.putArray("files").addObject().put("path", input.writablePath()).put("content", selected.source());
@@ -136,7 +133,7 @@ class CompleteBackendStandaloneStartupTest {
         verifyManifest(input, extracted, assembled.keySet());
         assertTrue(Files.readString(extracted.resolve("backend/src/main/resources/application.yml"),
                 StandardCharsets.UTF_8).contains("ddl-auto: validate"));
-        Path jar = buildJar(label, extracted);
+        Path jar = processes.buildJar(label, extracted);
         String password = "disposable-" + UUID.randomUUID();
         String username = "generated_test";
         String database = "generated_app";
@@ -146,55 +143,35 @@ class CompleteBackendStandaloneStartupTest {
         String ownershipLabel = "gsuif.scrum65.startup=" + UUID.randomUUID();
         try {
             String name = "gsuif-scrum65-startup-" + UUID.randomUUID();
-            CommandResult created = docker(List.of("run", "-d", "--name", name, "--label", ownershipLabel,
+            StandaloneBackendTestSupport.CommandResult created = processes.docker(List.of("run", "-d", "--name", name, "--label", ownershipLabel,
                     "--env-file", envFile.toString(),
                     "-e", "POSTGRES_USER=" + username, "-e", "POSTGRES_DB=" + database,
                     "-p", "127.0.0.1::5432", System.getProperty("gsuif.test.postgres-image")));
             assertEquals(0, created.exit(), "Disposable PostgreSQL container could not start");
             container = created.output().trim();
             assertTrue(container.matches("[a-f0-9]{64}"), "Docker did not return a container ID");
-            String port = docker(List.of("port", container, "5432/tcp")).output().trim()
+            String port = processes.docker(List.of("port", container, "5432/tcp")).output().trim()
                     .replaceFirst("^127\\.0\\.0\\.1:", "");
             assertTrue(port.matches("[0-9]{2,5}"), "Docker did not assign a loopback port");
             String url = "jdbc:postgresql://127.0.0.1:" + port + "/" + database;
-            awaitPostgres(container, username, database);
+            awaitPostgres(processes, container, username, database);
             byte[] secret = new byte[32]; new SecureRandom().nextBytes(secret);
             String jwt = Base64.getEncoder().encodeToString(secret);
             for (int launch = 1; launch <= 2; launch++) {
-                int webPort = freePort();
+                int webPort = StandaloneBackendTestSupport.freePort();
                 Path log = scratch.resolve(label + "-startup-" + launch + ".log");
-                Process app = startJar(jar, url, username, password, jwt, webPort, log);
+                Process app = processes.startJar(jar, url, username, password, jwt, webPort, log);
                 try {
                     awaitHttp(app, webPort, log);
                     verifyHttp(webPort, input, protectedPath);
                     verifyDatabase(url, username, password, audited);
                 } finally {
-                    stop(app);
-                    preserveEvidence(log, password, jwt);
+                    StandaloneBackendTestSupport.stop(app);
+                    processes.preserveEvidence(log, password, jwt);
                 }
             }
         } finally {
-            StringBuilder cleanup = new StringBuilder();
-            try {
-                CommandResult owned = docker(List.of("ps", "-a", "-q", "--filter", "label=" + ownershipLabel));
-                cleanup.append("owned container lookup: exit=").append(owned.exit()).append('\n')
-                        .append(owned.output()).append('\n');
-                assertEquals(0, owned.exit(), "Could not inspect test-owned disposable containers");
-                for (String id : owned.output().lines().filter(line -> line.matches("[a-f0-9]{12,64}")).toList()) {
-                    CommandResult removed = docker(List.of("rm", "-f", id));
-                    cleanup.append("container removal: exit=").append(removed.exit()).append('\n')
-                            .append(removed.output()).append('\n');
-                    assertEquals(0, removed.exit(), "Could not remove created disposable container");
-                }
-                CommandResult remaining = docker(List.of("ps", "-a", "-q", "--filter", "label=" + ownershipLabel));
-                cleanup.append("remaining owned containers: exit=").append(remaining.exit()).append('\n')
-                        .append(remaining.output()).append('\n');
-                assertEquals(0, remaining.exit(), "Could not verify test-owned container cleanup");
-                assertTrue(remaining.output().isBlank(), "Test-owned disposable container remains");
-            } finally {
-                Files.deleteIfExists(envFile);
-                preserveEvidence(label + "-container-cleanup.txt", cleanup.toString(), password, null);
-            }
+            processes.cleanupOwned(label, ownershipLabel, envFile, password);
         }
     }
 
@@ -218,52 +195,6 @@ class CompleteBackendStandaloneStartupTest {
         assertEquals(input.descriptor().contractResourceSha256(), sha(input.contract()));
     }
 
-    private Path buildJar(String label, Path extracted) throws Exception {
-        Path backend = extracted.resolve("backend");
-        Path log = scratch.resolve(label + "-build.log");
-        var command = List.of(Path.of(System.getProperty("gsuif.test.maven-command")).toAbsolutePath().toString(),
-                "-B", "-ntp", "-o", "-q", "-f", backend.resolve("pom.xml").toString(),
-                "-Dmaven.repo.local=" + Path.of(System.getProperty("maven.repo.local")).toAbsolutePath(),
-                "-DskipTests", "package");
-        ProcessBuilder builder = new ProcessBuilder(command).directory(backend.toFile())
-                .redirectErrorStream(true).redirectOutput(log.toFile());
-        removeProviderCredentials(builder.environment());
-        Process process = builder.start();
-        try {
-            assertTrue(process.waitFor(BUILD_LIMIT.toSeconds(), TimeUnit.SECONDS),
-                    label + " Maven package timed out");
-            assertEquals(0, process.exitValue(), label + " Maven package failed: " + safeLines(log));
-        } finally { stop(process); }
-        try (var stream = Files.list(backend.resolve("target"))) {
-            var jars = stream.filter(path -> path.toString().endsWith(".jar")
-                    && !path.toString().endsWith(".jar.original")).toList();
-            assertEquals(1, jars.size());
-            return jars.getFirst();
-        }
-    }
-
-    private Process startJar(Path jar, String url, String username, String password, String jwt,
-            int port, Path log) throws Exception {
-        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        ProcessBuilder builder = new ProcessBuilder(java, "-jar", jar.toString(),
-                "--spring.profiles.active=test", "--server.address=127.0.0.1", "--server.port=" + port,
-                "--spring.main.banner-mode=off").redirectErrorStream(true).redirectOutput(log.toFile());
-        Map<String, String> environment = builder.environment();
-        String systemRoot = environment.get("SystemRoot");
-        String temp = environment.get("TEMP");
-        String tmp = environment.get("TMP");
-        environment.clear();
-        if (systemRoot != null) environment.put("SystemRoot", systemRoot);
-        if (temp != null) environment.put("TEMP", temp);
-        if (tmp != null) environment.put("TMP", tmp);
-        environment.put("GENERATED_APP_DB_URL", url);
-        environment.put("GENERATED_APP_DB_USER", username);
-        environment.put("GENERATED_APP_DB_PASSWORD", password);
-        environment.put("GENERATED_APP_JWT_SECRET", jwt);
-        assertFalse(environment.containsKey("OPENROUTER_API_KEY"));
-        return builder.start();
-    }
-
     private void awaitHttp(Process app, int port, Path log) throws Exception {
         long deadline = System.nanoTime() + START_LIMIT.toNanos();
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
@@ -276,7 +207,7 @@ class CompleteBackendStandaloneStartupTest {
             Thread.sleep(500);
         }
         fail("Generated JAR did not reach HTTP readiness; exit="
-                + (app.isAlive() ? "running" : app.exitValue()) + "; " + safeLines(log));
+                + (app.isAlive() ? "running" : app.exitValue()) + "; " + StandaloneBackendTestSupport.safeLines(log));
     }
 
     private void verifyHttp(int port, BackendModelInput input, String protectedPath) throws Exception {
@@ -319,81 +250,18 @@ class CompleteBackendStandaloneStartupTest {
         }
     }
 
-    private void awaitPostgres(String container, String username, String database) throws Exception {
+    private void awaitPostgres(StandaloneBackendTestSupport processes, String container, String username, String database) throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
         while (System.nanoTime() < deadline) {
-            if (docker(List.of("exec", container, "pg_isready", "-U", username, "-d", database)).exit() == 0)
+            if (processes.docker(List.of("exec", container, "pg_isready", "-U", username, "-d", database)).exit() == 0)
                 return;
             Thread.sleep(500);
         }
         fail("Disposable PostgreSQL did not become ready");
     }
 
-    private CommandResult docker(List<String> arguments) throws Exception {
-        var command = new java.util.ArrayList<String>();
-        command.add("docker"); command.addAll(arguments);
-        ProcessBuilder builder = new ProcessBuilder(command).directory(scratch.toFile()).redirectErrorStream(true);
-        removeProviderCredentials(builder.environment());
-        Path log = scratch.resolve("docker-command-" + UUID.randomUUID() + ".log");
-        builder.redirectOutput(log.toFile());
-        Process process = builder.start();
-        try {
-            if (!process.waitFor(20, TimeUnit.SECONDS)) {
-                stop(process);
-                return new CommandResult(-1, "docker command timed out");
-            }
-            String output = Files.readString(log, StandardCharsets.UTF_8).trim();
-            return new CommandResult(process.exitValue(), output);
-        } finally { stop(process); Files.deleteIfExists(log); }
-    }
-
-    private static void removeProviderCredentials(Map<String, String> environment) {
-        environment.keySet().removeIf(key -> key.equalsIgnoreCase("OPENROUTER_API_KEY")
-                || key.equalsIgnoreCase("OPENROUTER_MODEL"));
-    }
-
-    private static void stop(Process process) throws InterruptedException {
-        if (process == null || !process.isAlive()) return;
-        process.descendants().forEach(ProcessHandle::destroyForcibly);
-        process.destroyForcibly();
-        process.waitFor(5, TimeUnit.SECONDS);
-    }
-
-    private static int freePort() throws Exception {
-        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            return socket.getLocalPort();
-        }
-    }
-
     private static String sha(byte[] bytes) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-    }
-
-    private static String safeLines(Path log) throws Exception {
-        if (!Files.isRegularFile(log)) return "no child log";
-        return Files.readAllLines(log, StandardCharsets.UTF_8).stream()
-                .filter(line -> line.contains("ERROR") || line.contains("APPLICATION FAILED")
-                        || line.contains("Description:"))
-                .limit(8)
-                .map(line -> line.replaceAll("(?i)(password|token|authorization|secret|api.key)[=: ]+\\S+", "$1=[redacted]"))
-                .map(line -> line.length() > 180 ? line.substring(0, 180) : line)
-                .reduce("", (a, b) -> a + "\n" + b);
-    }
-
-    private void preserveEvidence(Path source, String password, String jwt) throws Exception {
-        preserveEvidence(source.getFileName().toString(), Files.readString(source, StandardCharsets.UTF_8),
-                password, jwt);
-    }
-
-    private void preserveEvidence(String name, String content, String password, String jwt) throws Exception {
-        Path destination = Path.of(System.getProperty("gsuif.test.startup-evidence-dir"))
-                .toAbsolutePath().normalize();
-        assertFalse(destination.startsWith(scratch.toAbsolutePath().normalize()),
-                "Startup evidence must outlive JUnit temporary files");
-        Files.createDirectories(destination);
-        String safe = content.replace(password, "[redacted]");
-        if (jwt != null) safe = safe.replace(jwt, "[redacted]");
-        Files.writeString(destination.resolve(name), safe, StandardCharsets.UTF_8);
     }
 
     private static void requireOptIn() {

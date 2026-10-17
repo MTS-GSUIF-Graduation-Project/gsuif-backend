@@ -1,0 +1,79 @@
+package com.example.inventory.service;
+
+import com.example.inventory.dto.CreateStockUnitRequest;
+import com.example.inventory.dto.StockUnitCondition;
+import com.example.inventory.dto.StockUnitDto;
+import com.example.inventory.dto.StockUnitPage;
+import com.example.inventory.dto.UpdateStockUnitRequest;
+import com.example.inventory.entity.StockUnit;
+import com.example.inventory.exception.RequestedRecordNotFoundException;
+import com.example.inventory.repository.StockUnitRepository;
+import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** Hand-written test fixture. Never emitted by a generator or used as an AI fallback. */
+@Service
+@Transactional
+public class StockUnitServiceImpl implements StockUnitService {
+    private final StockUnitRepository records;
+
+    public StockUnitServiceImpl(StockUnitRepository records) {
+        this.records = records;
+    }
+
+    @Override
+    public StockUnitDto create(CreateStockUnitRequest request) {
+        StockUnit record = new StockUnit();
+        record.setLabel(request.label());
+        record.setCondition(request.condition());
+        record.setRetiredOn(request.retiredOn());
+        return dto(records.saveAndFlush(record));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StockUnitDto getById(UUID id) {
+        return dto(existing(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StockUnitPage list(StockUnitCondition condition, String label) {
+        Specification<StockUnit> matching = (root, query, criteria) -> {
+            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            if (condition != null) predicates.add(criteria.equal(root.get("condition"), condition));
+            if (label != null) predicates.add(criteria.equal(root.get("label"), label));
+            return criteria.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
+        var page = records.findAll(matching, PageRequest.of(0, 20));
+        return new StockUnitPage(page.map(this::dto).getContent(), page.getTotalPages(),
+                page.getTotalElements(), page.getSize(), page.getNumber());
+    }
+
+    @Override
+    public StockUnitDto update(UUID id, UpdateStockUnitRequest request) {
+        StockUnit record = existing(id);
+        record.setLabel(request.label());
+        record.setCondition(request.condition());
+        record.setRetiredOn(request.retiredOn());
+        return dto(records.saveAndFlush(record));
+    }
+
+    @Override
+    public void delete(UUID id) {
+        StockUnit record = existing(id);
+        records.delete(record);
+        records.flush();
+    }
+
+    private StockUnit existing(UUID id) {
+        return records.findById(id).orElseThrow(RequestedRecordNotFoundException::new);
+    }
+
+    private StockUnitDto dto(StockUnit record) {
+        return new StockUnitDto(record.getId(), record.getLabel(), record.getCondition(), record.getRetiredOn());
+    }
+}
