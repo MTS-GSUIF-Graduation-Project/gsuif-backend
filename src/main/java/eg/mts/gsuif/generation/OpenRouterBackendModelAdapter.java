@@ -30,8 +30,15 @@ final class OpenRouterBackendModelAdapter {
         DEPENDENCY_TIMEOUT, DEPENDENCY_UNAVAILABLE, DEPENDENCY_INTEGRITY }
     static final class Failed extends RuntimeException {
         private final Failure reason;
-        Failed(Failure reason) { super(reason.name()); this.reason = reason; }
+        private final BackendModelOutputValidator.Reason validatorReason;
+        Failed(Failure reason) { this(reason, null); }
+        Failed(Failure reason, BackendModelOutputValidator.Reason validatorReason) {
+            super(reason.name());
+            this.reason = reason;
+            this.validatorReason = validatorReason;
+        }
         Failure reason() { return reason; }
+        BackendModelOutputValidator.Reason validatorReason() { return validatorReason; }
     }
     record Reply(int status, byte[] body) {
         Reply { body = body.clone(); }
@@ -124,7 +131,7 @@ final class OpenRouterBackendModelAdapter {
                 }
                 catch (BackendModelOutputValidator.Rejected ex) {
                     throw new Failed(ex.reason() == BackendModelOutputValidator.Reason.COMPILE_FAILED
-                            ? Failure.COMPILATION : Failure.INVALID_MODEL_OUTPUT);
+                            ? Failure.COMPILATION : Failure.INVALID_MODEL_OUTPUT, ex.reason());
                 }
                 catch (BackendCompileClasspath.Failed ex) { throw new Failed(Failure.DEPENDENCY_INTEGRITY); }
             }

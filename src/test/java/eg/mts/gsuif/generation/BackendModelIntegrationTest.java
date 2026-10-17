@@ -205,9 +205,10 @@ class BackendModelIntegrationTest {
         var invalid = new OpenRouterBackendModelAdapter((payload, key, timeout) -> {
             calls.incrementAndGet(); return new OpenRouterBackendModelAdapter.Reply(200, provider("not-json"));
         }, (selected, source, time) -> true, System::nanoTime, ignored -> fail("no repair"));
-        assertEquals(OpenRouterBackendModelAdapter.Failure.INVALID_MODEL_OUTPUT,
-                assertThrows(OpenRouterBackendModelAdapter.Failed.class,
-                        () -> invalid.generate(input, "fake-key", OpenRouterBackendModelAdapter.MODEL)).reason());
+        var rejection = assertThrows(OpenRouterBackendModelAdapter.Failed.class,
+                () -> invalid.generate(input, "fake-key", OpenRouterBackendModelAdapter.MODEL));
+        assertEquals(OpenRouterBackendModelAdapter.Failure.INVALID_MODEL_OUTPUT, rejection.reason());
+        assertEquals(BackendModelOutputValidator.Reason.INVALID_RESPONSE, rejection.validatorReason());
         assertEquals(1, calls.get());
     }
 

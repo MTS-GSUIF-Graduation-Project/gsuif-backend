@@ -167,6 +167,31 @@ class CompleteBackendAiStockUnitAcceptanceTest {
         assertFalse(report.contains("providerResponse"));
     }
 
+    @Test void mockedValidatorRejectionRecordsOnlyItsBoundedReason() throws Exception {
+        Selected selected = selected();
+        var response = (ObjectNode) JSON.readTree(providerResponse(selected.input(), mockedSource()));
+        ((ObjectNode) response.path("choices").path(0).path("message")).put("content", "not-json");
+        var adapter = new OpenRouterBackendModelAdapter((payload, key, timeout) ->
+                new OpenRouterBackendModelAdapter.Reply(200, JSON.writeValueAsBytes(response)),
+                (input, source, limit) -> fail("invalid output must not compile"),
+                System::nanoTime, ignored -> fail("invalid output must not retry"));
+        var failed = assertThrows(OpenRouterBackendModelAdapter.Failed.class,
+                () -> adapter.generate(selected.input(), "disposable-fake-key", OpenRouterBackendModelAdapter.MODEL));
+        assertEquals(OpenRouterBackendModelAdapter.Failure.INVALID_MODEL_OUTPUT, failed.reason());
+        assertEquals(BackendModelOutputValidator.Reason.INVALID_RESPONSE, failed.validatorReason());
+
+        Path attempt = writeFailure(scratch.resolve("validator-evidence"), "PROVIDER_VALIDATE_COMPILE", failed);
+        String report = Files.readString(attempt.resolve("result.txt"));
+        assertTrue(report.contains("failureCode=INVALID_MODEL_OUTPUT\n"));
+        assertTrue(report.contains("validatorReason=INVALID_RESPONSE\n"));
+        assertFalse(report.contains("not-json"));
+        assertFalse(report.contains("disposable-fake-key"));
+        assertFalse(report.contains("providerResponse"));
+        Path other = writeFailure(scratch.resolve("http-evidence"), "PROVIDER_VALIDATE_COMPILE",
+                new OpenRouterBackendModelAdapter.Failed(OpenRouterBackendModelAdapter.Failure.HTTP_REJECTED));
+        assertFalse(Files.readString(other.resolve("result.txt")).contains("validatorReason="));
+    }
+
     private static void requireLiveConfiguration(Map<String, String> environment) {
         if (environment == null || !OpenRouterBackendModelAdapter.MODEL.equals(environment.get("OPENROUTER_MODEL"))
                 || environment.get("OPENROUTER_API_KEY") == null
@@ -197,11 +222,13 @@ class CompleteBackendAiStockUnitAcceptanceTest {
         String code = failure instanceof OpenRouterBackendModelAdapter.Failed model ? model.reason().name()
                 : failure instanceof BackendMavenDependencyProvisioner.Failed dependency ? dependency.reason().name()
                 : "ACCEPTANCE_FAILED";
+        String validatorReason = failure instanceof OpenRouterBackendModelAdapter.Failed model
+                && model.validatorReason() != null ? "validatorReason=" + model.validatorReason().name() + "\n" : "";
         Files.writeString(attempt.resolve("result.txt"), "status=failed\nproviderId="
                 + OpenRouterBackendModelAdapter.PROVIDER_ID + "\nproviderVersion="
                 + OpenRouterBackendModelAdapter.PROVIDER_API_VERSION + "\nmodelId="
                 + OpenRouterBackendModelAdapter.MODEL + "\nmocked=false\nfailureStage="
-                + stage + "\nfailureCode=" + code + "\n", StandardCharsets.UTF_8);
+                + stage + "\nfailureCode=" + code + "\n" + validatorReason, StandardCharsets.UTF_8);
     }
 
     private static Path preserveAcceptedSource(Path root, BackendModelOutputValidator.Accepted accepted)
