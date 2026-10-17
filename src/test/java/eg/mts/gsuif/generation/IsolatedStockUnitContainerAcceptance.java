@@ -38,7 +38,15 @@ final class IsolatedStockUnitContainerAcceptance {
 
     void verify(BackendModelInput input, BackendModelOutputValidator.Accepted accepted,
             CompleteBackendPackageAssembler.Assembled assembled, Path extracted,
-            BackendCompileClasspath dependencies) throws Exception {
+            BackendCompileClasspath dependencies,
+            CompleteBackendPackageAssembler.Provenance provenance, Path savedAttempt) throws Exception {
+        assertNotNull(provenance);
+        var manifest = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(assembled.file("generation-manifest.json")).path("provider");
+        assertEquals(provenance.providerId(), manifest.path("id").asText());
+        assertEquals(provenance.providerVersion(), manifest.path("version").asText());
+        assertEquals(provenance.modelId(), manifest.path("model").asText());
+        assertEquals(provenance.mocked(), manifest.path("mocked").asBoolean(!provenance.mocked()));
         Path evidenceRoot = Path.of(required("gsuif.test.ai-evidence-dir")).toAbsolutePath().normalize();
         assertFalse(evidenceRoot.startsWith(scratch.toAbsolutePath().normalize()));
         String jdk = requiredImage("gsuif.test.ai-jdk-image");
@@ -169,10 +177,25 @@ final class IsolatedStockUnitContainerAcceptance {
                     scratch.resolve("role-user.sql")))
                 Files.deleteIfExists(path);
         }
-        Path attempt = Files.createDirectories(evidenceRoot).resolve("mock-attempt-" + UUID.randomUUID());
-        Files.createDirectory(attempt);
+        Path attempt;
+        if (savedAttempt == null) {
+            assertTrue(provenance.mocked(), "LIVE_ACCEPTED_SOURCE_EVIDENCE_REQUIRED");
+            attempt = Files.createDirectories(evidenceRoot).resolve("mock-attempt-" + UUID.randomUUID());
+            Files.createDirectory(attempt);
+        } else {
+            attempt = savedAttempt.toAbsolutePath().normalize();
+            assertEquals(evidenceRoot, attempt.getParent(), "ACCEPTED_SOURCE_EVIDENCE_LOCATION");
+            assertTrue(Files.isDirectory(attempt), "ACCEPTED_SOURCE_EVIDENCE_MISSING");
+            assertArrayEquals(accepted.source(), Files.readAllBytes(attempt.resolve(accepted.path())));
+            assertEquals(sha256(accepted.source()),
+                    Files.readString(attempt.resolve("accepted-source.sha256")).trim());
+        }
         Files.writeString(attempt.resolve("result.txt"),
-                "provider=mocked\nsourceSha256=" + sha256(accepted.source())
+                "status=complete\nproviderId=" + provenance.providerId()
+                        + "\nproviderVersion=" + provenance.providerVersion()
+                        + "\nmodelId=" + provenance.modelId()
+                        + "\nmocked=" + provenance.mocked()
+                        + "\nsourceSha256=" + sha256(accepted.source())
                         + "\njarSha256=" + jarSha256 + "\ncontainerCrud=passed\ncleanup=confirmed\n",
                 StandardCharsets.UTF_8);
         Files.copy(extracted.resolve("generation-manifest.json"), attempt.resolve("generation-manifest.json"));

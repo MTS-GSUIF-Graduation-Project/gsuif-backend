@@ -49,6 +49,8 @@ final class OpenRouterBackendModelAdapter {
     }
 
     static final String MODEL = "qwen/qwen3-coder";
+    static final String PROVIDER_ID = "openrouter";
+    static final String PROVIDER_API_VERSION = "api-v1";
     private static final int MAX_TOKENS = 4096;
     private static final int MAX_RESPONSE_BYTES = 65536;
     private static final long OVERALL_NANOS = Duration.ofSeconds(250).toNanos();
@@ -82,6 +84,8 @@ final class OpenRouterBackendModelAdapter {
         },
                 System::nanoTime, duration -> Thread.sleep(duration.toMillis()));
     }
+
+    static Transport httpsTransport() { return new HttpsTransport(); }
 
     BackendModelOutputValidator.Accepted generate(BackendModelInput input, String key, String selectedModel) {
         if (input == null || key == null || key.isBlank() || !MODEL.equals(selectedModel))
