@@ -1,0 +1,11 @@
+contracts:
+  asset-ticket-api:
+    1.0.0:
+      resource: /openapi/asset-ticket-api.yaml
+      updateMode: FULL
+      operations:
+        LIST: listAssetTickets
+        CREATE: createAssetTicket
+        READ: getAssetTicketById
+        UPDATE: updateAssetTicket
+        DELETE: deleteAssetTicket

@@ -74,6 +74,19 @@
         </dependency>
 
         <!-- Tests -->
+        <!-- Isolated generated-app V1 migration acceptance; never connects to an existing database. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>11.14.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>11.14.1</version>
+            <scope>test</scope>
+        </dependency>
         <!-- SCRUM-44 fixture tests render and compile Java; the runtime engine belongs to SCRUM-28. -->
         <dependency>
             <groupId>org.freemarker</groupId>
@@ -111,6 +124,12 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+            <version>7.0.7</version>
             <scope>test</scope>
         </dependency>
         
@@ -195,6 +214,7 @@
                     <include>V5__add_permission_role_permission.sql</include>
                     <include>V6__add_work_orders.sql</include>
                     <include>V7__bootstrap_entity_permissions.sql</include>
+                    <include>V8__add_generation_attempt_lifecycle.sql</include>
                 </includes>
             </resource>
             <resource>
@@ -227,6 +247,7 @@
                     <include>V5__add_permission_role_permission.sql</include>
                     <include>V6__add_work_orders.sql</include>
                     <include>V7__bootstrap_entity_permissions.sql</include>
+                    <include>V8__add_generation_attempt_lifecycle.sql</include>
                 </includes>
             </testResource>
         </testResources>

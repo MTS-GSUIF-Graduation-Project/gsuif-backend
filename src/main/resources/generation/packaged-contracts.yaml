@@ -1,4 +1,40 @@
 contracts:
-  asset-ticket-api: /openapi/asset-ticket-api.yaml
-  service-request-api: /openapi/service-request-api.yaml
-  case-record-api: /openapi/case-record-api.yaml
+  asset-ticket-api:
+    1.0.0:
+      resource: /openapi/asset-ticket-api.yaml
+      updateMode: LEGACY_OPTIONAL
+      operations:
+        LIST: listAssetTickets
+        CREATE: createAssetTicket
+        READ: getAssetTicketById
+        UPDATE: updateAssetTicket
+        DELETE: deleteAssetTicket
+    2.0.0:
+      resource: /openapi/asset-ticket-api-2.yaml
+      updateMode: FULL
+      operations:
+        LIST: listAssetTickets
+        CREATE: createAssetTicket
+        READ: getAssetTicketById
+        UPDATE: updateAssetTicket
+        DELETE: deleteAssetTicket
+  service-request-api:
+    1.0.0:
+      resource: /openapi/service-request-api.yaml
+      updateMode: LEGACY_OPTIONAL
+      operations:
+        LIST: listServiceRequests
+        CREATE: createServiceRequest
+        READ: getServiceRequestById
+        UPDATE: updateServiceRequest
+        DELETE: deleteServiceRequest
+  case-record-api:
+    1.0.0:
+      resource: /openapi/case-record-api.yaml
+      updateMode: LEGACY_OPTIONAL
+      operations:
+        LIST: listCaseRecords
+        CREATE: createCaseRecord
+        READ: getCaseRecordById
+        UPDATE: updateCaseRecord
+        DELETE: deleteCaseRecord

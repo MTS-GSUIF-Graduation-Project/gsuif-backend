@@ -1,0 +1,246 @@
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.DriverManager;
+import java.time.Duration;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/** Trusted test driver running only on the disposable internal network. */
+class StockUnitIsolatedProbe {
+    private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+    private static final ObjectMapper JSON = new ObjectMapper()
+            .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
+    private static final Set<String> ENVELOPE_FIELDS =
+            Set.of("status", "clientMessage", "body", "errors", "statusCode");
+    private static final Set<String> ERROR_FIELDS = Set.of("_global", "label", "condition", "retiredOn");
+    private static final String BASE = "http://app:8080";
+    private static final String ROOT = "/api/v1/stock-units";
+
+    public static void main(String[] ignored) throws Exception {
+        try {
+            execute();
+        } catch (Exception failure) {
+            String code = failure instanceof IllegalStateException && failure.getMessage() != null
+                    && failure.getMessage().matches("[A-Z0-9_]{1,80}")
+                    ? failure.getMessage() : "UNCLASSIFIED";
+            Files.writeString(Path.of("/probe/failure-code"), "PROBE_FAILURE_" + code,
+                    StandardCharsets.UTF_8);
+            System.exit(1);
+        }
+    }
+
+    private static void execute() throws Exception {
+        String phase = System.getenv("PROBE_PHASE");
+        require("first".equals(phase) || "second".equals(phase), "INVALID_PHASE");
+        long deadline = System.nanoTime() + Duration.ofSeconds(110).toNanos();
+        boolean ready = false;
+        while (System.nanoTime() < deadline) {
+            try { if (send("GET", "/v3/api-docs", null, null).statusCode() == 200) { ready = true; break; } }
+            catch (java.io.IOException ignoredFailure) { }
+            Thread.sleep(500);
+        }
+        require(ready, "APP_NOT_READY");
+        if ("first".equals(phase)) first(); else second();
+        Files.writeString(Path.of("/probe/completed-" + phase), "COMPLETE", StandardCharsets.UTF_8);
+    }
+
+    private static void first() throws Exception {
+        error(send("GET", ROOT + "?condition=OPEN", null, null), 401, "Authentication required");
+        count(0, "UNAUTHENTICATED_GET_CHANGED_DATA");
+        String admin = login("FirstAdmin", System.getenv("PROBE_ADMIN_PASSWORD"));
+        String ordinary = login("OrdinaryUser", System.getenv("PROBE_USER_PASSWORD"));
+        error(send("GET", ROOT + "?condition=OPEN", ordinary, null), 403, "Access denied");
+        count(0, "DENIED_GET_CHANGED_DATA");
+        String create = "{\"label\":\"alpha\",\"condition\":\"OPEN\",\"retiredOn\":null}";
+        error(send("POST", ROOT, null, create), 401, "Authentication required");
+        count(0, "UNAUTHENTICATED_POST_CHANGED_DATA");
+        error(send("POST", ROOT, ordinary, create), 403, "Access denied");
+        count(0, "DENIED_POST_CHANGED_DATA");
+        error(send("POST", ROOT, admin, "{\"label\":\"alpha\",\"condition\":\"OPEN\"}"),
+                400, "Invalid request");
+        count(0, "REJECTED_POST_CHANGED_DATA");
+
+        JsonNode created = success(send("POST", ROOT, admin, create), 201);
+        UUID id = UUID.fromString(text(created, "id", "CREATE_ID"));
+        stock(created, id, "alpha", "OPEN", null, "CREATE_VALUES");
+        row(id, "alpha", "OPEN", null, "CREATE_DATABASE");
+        stock(success(send("GET", ROOT + "/" + id, admin, null), 200),
+                id, "alpha", "OPEN", null, "GET_CREATED");
+        page(success(send("GET", ROOT + "?condition=OPEN&label=alpha", admin, null), 200),
+                id, 1, "alpha", "OPEN", "FILTER_MATCH");
+        page(success(send("GET", ROOT + "?condition=CLOSED&label=alpha", admin, null), 200),
+                null, 0, null, null, "FILTER_NO_MATCH");
+
+        String update = "{\"label\":\"beta\",\"condition\":\"CLOSED\",\"retiredOn\":\"2026-10-17\"}";
+        error(send("PUT", ROOT + "/" + id, null, update), 401, "Authentication required");
+        row(id, "alpha", "OPEN", null, "UNAUTHENTICATED_PUT_CHANGED_DATA");
+        error(send("PUT", ROOT + "/" + id, ordinary, update), 403, "Access denied");
+        row(id, "alpha", "OPEN", null, "DENIED_PUT_CHANGED_DATA");
+        error(send("PUT", ROOT + "/" + id, admin,
+                "{\"label\":\"beta\",\"condition\":\"CLOSED\"}"), 400, "Invalid request");
+        row(id, "alpha", "OPEN", null, "REJECTED_PUT_CHANGED_DATA");
+        stock(success(send("PUT", ROOT + "/" + id, admin, update), 200),
+                id, "beta", "CLOSED", "2026-10-17", "UPDATE_VALUES");
+        row(id, "beta", "CLOSED", "2026-10-17", "UPDATE_DATABASE");
+        Files.writeString(Path.of("/probe/created-id"), id.toString(), StandardCharsets.UTF_8);
+    }
+
+    private static void second() throws Exception {
+        UUID id = UUID.fromString(Files.readString(Path.of("/probe/created-id"), StandardCharsets.UTF_8));
+        String admin = login("FirstAdmin", System.getenv("PROBE_ADMIN_PASSWORD"));
+        stock(success(send("GET", ROOT + "/" + id, admin, null), 200),
+                id, "beta", "CLOSED", "2026-10-17", "RESTART_PERSISTENCE");
+        row(id, "beta", "CLOSED", "2026-10-17", "RESTART_DATABASE");
+        stock(success(send("PUT", ROOT + "/" + id, admin,
+                "{\"label\":\"beta\",\"condition\":\"CLOSED\",\"retiredOn\":null}"), 200),
+                id, "beta", "CLOSED", null, "EXPLICIT_NULL_UPDATE");
+        row(id, "beta", "CLOSED", null, "NULL_DATABASE");
+        require(success(send("DELETE", ROOT + "/" + id, admin, null), 200).isNull(), "DELETE_BODY");
+        count(0, "DELETE_DATABASE");
+        error(send("GET", ROOT + "/" + id, admin, null), 404, "Resource not found");
+        error(send("PUT", ROOT + "/" + id, admin,
+                "{\"label\":\"beta\",\"condition\":\"CLOSED\",\"retiredOn\":null}"),
+                404, "Resource not found");
+        error(send("DELETE", ROOT + "/" + id, admin, null), 404, "Resource not found");
+        count(0, "MISSING_OPERATIONS_CHANGED_DATA");
+    }
+
+    private static String login(String username, String password) throws Exception {
+        String request = JSON.writeValueAsString(Map.of("username", username, "password", password));
+        JsonNode body = success(send("POST", "/api/auth/login", null, request), 200, "Authenticated");
+        require(body.isObject(), "LOGIN_BODY");
+        require("Bearer".equals(text(body, "tokenType", "LOGIN_TYPE")), "LOGIN_TYPE");
+        require(body.path("expiresInSeconds").isIntegralNumber()
+                && body.path("expiresInSeconds").longValue() == 900, "LOGIN_EXPIRY");
+        String token = text(body, "accessToken", "LOGIN_TOKEN");
+        require(!token.isBlank(), "LOGIN_TOKEN");
+        return token;
+    }
+
+    private static HttpResponse<String> send(String method, String path, String bearer, String body) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(BASE + path)).timeout(Duration.ofSeconds(5));
+        if (bearer != null) request.header("Authorization", "Bearer " + bearer);
+        if (body != null) request.header("Content-Type", "application/json");
+        request.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofString(body));
+        return CLIENT.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static JsonNode success(HttpResponse<String> response, int status) throws Exception {
+        return success(response, status, "Success");
+    }
+
+    private static JsonNode success(HttpResponse<String> response, int status, String message) throws Exception {
+        require(response.statusCode() == status, "SUCCESS_HTTP_" + status);
+        JsonNode envelope = envelope(response);
+        require("OK".equals(text(envelope, "status", "SUCCESS_STATUS")), "SUCCESS_STATUS");
+        require(message.equals(text(envelope, "clientMessage", "SUCCESS_MESSAGE")), "SUCCESS_MESSAGE");
+        require(envelope.path("statusCode").isIntegralNumber()
+                && envelope.path("statusCode").intValue() == status, "SUCCESS_STATUS_CODE");
+        require(envelope.path("errors").isNull(), "SUCCESS_ERRORS");
+        return envelope.get("body");
+    }
+
+    private static void error(HttpResponse<String> response, int status, String message) throws Exception {
+        require(response.statusCode() == status, "ERROR_HTTP_" + status);
+        JsonNode envelope = envelope(response);
+        String expected = switch (status) {
+            case 400 -> "BAD_REQUEST";
+            case 401 -> "UNAUTHORIZED";
+            case 403 -> "FORBIDDEN";
+            case 404 -> "NOT_FOUND";
+            default -> throw new IllegalArgumentException("UNEXPECTED_ERROR_STATUS");
+        };
+        require(expected.equals(text(envelope, "status", "ERROR_STATUS")), "ERROR_STATUS");
+        require(message.equals(text(envelope, "clientMessage", "ERROR_MESSAGE")), "ERROR_MESSAGE");
+        require(envelope.path("statusCode").isIntegralNumber()
+                && envelope.path("statusCode").intValue() == status, "ERROR_STATUS_CODE");
+        require(envelope.path("body").isNull(), "ERROR_BODY");
+        JsonNode errors = envelope.path("errors");
+        require(errors.isObject() && !errors.isEmpty(), "ERROR_MAP");
+        errors.fieldNames().forEachRemaining(field -> require(ERROR_FIELDS.contains(field), "ERROR_FIELD"));
+        if (status == 400) {
+            require(errors.size() == 1
+                    && "Invalid request body".equals(text(errors, "_global", "REQUIRED_NULLABLE_ERROR")),
+                    "REQUIRED_NULLABLE_ERROR");
+        } else {
+            require(errors.size() == 1 && message.equals(text(errors, "_global", "GLOBAL_ERROR")),
+                    "GLOBAL_ERROR");
+        }
+    }
+
+    private static JsonNode envelope(HttpResponse<String> response) throws Exception {
+        try (JsonParser parser = JSON.getFactory().createParser(response.body())) {
+            JsonNode envelope = JSON.readTree(parser);
+            require(envelope != null && envelope.isObject() && parser.nextToken() == null, "JSON_ENVELOPE");
+            Set<String> fields = new HashSet<>();
+            envelope.fieldNames().forEachRemaining(fields::add);
+            require(fields.equals(ENVELOPE_FIELDS), "FIVE_FIELD_ENVELOPE");
+            return envelope;
+        }
+    }
+
+    private static String text(JsonNode object, String key, String reason) {
+        JsonNode value = object.path(key);
+        require(value.isTextual(), reason);
+        return value.textValue();
+    }
+
+    private static void stock(JsonNode body, UUID id, String label, String condition, String retiredOn,
+            String reason) {
+        require(body.isObject(), reason);
+        require(id.toString().equals(text(body, "id", reason)), reason);
+        require(label.equals(text(body, "label", reason)), reason);
+        require(condition.equals(text(body, "condition", reason)), reason);
+        JsonNode date = body.path("retiredOn");
+        require(retiredOn == null ? date.isNull() : retiredOn.equals(text(body, "retiredOn", reason)), reason);
+    }
+
+    private static void page(JsonNode body, UUID id, long total, String label, String condition, String reason) {
+        require(body.isObject() && body.path("totalElements").isIntegralNumber()
+                && body.path("totalElements").longValue() == total, reason);
+        JsonNode data = body.path("data");
+        require(data.isArray() && data.size() == total, reason);
+        if (id != null) stock(data.get(0), id, label, condition, null, reason);
+    }
+
+    private static void count(int expected, String reason) throws Exception {
+        try (var connection = DriverManager.getConnection(System.getenv("PROBE_DB_URL"),
+                System.getenv("PROBE_DB_USER"), System.getenv("PROBE_DB_PASSWORD"));
+             var statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT count(*) FROM stock_unit")) {
+            require(result.next() && result.getInt(1) == expected, reason);
+        }
+    }
+
+    private static void row(UUID id, String label, String condition, String retiredOn, String reason)
+            throws Exception {
+        try (var connection = DriverManager.getConnection(System.getenv("PROBE_DB_URL"),
+                System.getenv("PROBE_DB_USER"), System.getenv("PROBE_DB_PASSWORD"));
+             var statement = connection.prepareStatement(
+                     "SELECT label, condition, retired_on FROM stock_unit WHERE id=?")) {
+            statement.setObject(1, id);
+            try (var result = statement.executeQuery()) {
+                require(result.next(), reason);
+                require(label.equals(result.getString(1)) && condition.equals(result.getString(2)), reason);
+                var date = result.getDate(3);
+                require(retiredOn == null ? date == null : retiredOn.equals(date.toString()), reason);
+                require(!result.next(), reason);
+            }
+        }
+    }
+
+    private static void require(boolean condition, String reason) {
+        if (!condition) throw new IllegalStateException(reason);
+    }
+}

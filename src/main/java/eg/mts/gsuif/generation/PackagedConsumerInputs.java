@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.yaml.snakeyaml.Yaml;
 
 /** Build inputs for the selected packaged OpenAPI interface and DTOs. */
 final class PackagedConsumerInputs {
@@ -19,6 +18,9 @@ final class PackagedConsumerInputs {
                 (!targets.contains(Target.ENTITY) && !targets.contains(Target.CONTROLLER))) return Map.of();
         String contract = specification.openApi().contractId();
         if (contract == null) return Map.of();
+        String version = specification.openApi().contractVersion();
+        if (!"1.0.0".equals(version))
+            throw new GenerationValidationException(List.of("specification.openApi.contractVersion: packaged fragment consumer inputs are available only for 1.0.0; complete-output assembly is not available"));
         String entity = switch (contract) {
             case "asset-ticket-api" -> "AssetTicket";
             case "service-request-api" -> "ServiceRequest";
@@ -62,7 +64,7 @@ final class PackagedConsumerInputs {
         }
         if (targets.contains(Target.CONTROLLER)) {
             inputs.put(testRoot + "GeneratedControllerBehaviorTest.java",
-                    behaviorTest(base, entity, createOperationId(contract)).getBytes(StandardCharsets.UTF_8));
+                    behaviorTest(base, entity, createOperationId(contract, version)).getBytes(StandardCharsets.UTF_8));
         }
         return Map.copyOf(inputs);
     }
@@ -87,22 +89,11 @@ final class PackagedConsumerInputs {
                 """.formatted(base, base, entity, entity, entity, entity);
     }
 
-    private static String createOperationId(String contract) {
-        String path = "/openapi/" + contract + ".yaml";
-        try (var stream = PackagedConsumerInputs.class.getResourceAsStream(path)) {
-            if (stream == null) throw new IllegalStateException("Packaged OpenAPI contract is missing: " + path);
-            Map<?, ?> root = new Yaml().load(stream);
-            if (root.get("paths") instanceof Map<?, ?> paths) {
-                for (Object value : paths.values()) {
-                    if (value instanceof Map<?, ?> pathItem && pathItem.get("post") instanceof Map<?, ?> post
-                            && post.get("operationId") instanceof String operationId
-                            && operationId.matches("[a-z][A-Za-z0-9]*")) return operationId;
-                }
-            }
-            throw new IllegalStateException("OpenAPI contract lacks a valid POST operationId: " + path);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Could not read packaged OpenAPI contract: " + path, ex);
-        }
+    private static String createOperationId(String contract, String version) {
+        var entry = new PackagedContractRegistry().find(contract, version);
+        if (entry == null)
+            throw new GenerationValidationException(List.of("specification.openApi: unsupported packaged contract version"));
+        return entry.operation(PackagedContractRegistry.CrudAction.CREATE);
     }
 
     private static String behaviorTest(String base, String entity, String operationId) {

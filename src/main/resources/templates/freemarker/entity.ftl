@@ -8,6 +8,7 @@
 <#if !(entity.tableName??) || !entity.tableName?is_string || !entity.tableName?matches("[a-z][a-z0-9_]*")><#stop "entity.ftl: entity.tableName: expected snake_case name"></#if>
 <#if !(entity.fields??) || !entity.fields?is_sequence><#stop "entity.ftl: entity.fields: expected list"></#if>
 <#if entity.enversAudited?? && !entity.enversAudited?is_boolean><#stop "entity.ftl: entity.enversAudited: expected Boolean"></#if>
+<#if entity.explicitVarcharEnumMapping?? && !entity.explicitVarcharEnumMapping?is_boolean><#stop "entity.ftl: entity.explicitVarcharEnumMapping: expected Boolean"></#if>
 <#assign javaReserved=["abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null", "var", "yield", "record", "sealed", "permits"]>
 <#list project.basePackage?split(".") as segment><#if javaReserved?seq_contains(segment)><#stop "entity.ftl: project.basePackage: contains Java reserved segment"></#if></#list>
 <#list entity.auditBasePackage?split(".") as segment><#if javaReserved?seq_contains(segment)><#stop "entity.ftl: entity.auditBasePackage: contains Java reserved segment"></#if></#list>
@@ -38,6 +39,9 @@ import jakarta.persistence.Table;
 import ${entity.auditBasePackage}.AuditableEntity;
 <#if entity.fields?filter(f -> f.enumType??)?size gt 0>import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+<#if entity.explicitVarcharEnumMapping!false>import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+</#if>
 <#list entity.fields?filter(f -> f.enumType??) as enumField>import ${entity.enumPackage}.${enumField.enumType};
 </#list>
 </#if>
@@ -53,6 +57,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "${entity.tableName}")
 <#if entity.enversAudited!false>@Audited
+<#if entity.explicitAuditInheritedFields!false>@org.hibernate.envers.AuditOverride(forClass = AuditableEntity.class, isAudited = true)
+</#if>
 </#if>public class ${entity.className} extends AuditableEntity {
 
     @Id
@@ -62,6 +68,8 @@ import java.util.UUID;
 
 <#list entity.fields as f>
     <#if f.enumType??>@Enumerated(EnumType.STRING)
+    <#if entity.explicitVarcharEnumMapping!false>@JdbcTypeCode(SqlTypes.VARCHAR)
+    </#if>
     </#if>@Column(name = "${f.columnName}", nullable = ${f.nullable?c}<#if f.columnLength??>, length = ${f.columnLength?c}</#if>)
     private ${f.javaType} ${f.name};
 

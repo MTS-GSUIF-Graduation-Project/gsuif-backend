@@ -64,12 +64,12 @@ psql -U postgres -d postgres -c "CREATE DATABASE gsuif_db OWNER gsuif_user"
 
 Provision the database once, before starting any API instances. Run the
 repository scripts as the database owner (or a dedicated schema owner), in
-version order. Stop on the first SQL error. A fresh database needs V1–V7;
+version order. Stop on the first SQL error. A fresh database needs V1–V8;
 for a database that already has V1, apply only the later versions that have
 not been provisioned yet. Do not reapply V1 to an existing database.
 
 ```sh
-for script in sql/V[1-7]__*.sql; do
+for script in sql/V[1-8]__*.sql; do
   PGPASSWORD=gsuif_pass psql -X -v ON_ERROR_STOP=1 -h localhost -U gsuif_user -d gsuif_db -f "$script" || exit 1
 done
 ```

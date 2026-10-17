@@ -7,5 +7,8 @@ package eg.mts.gsuif.entity;
  */
 public enum GenerationRunStatus {
     SUCCESS,
-    BUILD_FAILED
+    BUILD_FAILED,
+    IN_PROGRESS,
+    FAILED,
+    INTERRUPTED
 }

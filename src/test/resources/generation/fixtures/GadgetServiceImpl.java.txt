@@ -1,0 +1,75 @@
+package com.example.fixture.service;
+
+import com.example.fixture.dto.CreateGadgetRequest;
+import com.example.fixture.dto.GadgetDto;
+import com.example.fixture.dto.GadgetPage;
+import com.example.fixture.dto.GadgetStatus;
+import com.example.fixture.dto.UpdateGadgetRequest;
+import com.example.fixture.entity.Gadget;
+import com.example.fixture.exception.RequestedRecordNotFoundException;
+import com.example.fixture.repository.GadgetRepository;
+import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** Hand-written regression fixture. Never a production template or fallback for model output. */
+@Service
+@Transactional
+public class GadgetServiceImpl implements GadgetService {
+    private final GadgetRepository records;
+
+    public GadgetServiceImpl(GadgetRepository records) {
+        this.records = records;
+    }
+
+    @Override
+    public GadgetDto create(CreateGadgetRequest request) {
+        Gadget record = new Gadget();
+        record.setTitle(request.title());
+        record.setStatus(request.status());
+        record.setNote(request.note());
+        return dto(records.saveAndFlush(record));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public GadgetDto getById(UUID id) {
+        return dto(existing(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public GadgetPage list(GadgetStatus status) {
+        Specification<Gadget> matching = (root, query, criteria) -> status == null
+                ? criteria.conjunction() : criteria.equal(root.get("status"), status);
+        var page = records.findAll(matching, PageRequest.of(0, 20));
+        return new GadgetPage(page.map(this::dto).getContent(), page.getTotalPages(),
+                page.getTotalElements(), page.getSize(), page.getNumber());
+    }
+
+    @Override
+    public GadgetDto update(UUID id, UpdateGadgetRequest request) {
+        Gadget record = existing(id);
+        record.setTitle(request.title());
+        record.setStatus(request.status());
+        record.setNote(request.note());
+        return dto(records.saveAndFlush(record));
+    }
+
+    @Override
+    public void delete(UUID id) {
+        Gadget record = existing(id);
+        records.delete(record);
+        records.flush();
+    }
+
+    private Gadget existing(UUID id) {
+        return records.findById(id).orElseThrow(RequestedRecordNotFoundException::new);
+    }
+
+    private GadgetDto dto(Gadget record) {
+        return new GadgetDto(record.getId(), record.getTitle(), record.getStatus(), record.getNote());
+    }
+}

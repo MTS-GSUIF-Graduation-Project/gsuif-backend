@@ -1,0 +1,184 @@
+# SCRUM-65 full-update contract. Version 1.0.0 remains at asset-ticket-api.yaml.
+openapi: 3.0.3
+info:
+  title: Gadget fixture API
+  version: 2.0.0
+paths:
+  /api/v1/gadgets:
+    get:
+      tags: [Gadget]
+      operationId: fetchGadgets
+      x-gsuif-payload-java-type: com.example.fixture.dto.GadgetPage
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/GadgetStatus' }
+      responses:
+        '200':
+          description: Asset tickets listed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetPageResponse' }
+    post:
+      tags: [Gadget]
+      operationId: submitGadget
+      x-gsuif-payload-java-type: com.example.fixture.dto.GadgetDto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGadgetRequest' }
+      responses:
+        '201':
+          description: Asset ticket created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetDtoResponse' }
+  /api/v1/gadgets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Gadget]
+      operationId: findGadget
+      x-gsuif-payload-java-type: com.example.fixture.dto.GadgetDto
+      responses:
+        '200':
+          description: Asset ticket retrieved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetDtoResponse' }
+        '404':
+          description: Gadget not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetErrorResponse' }
+    put:
+      tags: [Gadget]
+      operationId: replaceGadget
+      x-gsuif-payload-java-type: com.example.fixture.dto.GadgetDto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateGadgetRequest' }
+      responses:
+        '200':
+          description: Asset ticket updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetDtoResponse' }
+        '400':
+          description: Missing or invalid editable field
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetErrorResponse' }
+        '404':
+          description: Gadget not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetErrorResponse' }
+    delete:
+      tags: [Gadget]
+      operationId: removeGadget
+      x-gsuif-payload-java-type: java.lang.Void
+      responses:
+        '200':
+          description: Asset ticket deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetVoidResponse' }
+        '404':
+          description: Gadget not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GadgetErrorResponse' }
+components:
+  schemas:
+    GadgetStatus:
+      type: string
+      enum: [OPEN, CLOSED]
+    GadgetDto:
+      type: object
+      required: [id, title, status, note]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/GadgetStatus' }
+        note: { type: string, nullable: true }
+    CreateGadgetRequest:
+      type: object
+      required: [title, status, note]
+      properties:
+        title: { type: string }
+        status: { $ref: '#/components/schemas/GadgetStatus' }
+        note: { type: string, nullable: true }
+    UpdateGadgetRequest:
+      type: object
+      required: [title, status, note]
+      properties:
+        title: { type: string }
+        status: { $ref: '#/components/schemas/GadgetStatus' }
+        note: { type: string, nullable: true }
+    GadgetPage:
+      type: object
+      required: [data, totalPages, totalElements, size, number]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/GadgetDto' }
+        totalPages: { type: integer, format: int32 }
+        totalElements: { type: integer, format: int64 }
+        size: { type: integer, format: int32 }
+        number: { type: integer, format: int32 }
+    GadgetDtoResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { $ref: '#/components/schemas/GadgetDto' }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    GadgetPageResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { $ref: '#/components/schemas/GadgetPage' }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    GadgetVoidResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { type: object, nullable: true }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    GadgetErrorResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: NOT_FOUND }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32, example: 404 }
+        body: { type: object, nullable: true }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
