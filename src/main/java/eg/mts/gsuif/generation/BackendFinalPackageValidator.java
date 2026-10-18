@@ -87,17 +87,38 @@ final class BackendFinalPackageValidator {
             Thread.currentThread().interrupt();
             throw new Failed(Failure.TIMEOUT);
         } finally {
-            if (started) try {
-                if (runner.run(List.of("docker", "rm", "-f", container), Duration.ofSeconds(10)) != Exit.SUCCESS)
-                    throw new Failed(Failure.CLEANUP);
-            } catch (IOException | InterruptedException ex) {
-                if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
-                throw new Failed(Failure.CLEANUP);
+            boolean interrupted = Thread.interrupted(); // Allow the bounded cleanup wait to run.
+            boolean cleaned = true;
+            try {
+                if (started) try {
+                    cleaned = runner.run(List.of("docker", "rm", "-f", container), Duration.ofSeconds(10)) == Exit.SUCCESS;
+                } catch (InterruptedException ex) {
+                    interrupted = true;
+                    cleaned = false;
+                } catch (IOException | RuntimeException ex) {
+                    cleaned = false;
+                }
+            } finally {
+                if (!deleteStaged(staged)) cleaned = false;
+                if (interrupted) Thread.currentThread().interrupt();
             }
-            if (staged != null) try (var files = Files.walk(staged)) {
-                for (Path file : files.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
-            } catch (IOException ignored) { }
+            if (!cleaned) throw new Failed(Failure.CLEANUP);
         }
+    }
+
+    private static boolean deleteStaged(Path staged) {
+        if (staged == null || Files.notExists(staged)) return true;
+        boolean deleted = true;
+        try (var files = Files.walk(staged)) {
+            for (Path file : files.sorted(Comparator.reverseOrder()).toList()) try {
+                Files.deleteIfExists(file);
+            } catch (IOException | RuntimeException ex) {
+                deleted = false;
+            }
+        } catch (IOException | RuntimeException ex) {
+            return false;
+        }
+        return deleted && Files.notExists(staged);
     }
 
     static List<String> command(String image, String container, Path staged, Path repository, Path mavenHome) {
@@ -124,19 +145,44 @@ final class BackendFinalPackageValidator {
         return Duration.ofNanos(nanos);
     }
 
-    private static Exit process(List<String> command, Duration timeout) throws IOException, InterruptedException {
+    static Exit process(List<String> command, Duration timeout) throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder(command)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD);
         builder.environment().clear();
         for (String key : List.of("PATH", "Path", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP"))
             if (System.getenv(key) != null) builder.environment().put(key, System.getenv(key));
         Process process = builder.start();
-        if (!process.waitFor(Math.max(1, timeout.toNanos()), TimeUnit.NANOSECONDS)) {
-            process.descendants().forEach(ProcessHandle::destroyForcibly);
-            process.destroyForcibly();
-            process.waitFor(5, TimeUnit.SECONDS);
-            return Exit.TIMEOUT;
+        try {
+            if (!process.waitFor(Math.max(1, timeout.toNanos()), TimeUnit.NANOSECONDS)) {
+                if (!terminate(process)) throw new Failed(Failure.CLEANUP);
+                return Exit.TIMEOUT;
+            }
+            return process.exitValue() == 0 ? Exit.SUCCESS : Exit.FAILURE;
+        } catch (InterruptedException ex) {
+            boolean stopped;
+            try { stopped = terminate(process); }
+            finally { Thread.currentThread().interrupt(); }
+            if (!stopped) throw new Failed(Failure.CLEANUP);
+            throw ex;
         }
-        return process.exitValue() == 0 ? Exit.SUCCESS : Exit.FAILURE;
+    }
+
+    private static boolean terminate(Process process) {
+        boolean interrupted = Thread.interrupted();
+        try {
+            boolean confirmed = true;
+            List<ProcessHandle> descendants;
+            try { descendants = process.descendants().toList(); }
+            catch (RuntimeException ex) { descendants = List.of(); confirmed = false; }
+            for (ProcessHandle descendant : descendants) try { descendant.destroyForcibly(); }
+            catch (RuntimeException ex) { confirmed = false; }
+            try { process.destroyForcibly(); }
+            catch (RuntimeException ex) { confirmed = false; }
+            try { process.waitFor(5, TimeUnit.SECONDS); }
+            catch (InterruptedException ex) { interrupted = true; }
+            return confirmed && !process.isAlive() && descendants.stream().noneMatch(ProcessHandle::isAlive);
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
+        }
     }
 }

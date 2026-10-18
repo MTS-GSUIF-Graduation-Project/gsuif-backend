@@ -67,6 +67,9 @@ doc/
 NOTES.local.md
 *.local.md
 
+# Local review and acceptance evidence
+/review-packages/
+
 # hash password for admin user to be used when creating user manually
 ../HashPassword.java
 
