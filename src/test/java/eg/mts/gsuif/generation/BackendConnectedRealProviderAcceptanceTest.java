@@ -137,7 +137,7 @@ class BackendConnectedRealProviderAcceptanceTest {
     void oneRealProviderRunExportsAndExecutesExactPagedPackage() throws Exception {
         requirePrerequisites();
         Path attemptEvidence = Path.of(required("gsuif.test.connected-real-evidence-dir"));
-        BackendModelResponseDiagnostic.openLive(attemptEvidence); // private, fresh directory outside Git/target
+        BackendModelResponseDiagnostic.openLive(attemptEvidence); // Private evidence directory; this public path does not capture provider responses.
         String snapshot = sourceSnapshot(attemptEvidence);
         assertEquals(required("gsuif.test.connected-real-source-sha256"), snapshot,
                 "SOURCE_SNAPSHOT_CHANGED_BEFORE_PROVIDER_REQUEST");

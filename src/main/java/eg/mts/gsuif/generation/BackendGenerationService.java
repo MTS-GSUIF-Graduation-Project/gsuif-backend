@@ -99,8 +99,13 @@ public final class BackendGenerationService {
                 case CONFIG, DEPENDENCY_CONFIG, DEPENDENCY_TIMEOUT, DEPENDENCY_UNAVAILABLE, DEPENDENCY_INTEGRITY -> GenerationFailureStage.CONFIG;
                 default -> GenerationFailureStage.AI;
             };
-            GenerationFailureCode code = stage == GenerationFailureStage.CONFIG
-                    ? GenerationFailureCode.CONFIG_MISSING : GenerationFailureCode.MODEL_UNAVAILABLE;
+            GenerationFailureCode code = switch (ex.reason()) {
+                case CONFIG, DEPENDENCY_CONFIG, DEPENDENCY_TIMEOUT, DEPENDENCY_UNAVAILABLE,
+                        DEPENDENCY_INTEGRITY -> GenerationFailureCode.CONFIG_MISSING;
+                case INVALID_MODEL_OUTPUT -> GenerationFailureCode.MODEL_OUTPUT_INVALID;
+                case COMPILATION -> GenerationFailureCode.MODEL_COMPILATION_FAILED;
+                default -> GenerationFailureCode.MODEL_UNAVAILABLE;
+            };
             throw failed(attemptId, prepared.fingerprint(), stage, code);
         } catch (RuntimeException ex) {
             throw failed(attemptId, prepared.fingerprint(), GenerationFailureStage.AI,
@@ -120,15 +125,17 @@ public final class BackendGenerationService {
         }
         GenerationResult result = result(assembled, selected.descriptor().catalogVersion());
         GenerationArtifactStore.Staged staged = null;
+        GenerationRun completed;
         try {
             staged = store.stage(reserved.getId(), prepared.fingerprint(), result);
-            GenerationRun completed = runs.completeBackendAttempt(attemptId, prepared.fingerprint(), staged,
+            completed = runs.completeBackendAttempt(attemptId, prepared.fingerprint(), staged,
                     result, provenance);
-            return created(completed);
         } catch (RuntimeException ex) {
             throw failed(attemptId, prepared.fingerprint(), GenerationFailureStage.FINAL_VALIDATION,
                     GenerationFailureCode.RESULT_VALIDATION_FAILED);
         } finally { store.discard(staged); }
+        // Completion has committed. A subsequent integrity/read failure is not a failed generation attempt.
+        return created(completed);
     }
 
     private Resolution resolve(GenerationApiDtos.BackendRequest request, String username) {

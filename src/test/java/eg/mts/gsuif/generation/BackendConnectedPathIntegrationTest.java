@@ -22,6 +22,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -75,6 +76,7 @@ class BackendConnectedPathIntegrationTest {
     @Autowired GeneratedArtifactRepository artifactRepository;
     @Autowired GenerationArtifactStore store;
     @Autowired BackendGenerationService backend;
+    @MockitoSpyBean GenerationRunService runs;
     @MockitoBean BackendModelGateway model;
     @MockitoBean BackendFinalBuild finalBuild;
     @TempDir Path scratch;
@@ -301,20 +303,47 @@ class BackendConnectedPathIntegrationTest {
         verify(model, never()).generate(any());
     }
 
-    @Test void modelFailureIsRecordedWithoutArtifactOrFallback() throws Exception {
+    @Test void adapterRejectionsRetainDistinctBoundedFailureCodes() throws Exception {
+        prepare();
+        for (var example : List.of(
+                Map.entry(OpenRouterBackendModelAdapter.Failure.TRANSPORT, "MODEL_UNAVAILABLE"),
+                Map.entry(OpenRouterBackendModelAdapter.Failure.INVALID_MODEL_OUTPUT, "MODEL_OUTPUT_INVALID"),
+                Map.entry(OpenRouterBackendModelAdapter.Failure.COMPILATION, "MODEL_COMPILATION_FAILED"))) {
+            UUID attempt = UUID.randomUUID();
+            doThrow(new OpenRouterBackendModelAdapter.Failed(example.getKey())).when(model).generate(any());
+            mvc.perform(post("/api/v1/generation/backend").with(authentication(fixture.auth()))
+                            .contentType("application/json").content(request(attempt)))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(header().string("X-Generation-Failure-Stage", "AI"))
+                    .andExpect(header().string("X-Generation-Failure-Code", example.getValue()))
+                    .andExpect(jsonPath("$.errors._global").value("Generation attempt failed"));
+            var run = runRepository.findByAttemptId(attempt).orElseThrow();
+            assertEquals(GenerationRunStatus.FAILED, run.getStatus());
+            assertEquals("AI", run.getFailureStage());
+            assertEquals(example.getValue(), run.getFailureCode());
+            assertTrue(artifactRepository.findAllByGenerationRunIdOrderByRelativePathAsc(run.getId()).isEmpty());
+        }
+        verify(finalBuild, never()).validate(any());
+    }
+
+    @Test void postCommitIntegrityReadFailureDoesNotRecordGenerationFailure() throws Exception {
         prepare();
         UUID attempt = UUID.randomUUID();
-        doThrow(new OpenRouterBackendModelAdapter.Failed(OpenRouterBackendModelAdapter.Failure.HTTP_REJECTED))
-                .when(model).generate(any());
+        doThrow(new IllegalStateException("test-only integrity read failure"))
+                .when(runs).readResult(any(GenerationRun.class));
         mvc.perform(post("/api/v1/generation/backend").with(authentication(fixture.auth()))
                         .contentType("application/json").content(request(attempt)))
-                .andExpect(status().is5xxServerError());
+                .andExpect(status().isInternalServerError())
+                .andExpect(header().doesNotExist("X-Generation-Run-Id"))
+                .andExpect(header().doesNotExist("X-Generation-Failure-Stage"))
+                .andExpect(header().doesNotExist("X-Generation-Failure-Code"))
+                .andExpect(jsonPath("$.clientMessage").value("An unexpected error occurred"));
         var run = runRepository.findByAttemptId(attempt).orElseThrow();
-        assertEquals(GenerationRunStatus.FAILED, run.getStatus());
-        assertEquals("AI", run.getFailureStage());
-        assertEquals("MODEL_UNAVAILABLE", run.getFailureCode());
-        assertTrue(artifactRepository.findAllByGenerationRunIdOrderByRelativePathAsc(run.getId()).isEmpty());
-        verify(finalBuild, never()).validate(any());
+        assertEquals(GenerationRunStatus.SUCCESS, run.getStatus());
+        assertNull(run.getFailureStage());
+        assertNull(run.getFailureCode());
+        assertFalse(artifactRepository.findAllByGenerationRunIdOrderByRelativePathAsc(run.getId()).isEmpty());
+        verify(runs, never()).recordFailure(any(), anyString(), any(), any());
     }
 
     @Test void publicPagedBackendZipBuildsAndRunsWithoutSupplementalSources() throws Exception {
