@@ -18,7 +18,7 @@ import java.util.jar.JarFile;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Runs only explicitly mocked model output in disposable containers; no host JVM starts the app. */
+/** Runs accepted model output in disposable containers; no host JVM starts the generated app. */
 final class IsolatedStockUnitContainerAcceptance {
     private record DriverDependency(String relativePath, String sha256) { }
 
@@ -40,6 +40,13 @@ final class IsolatedStockUnitContainerAcceptance {
             CompleteBackendPackageAssembler.Assembled assembled, Path extracted,
             BackendCompileClasspath dependencies,
             CompleteBackendPackageAssembler.Provenance provenance, Path savedAttempt) throws Exception {
+        verify(input, accepted, assembled, extracted, dependencies, provenance, savedAttempt, false);
+    }
+
+    void verify(BackendModelInput input, BackendModelOutputValidator.Accepted accepted,
+            CompleteBackendPackageAssembler.Assembled assembled, Path extracted,
+            BackendCompileClasspath dependencies,
+            CompleteBackendPackageAssembler.Provenance provenance, Path savedAttempt, boolean paged) throws Exception {
         assertNotNull(provenance);
         var manifest = new com.fasterxml.jackson.databind.ObjectMapper()
                 .readTree(assembled.file("generation-manifest.json")).path("provider");
@@ -47,6 +54,24 @@ final class IsolatedStockUnitContainerAcceptance {
         assertEquals(provenance.providerVersion(), manifest.path("version").asText());
         assertEquals(provenance.modelId(), manifest.path("model").asText());
         assertEquals(provenance.mocked(), manifest.path("mocked").asBoolean(!provenance.mocked()));
+        assertArrayEquals(accepted.source(), assembled.file(accepted.path()));
+        verifyExtracted(extracted, input.pom(), accepted.path(), accepted.source(),
+                dependencies, provenance, savedAttempt, paged);
+    }
+
+    /** Continues from a previously exported package; no renderer, model input or assembler is used. */
+    void verifyPreservedExport(Path extracted, String sourcePath, byte[] source,
+            CompleteBackendPackageAssembler.Provenance provenance, Path savedAttempt, boolean paged)
+            throws Exception {
+        verifyExtracted(extracted, Files.readAllBytes(extracted.resolve("backend/pom.xml")), sourcePath,
+                source, null, provenance, savedAttempt, paged);
+    }
+
+    private void verifyExtracted(Path extracted, byte[] pom, String sourcePath, byte[] source,
+            BackendCompileClasspath dependencies, CompleteBackendPackageAssembler.Provenance provenance,
+            Path savedAttempt, boolean paged) throws Exception {
+        assertArrayEquals(pom, Files.readAllBytes(extracted.resolve("backend/pom.xml")));
+        assertArrayEquals(source, Files.readAllBytes(extracted.resolve(sourcePath)));
         Path evidenceRoot = Path.of(required("gsuif.test.ai-evidence-dir")).toAbsolutePath().normalize();
         assertFalse(evidenceRoot.startsWith(scratch.toAbsolutePath().normalize()));
         String jdk = requiredImage("gsuif.test.ai-jdk-image");
@@ -81,7 +106,8 @@ final class IsolatedStockUnitContainerAcceptance {
         Files.writeString(appEnv, common + "GENERATED_APP_JWT_SECRET=" + jwt + "\n", StandardCharsets.UTF_8);
         Files.writeString(probeEnv, "PROBE_ADMIN_PASSWORD=" + adminPassword + "\nPROBE_USER_PASSWORD="
                 + userPassword + "\nPROBE_DB_URL=jdbc:postgresql://db:5432/generated_app?connectTimeout=2&socketTimeout=5\n"
-                + "PROBE_DB_USER=generated_test\nPROBE_DB_PASSWORD=" + dbPassword + "\n", StandardCharsets.UTF_8);
+                + "PROBE_DB_USER=generated_test\nPROBE_DB_PASSWORD=" + dbPassword + "\n"
+                + "PROBE_PAGED=" + paged + "\n", StandardCharsets.UTF_8);
         String jarSha256;
         try (var docker = IsolatedBackendDockerSupport.local()) {
             docker.createInternalNetwork();
@@ -100,14 +126,16 @@ final class IsolatedStockUnitContainerAcceptance {
             docker.copy(isolatedRepository, stage, "/repo/");
             docker.copy(mavenHome, stage, "/maven/");
             docker.copy(offlineSettings, stage, "/maven/offline-settings.xml");
-            assertEquals(sha256(input.pom()), dependencies.pomSha256());
-            for (var artifact : dependencies.artifacts()) {
-                String relative = repository.relativize(artifact.file()).toString().replace('\\', '/');
-                var copied = docker.run(List.of("exec", stage, "sha256sum", "/repo/isolated-repository/" + relative),
-                        Duration.ofSeconds(10));
-                assertEquals(0, copied.exit(), "DEPENDENCY_COPY");
-                assertTrue(copied.output().startsWith(artifact.sha256() + "  "),
-                        "DEPENDENCY_HASH_MISMATCH");
+            if (dependencies != null) {
+                assertEquals(sha256(pom), dependencies.pomSha256());
+                for (var artifact : dependencies.artifacts()) {
+                    String relative = repository.relativize(artifact.file()).toString().replace('\\', '/');
+                    var copied = docker.run(List.of("exec", stage, "sha256sum", "/repo/isolated-repository/" + relative),
+                            Duration.ofSeconds(10));
+                    assertEquals(0, copied.exit(), "DEPENDENCY_COPY");
+                    assertTrue(copied.output().startsWith(artifact.sha256() + "  "),
+                            "DEPENDENCY_HASH_MISMATCH");
+                }
             }
             Path driver = scratch.resolve("StockUnitIsolatedProbe.java");
             try (var resource = getClass().getResourceAsStream("/generation/fixtures/StockUnitIsolatedProbe.java.txt")) {
@@ -132,8 +160,9 @@ final class IsolatedStockUnitContainerAcceptance {
                     "chown -R 65532:65532 /workspace /repo /probe && chmod -R a+rX /maven && "
                             + "chmod +x /maven/" + mavenHome.getFileName() + "/bin/mvn"),
                     Duration.ofMinutes(2)).exit(), "STAGING_OWNERSHIP");
-            assertArrayEquals(accepted.source(), Files.readAllBytes(extracted.resolve(input.writablePath())));
+            assertArrayEquals(source, Files.readAllBytes(extracted.resolve(sourcePath)));
             build(docker, stage, jdk, workspace, cache, maven, mavenHome.getFileName().toString());
+            recordCheck(savedAttempt, "build=passed\n");
             Path jar = copyJar(docker, stage, scratch.resolve("generated-backend.jar"));
             jarSha256 = sha256(Files.readAllBytes(jar));
             assertEquals(64, jarSha256.length());
@@ -151,6 +180,7 @@ final class IsolatedStockUnitContainerAcceptance {
             String firstAdmin = docker.runDetached(bootstrap, "bootstrap");
             assertExitedZero(docker, firstAdmin, Duration.ofMinutes(2), "BOOTSTRAP");
             assertEquals("1", sql(docker, db, "SELECT count(*) FROM user_accounts"));
+            recordCheck(savedAttempt, "bootstrap=passed\n");
             Path roleSql = scratch.resolve("role-user.sql");
             UUID userId = UUID.randomUUID();
             Files.writeString(roleSql, "INSERT INTO user_accounts(id,username,password_hash,enabled) VALUES ('"
@@ -162,21 +192,34 @@ final class IsolatedStockUnitContainerAcceptance {
                     "-U", "generated_test", "-d", "generated_app", "-f", "/tmp/role-user.sql"),
                     Duration.ofSeconds(20)).exit(), "ROLE_USER_SETUP");
             runAppAndProbe(docker, jdk, app, probe, appEnv, probeEnv, "first");
+            recordCheck(savedAttempt, "runtime=passed\ncrud=passed\npagination="
+                    + (paged ? "passed" : "not-selected") + "\n");
             assertEquals("1", sql(docker, db, "SELECT count(*) FROM stock_unit"));
             assertEquals("beta", sql(docker, db, "SELECT label FROM stock_unit"));
             assertEquals("FirstAdmin", sql(docker, db, "SELECT created_by FROM stock_unit"));
             assertEquals("FirstAdmin", sql(docker, db, "SELECT last_modified_by FROM stock_unit"));
             runAppAndProbe(docker, jdk, app, probe, appEnv, probeEnv, "second");
+            recordCheck(savedAttempt, "restart=passed\n");
             assertEquals("0", sql(docker, db, "SELECT count(*) FROM stock_unit"));
             assertEquals("true", docker.run(List.of("network", "inspect", "--format", "{{.Internal}}",
                     docker.network()), Duration.ofSeconds(10)).output().trim());
-            assertArrayEquals(accepted.source(), assembled.file(accepted.path()));
-            assertEquals(sha256(accepted.source()), sha256(assembled.file(accepted.path())));
+            assertArrayEquals(source, Files.readAllBytes(extracted.resolve(sourcePath)));
+        } catch (Exception | AssertionError failure) {
+            if (savedAttempt != null) {
+                boolean cleanupFailed = cleanupUnconfirmed(failure);
+                try {
+                    Files.writeString(savedAttempt.resolve("cleanup-status.txt"),
+                            "cleanup=" + (cleanupFailed ? "unconfirmed" : "confirmed") + "\n",
+                            StandardCharsets.US_ASCII);
+                } catch (Exception evidenceFailure) { failure.addSuppressed(evidenceFailure); }
+            }
+            throw failure;
         } finally {
             for (Path path : List.of(dbEnv, bootstrapEnv, appEnv, probeEnv, offlineSettings,
                     scratch.resolve("role-user.sql")))
                 Files.deleteIfExists(path);
         }
+        recordCheck(savedAttempt, "cleanup=confirmed\n");
         Path attempt;
         if (savedAttempt == null) {
             assertTrue(provenance.mocked(), "LIVE_ACCEPTED_SOURCE_EVIDENCE_REQUIRED");
@@ -186,8 +229,8 @@ final class IsolatedStockUnitContainerAcceptance {
             attempt = savedAttempt.toAbsolutePath().normalize();
             assertEquals(evidenceRoot, attempt.getParent(), "ACCEPTED_SOURCE_EVIDENCE_LOCATION");
             assertTrue(Files.isDirectory(attempt), "ACCEPTED_SOURCE_EVIDENCE_MISSING");
-            assertArrayEquals(accepted.source(), Files.readAllBytes(attempt.resolve(accepted.path())));
-            assertEquals(sha256(accepted.source()),
+            assertArrayEquals(source, Files.readAllBytes(attempt.resolve(sourcePath)));
+            assertEquals(sha256(source),
                     Files.readString(attempt.resolve("accepted-source.sha256")).trim());
         }
         Files.writeString(attempt.resolve("result.txt"),
@@ -195,10 +238,23 @@ final class IsolatedStockUnitContainerAcceptance {
                         + "\nproviderVersion=" + provenance.providerVersion()
                         + "\nmodelId=" + provenance.modelId()
                         + "\nmocked=" + provenance.mocked()
-                        + "\nsourceSha256=" + sha256(accepted.source())
+                        + "\nsourceSha256=" + sha256(source)
                         + "\njarSha256=" + jarSha256 + "\ncontainerCrud=passed\ncleanup=confirmed\n",
                 StandardCharsets.UTF_8);
         Files.copy(extracted.resolve("generation-manifest.json"), attempt.resolve("generation-manifest.json"));
+    }
+
+    private static void recordCheck(Path savedAttempt, String line) throws java.io.IOException {
+        if (savedAttempt != null) Files.writeString(savedAttempt.resolve("runtime-checks.txt"), line,
+                StandardCharsets.US_ASCII, java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.APPEND);
+    }
+
+    private static boolean cleanupUnconfirmed(Throwable failure) {
+        if ("ISOLATED_CLEANUP_UNCONFIRMED".equals(failure.getMessage())) return true;
+        for (Throwable suppressed : failure.getSuppressed())
+            if (cleanupUnconfirmed(suppressed)) return true;
+        return false;
     }
 
     private static void build(IsolatedBackendDockerSupport docker, String stage, String image, String workspace,

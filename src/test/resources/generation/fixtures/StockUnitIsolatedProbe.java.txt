@@ -11,6 +11,9 @@ import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -92,7 +95,64 @@ class StockUnitIsolatedProbe {
         stock(success(send("PUT", ROOT + "/" + id, admin, update), 200),
                 id, "beta", "CLOSED", "2026-10-17", "UPDATE_VALUES");
         row(id, "beta", "CLOSED", "2026-10-17", "UPDATE_DATABASE");
+        if ("true".equals(System.getenv("PROBE_PAGED"))) paged(admin, id.toString());
         Files.writeString(Path.of("/probe/created-id"), id.toString(), StandardCharsets.UTF_8);
+    }
+
+    private static void paged(String admin, String originalId) throws Exception {
+        String create = "{\"label\":\"group\",\"condition\":\"OPEN\",\"retiredOn\":null}";
+        List<String> ids = new ArrayList<>();
+        for (int i = 0; i < 23; i++)
+            ids.add(text(success(send("POST", ROOT, admin, create), 201), "id", "PAGED_CREATE_ID"));
+        Collections.sort(ids);
+        pageSlice(success(send("GET", ROOT + "?condition=OPEN&label=group", admin, null), 200),
+                0, 20, 23, ids.subList(0, 20), "PAGED_DEFAULT");
+        pageSlice(success(send("GET", ROOT + "?condition=OPEN&label=group&page=1", admin, null), 200),
+                1, 20, 23, ids.subList(20, 23), "PAGED_NEXT");
+        List<String> observed = new ArrayList<>();
+        for (int page = 0; page < 5; page++) {
+            JsonNode body = success(send("GET", ROOT + "?condition=OPEN&label=group&page=" + page
+                    + "&size=5", admin, null), 200);
+            pageSlice(body, page, 5, 23, ids.subList(page * 5, Math.min((page + 1) * 5, 23)),
+                    "PAGED_EXPLICIT");
+            body.path("data").forEach(item -> observed.add(text(item, "id", "PAGED_ID")));
+        }
+        require(ids.equals(observed), "PAGED_GAPS_OR_DUPLICATES");
+        pageSlice(success(send("GET", ROOT + "?condition=OPEN&label=group&page=5&size=5",
+                admin, null), 200), 5, 5, 23, List.of(), "PAGED_OUT_OF_RANGE");
+        pageSlice(success(send("GET", ROOT + "?condition=CLOSED", admin, null), 200),
+                0, 20, 1, List.of(originalId), "PAGED_FILTER_TOTAL");
+        for (String invalid : List.of("page=-1", "size=0", "size=101", "page=bad", "size=bad")) {
+            HttpResponse<String> response = send("GET", ROOT + "?condition=OPEN&" + invalid, admin, null);
+            require(response.statusCode() == 400, "PAGED_INVALID_HTTP");
+            JsonNode rejected = envelope(response);
+            require("BAD_REQUEST".equals(text(rejected, "status", "PAGED_INVALID_STATUS")),
+                    "PAGED_INVALID_STATUS");
+            require("Invalid request".equals(text(rejected, "clientMessage", "PAGED_INVALID_MESSAGE")),
+                    "PAGED_INVALID_MESSAGE");
+            require(rejected.path("statusCode").asInt() == 400 && rejected.path("body").isNull()
+                    && rejected.path("errors").isObject() && !rejected.path("errors").isEmpty(),
+                    "PAGED_INVALID_ENVELOPE");
+            rejected.path("errors").fieldNames().forEachRemaining(name ->
+                    require(Set.of("_global", "page", "size").contains(name), "PAGED_INVALID_FIELD"));
+            count(24, "PAGED_REJECTION_CHANGED_DATA");
+        }
+        for (String id : ids)
+            require(success(send("DELETE", ROOT + "/" + id, admin, null), 200).isNull(),
+                    "PAGED_CLEANUP_DELETE");
+        count(1, "PAGED_CLEANUP_DATABASE");
+    }
+
+    private static void pageSlice(JsonNode body, int number, int size, int total, List<String> ids,
+            String reason) {
+        require(body.isObject() && body.path("number").asInt(-1) == number
+                && body.path("size").asInt(-1) == size
+                && body.path("totalElements").asInt(-1) == total
+                && body.path("totalPages").asInt(-1) == (total + size - 1) / size, reason);
+        JsonNode data = body.path("data");
+        require(data.isArray() && data.size() == ids.size(), reason);
+        for (int i = 0; i < ids.size(); i++)
+            require(ids.get(i).equals(text(data.get(i), "id", reason)), reason);
     }
 
     private static void second() throws Exception {
