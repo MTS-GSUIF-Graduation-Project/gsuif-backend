@@ -170,17 +170,29 @@ final class BackendFinalPackageValidator {
     private static boolean terminate(Process process) {
         boolean interrupted = Thread.interrupted();
         try {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             boolean confirmed = true;
             List<ProcessHandle> descendants;
             try { descendants = process.descendants().toList(); }
             catch (RuntimeException ex) { descendants = List.of(); confirmed = false; }
             for (ProcessHandle descendant : descendants) try { descendant.destroyForcibly(); }
             catch (RuntimeException ex) { confirmed = false; }
+            while (descendants.stream().anyMatch(ProcessHandle::isAlive)) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) break;
+                try { TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(10))); }
+                catch (InterruptedException ex) { interrupted = true; }
+            }
+            boolean descendantsStopped = descendants.stream().noneMatch(ProcessHandle::isAlive);
             try { process.destroyForcibly(); }
             catch (RuntimeException ex) { confirmed = false; }
-            try { process.waitFor(5, TimeUnit.SECONDS); }
-            catch (InterruptedException ex) { interrupted = true; }
-            return confirmed && !process.isAlive() && descendants.stream().noneMatch(ProcessHandle::isAlive);
+            while (process.isAlive()) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) return false;
+                try { TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(10))); }
+                catch (InterruptedException ex) { interrupted = true; }
+            }
+            return confirmed && descendantsStopped;
         } finally {
             if (interrupted) Thread.currentThread().interrupt();
         }
