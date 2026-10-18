@@ -123,9 +123,14 @@ public class GenerationApiService {
         var validationScope = validationScope(linked.stream()
                 .map(GenerationApiDtos.LinkedArtifact::relativePath).toList(),
                 run.getStatus().name(), run.getCompileExitCode(), run.getTestExitCode());
+        GenerationApiDtos.BackendPackage backendPackage = null;
+        if (BackendPackageIntegrity.TOOL.equals(run.getToolName())
+                && run.getStatus() == eg.mts.gsuif.entity.GenerationRunStatus.SUCCESS)
+            backendPackage = BackendPackageIntegrity.summary(run, this.runs.readResult(run));
         return new GenerationApiDtos.RunDetails(run.getId(), run.getStatus().name(),
                 run.getCreatedAt(), run.getUpdatedAt(), run.getMetadataVersion().getId(), linked,
-                run.getCompileExitCode(), run.getCompileOutput(), run.getTestExitCode(), run.getTestOutput(), validationScope);
+                run.getCompileExitCode(), run.getCompileOutput(), run.getTestExitCode(), run.getTestOutput(),
+                validationScope, backendPackage);
     }
 
     @Transactional(readOnly = true)

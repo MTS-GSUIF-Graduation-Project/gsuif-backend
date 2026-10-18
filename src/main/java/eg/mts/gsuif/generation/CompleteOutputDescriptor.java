@@ -34,7 +34,8 @@ record CompleteOutputDescriptor(UUID metadataVersionId, Integer metadataVersionN
     record Operation(CrudAction action, UUID bindingId, String operationId, String method, String path,
             String requestDto, String responseDto, int successStatus, String successEnvelope,
             Map<Integer, String> errorEnvelopes,
-            Map<String, PackagedContractLoader.QueryParameter> queryFields, Set<SupportedRole> roles) {
+            Map<String, PackagedContractLoader.QueryParameter> queryFields,
+            PackagedContractLoader.Ordering ordering, Set<SupportedRole> roles) {
         Operation {
             errorEnvelopes = Collections.unmodifiableMap(new TreeMap<>(errorEnvelopes));
             queryFields = Collections.unmodifiableMap(new TreeMap<>(queryFields));

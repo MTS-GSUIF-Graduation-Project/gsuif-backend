@@ -3,12 +3,14 @@ package eg.mts.gsuif.controller;
 import eg.mts.gsuif.dto.ApiResponse;
 import eg.mts.gsuif.dto.GenerationApiDtos;
 import eg.mts.gsuif.generation.GenerationApiService;
+import eg.mts.gsuif.generation.BackendGenerationService;
 import eg.mts.gsuif.generation.GenerationExportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -33,10 +35,29 @@ import java.util.UUID;
 public class GenerationController {
     private final GenerationApiService service;
     private final GenerationExportService exports;
+    private final BackendGenerationService backend;
 
     public GenerationController(GenerationApiService service, GenerationExportService exports) {
+        this(service, exports, null);
+    }
+
+    @Autowired
+    public GenerationController(GenerationApiService service, GenerationExportService exports,
+            BackendGenerationService backend) {
         this.service = service;
         this.exports = exports;
+        this.backend = backend;
+    }
+
+    @PostMapping("/backend")
+    @Operation(summary = "Generate a complete BACKEND package", operationId = "generateBackend",
+            description = "Uses the page's selected immutable metadata version and an exact registered full-update contract. OpenRouter and its model are configured on the server.")
+    @ApiCommonWriteResponses
+    public ResponseEntity<ApiResponse<GenerationApiDtos.BackendCreated>> backend(
+            @Valid @RequestBody GenerationApiDtos.BackendRequest request, Authentication authentication) {
+        var created = backend.generate(request, authentication == null ? null : authentication.getName());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(created, "Generation run recorded", 201));
     }
 
     @PostMapping("/generate")

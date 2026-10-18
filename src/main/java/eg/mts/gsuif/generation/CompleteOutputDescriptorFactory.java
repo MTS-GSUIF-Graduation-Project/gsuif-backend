@@ -44,7 +44,7 @@ final class CompleteOutputDescriptorFactory {
                 throw new GenerationValidationException(List.of("specification.openApi.bindingOperations: all five mapped CRUD operations required"));
             operations.add(new CompleteOutputDescriptor.Operation(action, binding, id, selected.verb(), selected.path(),
                     selected.request(), selected.responseDto(), selected.successStatus(), selected.successEnvelope(), selected.errorEnvelopes(),
-                    selected.queryFields(), Set.copyOf(spec.operationRoles().get(id))));
+                    selected.queryFields(), selected.ordering(), Set.copyOf(spec.operationRoles().get(id))));
         }
         Map<String, Object> api = contract.api();
         String dtoPackage = (String) api.get("dtoPackage");

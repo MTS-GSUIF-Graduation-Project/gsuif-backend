@@ -46,6 +46,13 @@ public class GenerationRun extends AuditableEntity {
     @Column(name = "input_fingerprint", length = 64)
     private String inputFingerprint;
 
+    /** Anchors every exported BACKEND file hash through generation-manifest.json; null for legacy runs. */
+    @Column(name = "package_manifest_sha256", length = 64)
+    private String packageManifestSha256;
+
+    public String getPackageManifestSha256() { return packageManifestSha256; }
+    public void setPackageManifestSha256(String value) { packageManifestSha256 = value; }
+
     public UUID getAttemptId() { return attemptId; }
     public void setAttemptId(UUID attemptId) { this.attemptId = attemptId; }
     public String getInputFingerprint() { return inputFingerprint; }

@@ -144,7 +144,8 @@ class GenerationControllerIntegrationTest {
                 .andExpect(jsonPath("$.body.artifacts[0].id").value(artifact.toString()))
                 .andExpect(jsonPath("$.body.compileExitCode").value(1))
                 .andExpect(jsonPath("$.body.validationScope.passedTargets").isEmpty())
-                .andExpect(jsonPath("$.body.validationScope.notValidatedTargets[0]").value("ANGULAR"));
+                .andExpect(jsonPath("$.body.validationScope.notValidatedTargets[0]").value("ANGULAR"))
+                .andExpect(jsonPath("$.body.backendPackage").doesNotExist());
     }
 
     @Test void unknownRunReturns404Envelope() throws Exception {

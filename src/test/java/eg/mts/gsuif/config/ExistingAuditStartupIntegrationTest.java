@@ -42,9 +42,11 @@ class ExistingAuditStartupIntegrationTest {
                 ScriptUtils.executeSqlScript(connection,
                         new ClassPathResource("sql/V" + version + "__" + names[version - 1] + ".sql"));
             }
-            // SCRUM-61 owns the pending V7; this test prepares the currently shipped schema plus V8.
+            // Prepare the shipped schema through the additive BACKEND package migration.
             ScriptUtils.executeSqlScript(connection,
                     new ClassPathResource("sql/V8__add_generation_attempt_lifecycle.sql"));
+            ScriptUtils.executeSqlScript(connection,
+                    new ClassPathResource("sql/V9__add_backend_package_manifest_hash.sql"));
             connection.createStatement().executeUpdate("INSERT INTO revinfo (revtstmp) VALUES (1)");
             connection.createStatement().executeUpdate("""
                     INSERT INTO gsuif_project (id, name, description, created_at, updated_at, created_by, last_modified_by)

@@ -22,6 +22,7 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
 
 /** Internal backend-only model call. It does not publish, assemble, or persist results. */
 final class OpenRouterBackendModelAdapter {
@@ -50,10 +51,17 @@ final class OpenRouterBackendModelAdapter {
     @FunctionalInterface interface Sleeper { void sleep(Duration duration) throws InterruptedException; }
     @FunctionalInterface interface IsolatedCompiler {
         boolean compile(BackendModelInput input, byte[] source, Duration remaining);
+        default BackendCompileClasspath manifest() { return null; }
     }
     @FunctionalInterface interface CompilerFactory {
         IsolatedCompiler prepare(BackendModelInput input);
     }
+    @FunctionalInterface interface ModelContentObserver {
+        void received(byte[] content);
+        default void normalized(Normalization code) { }
+    }
+    enum Normalization { CANONICAL_FILES_OBJECT, TOP_LEVEL_ARRAY_WRAPPED }
+    private record NormalizedContent(byte[] bytes, Normalization code) { }
 
     static final String MODEL = "qwen/qwen3-coder";
     static final String PROVIDER_ID = "openrouter";
@@ -68,6 +76,7 @@ final class OpenRouterBackendModelAdapter {
     private final CompilerFactory compilerFactory;
     private final LongSupplier clock;
     private final Sleeper sleeper;
+    private final ModelContentObserver contentObserver;
 
     OpenRouterBackendModelAdapter(Transport transport, IsolatedCompiler compiler,
             LongSupplier clock, Sleeper sleeper) {
@@ -76,10 +85,16 @@ final class OpenRouterBackendModelAdapter {
 
     OpenRouterBackendModelAdapter(Transport transport, CompilerFactory compilerFactory,
             LongSupplier clock, Sleeper sleeper) {
+        this(transport, compilerFactory, clock, sleeper, ignored -> { });
+    }
+
+    OpenRouterBackendModelAdapter(Transport transport, CompilerFactory compilerFactory,
+            LongSupplier clock, Sleeper sleeper, ModelContentObserver contentObserver) {
         this.transport = java.util.Objects.requireNonNull(transport);
         this.compilerFactory = java.util.Objects.requireNonNull(compilerFactory);
         this.clock = java.util.Objects.requireNonNull(clock);
         this.sleeper = java.util.Objects.requireNonNull(sleeper);
+        this.contentObserver = java.util.Objects.requireNonNull(contentObserver);
     }
 
     static OpenRouterBackendModelAdapter local(String pinnedImageId) {
@@ -87,7 +102,12 @@ final class OpenRouterBackendModelAdapter {
         var provisioner = BackendMavenDependencyProvisioner.local();
         return new OpenRouterBackendModelAdapter(new HttpsTransport(), input -> {
             BackendCompileClasspath dependencies = provisioner.provision(input);
-            return (selected, source, remaining) -> docker.compile(selected, source, dependencies, remaining);
+            return new IsolatedCompiler() {
+                @Override public boolean compile(BackendModelInput selected, byte[] source, Duration remaining) {
+                    return docker.compile(selected, source, dependencies, remaining);
+                }
+                @Override public BackendCompileClasspath manifest() { return dependencies; }
+            };
         },
                 System::nanoTime, duration -> Thread.sleep(duration.toMillis()));
     }
@@ -107,8 +127,11 @@ final class OpenRouterBackendModelAdapter {
                 case INVALID_ARTIFACT -> Failure.DEPENDENCY_INTEGRITY;
             });
         }
+        BackendCompileClasspath manifest = compiler.manifest();
+        if (manifest != null && !manifest.pomSha256().equals(BackendCompileClasspath.hash(input.pom())))
+            throw new Failed(Failure.DEPENDENCY_INTEGRITY);
         long deadline = clock.getAsLong() + OVERALL_NANOS;
-        byte[] payload = request(input);
+        byte[] payload = request(input, manifest);
         for (int attempt = 1; attempt <= 2; attempt++) {
             Duration timeout = remaining(deadline);
             if (timeout.compareTo(RESPONSE_LIMIT) > 0) timeout = RESPONSE_LIMIT;
@@ -122,10 +145,13 @@ final class OpenRouterBackendModelAdapter {
             if (reply != null && reply.status() == 200) {
                 remaining(deadline);
                 byte[] content = modelContent(reply.body());
+                contentObserver.received(content.clone());
+                NormalizedContent normalized = normalizeModelContent(content);
+                contentObserver.normalized(normalized.code());
                 var validator = new BackendModelOutputValidator((selected, source) ->
                         compiler.compile(selected, source, remaining(deadline)));
                 try {
-                    var accepted = validator.validate(input, content);
+                    var accepted = validator.validate(input, normalized.bytes());
                     remaining(deadline);
                     return accepted;
                 }
@@ -151,7 +177,9 @@ final class OpenRouterBackendModelAdapter {
         return Duration.ofNanos(nanos);
     }
 
-    byte[] request(BackendModelInput input) {
+    byte[] request(BackendModelInput input) { return request(input, null); }
+
+    byte[] request(BackendModelInput input, BackendCompileClasspath manifest) {
         ObjectNode root = json.createObjectNode();
         root.put("model", MODEL);
         root.put("max_tokens", MAX_TOKENS);
@@ -169,6 +197,32 @@ final class OpenRouterBackendModelAdapter {
         instructions.put("contractVersion", input.descriptor().contractVersion());
         instructions.put("contractSha256", input.descriptor().contractResourceSha256());
         instructions.put("contract", new String(input.contract(), StandardCharsets.UTF_8));
+        ObjectNode framework = instructions.putObject("pinnedFramework");
+        framework.put("java", pomValue(input.pom(), "<java.version>([0-9]+)</java.version>"));
+        framework.put("springBootParent", pomValue(input.pom(),
+                "(?s)<parent>\\s*<groupId>org\\.springframework\\.boot</groupId>\\s*"
+                + "<artifactId>spring-boot-starter-parent</artifactId>\\s*<version>([0-9A-Za-z.\\-]+)</version>"));
+        String starter = pomValue(input.pom(),
+                "<groupId>org\\.springframework\\.boot</groupId>\\s*"
+                + "<artifactId>spring-boot-starter-data-jpa</artifactId>\\s*<version>([0-9A-Za-z.\\-]+)</version>");
+        framework.put("springBootDataJpaStarter", starter);
+        String dataJpa = "pinned Spring Data JPA";
+        if (manifest != null) {
+            if (!manifest.pomSha256().equals(BackendCompileClasspath.hash(input.pom()))
+                    || !starter.equals(manifestVersion(manifest, "org.springframework.boot", "spring-boot-starter-data-jpa")))
+                throw new Failed(Failure.DEPENDENCY_INTEGRITY);
+            dataJpa = manifestVersion(manifest, "org.springframework.data", "spring-data-jpa");
+            framework.put("springDataJpa", dataJpa);
+            framework.put("springDataCommons", manifestVersion(manifest,
+                    "org.springframework.data", "spring-data-commons"));
+            framework.put("hibernateCore", manifestVersion(manifest,
+                    "org.hibernate.orm", "hibernate-core"));
+        }
+        instructions.put("springDataCompatibility", "With " + dataJpa
+                + ", Specification.where(null) is ambiguous between Specification and PredicateSpecification "
+                + "overloads. For an unrestricted filter, declare an explicitly typed Specification<Entity> "
+                + "lambda: (root, query, criteriaBuilder) -> criteriaBuilder.conjunction(). "
+                + "Compose additional filters from that typed value; do not use Specification.where(null).");
         ArrayNode definitions = instructions.putArray("definitions");
         for (RenderedModelHandoff.Definition definition : input.handoff().definitions()) {
             ObjectNode item = definitions.addObject();
@@ -183,6 +237,22 @@ final class OpenRouterBackendModelAdapter {
             item.put("operationId", operation.operationId());
             item.put("method", operation.method());
             item.put("path", operation.path());
+            if (operation.action() == PackagedContractRegistry.CrudAction.LIST && operation.ordering() != null) {
+                ObjectNode pagination = item.putObject("pagination");
+                pagination.put("orderField", operation.ordering().field());
+                pagination.put("orderDirection", operation.ordering().direction());
+                pagination.put("semantics", "Apply filters before pagination; totalElements counts all matching records. "
+                        + "Return empty data with accurate totals for out-of-range pages. "
+                        + "Use stable ascending entity-ID ordering for an unchanged dataset.");
+                for (String name : List.of("page", "size")) {
+                    var parameter = operation.queryFields().get(name);
+                    if (parameter == null) throw new Failed(Failure.CONFIG);
+                    ObjectNode selected = pagination.putObject(name);
+                    selected.put("default", parameter.defaultValue());
+                    selected.put("minimum", parameter.minimum());
+                    if (parameter.maximum() != null) selected.put("maximum", parameter.maximum());
+                }
+            }
         });
         ArrayNode fields = instructions.putArray("entityFields");
         input.descriptor().fields().forEach(field -> {
@@ -205,6 +275,20 @@ final class OpenRouterBackendModelAdapter {
         catch (IOException ex) { throw new Failed(Failure.CONFIG); }
     }
 
+    private static String pomValue(byte[] pom, String expression) {
+        var matcher = Pattern.compile(expression).matcher(new String(pom, StandardCharsets.UTF_8));
+        if (!matcher.find()) throw new Failed(Failure.CONFIG);
+        return matcher.group(1);
+    }
+
+    private static String manifestVersion(BackendCompileClasspath manifest, String groupId, String artifactId) {
+        var versions = manifest.artifacts().stream()
+                .filter(artifact -> groupId.equals(artifact.groupId()) && artifactId.equals(artifact.artifactId()))
+                .map(BackendCompileClasspath.Artifact::version).distinct().toList();
+        if (versions.size() != 1) throw new Failed(Failure.DEPENDENCY_INTEGRITY);
+        return versions.getFirst();
+    }
+
     private byte[] modelContent(byte[] response) {
         if (response == null || response.length > MAX_RESPONSE_BYTES) throw new Failed(Failure.INVALID_PROVIDER_RESPONSE);
         try {
@@ -217,6 +301,24 @@ final class OpenRouterBackendModelAdapter {
             return root.path("choices").path(0).path("message").path("content")
                     .asText().getBytes(StandardCharsets.UTF_8);
         } catch (IOException | NullPointerException ex) { throw new Failed(Failure.INVALID_PROVIDER_RESPONSE); }
+    }
+
+    private NormalizedContent normalizeModelContent(byte[] content) {
+        JsonNode root;
+        try { root = BackendModelOutputValidator.strictJson(json, content); }
+        catch (IOException ex) {
+            throw new Failed(Failure.INVALID_MODEL_OUTPUT, BackendModelOutputValidator.Reason.INVALID_RESPONSE);
+        }
+        if (root != null && root.isObject())
+            return new NormalizedContent(content.clone(), Normalization.CANONICAL_FILES_OBJECT);
+        if (root == null || !root.isArray() || content.length > MAX_RESPONSE_BYTES - 10)
+            throw new Failed(Failure.INVALID_MODEL_OUTPUT, BackendModelOutputValidator.Reason.INVALID_RESPONSE);
+        byte[] prefix = "{\"files\":".getBytes(StandardCharsets.US_ASCII);
+        byte[] wrapped = new byte[prefix.length + content.length + 1];
+        System.arraycopy(prefix, 0, wrapped, 0, prefix.length);
+        System.arraycopy(content, 0, wrapped, prefix.length, content.length);
+        wrapped[wrapped.length - 1] = '}';
+        return new NormalizedContent(wrapped, Normalization.TOP_LEVEL_ARRAY_WRAPPED);
     }
 
     static final class ResponseTooLarge extends IOException {

@@ -79,6 +79,22 @@ final class CompleteBackendPackageAssembler {
                 new CompleteBackendOpenApiRenderer().render(descriptor, plan)));
     }
 
+    /** Frozen deterministic bytes for one invocation, suitable for attempt fingerprinting. */
+    List<Map<String, byte[]>> deterministic(BackendModelInput input) {
+        var descriptor = input.descriptor();
+        var plan = input.plan();
+        return List.of(new CompleteBackendDefinitionRenderer().render(descriptor, plan).files(),
+                runtime.render(descriptor, plan),
+                new CompleteBackendApiRenderer().render(descriptor, plan),
+                new CompleteBackendInitialMigrationRenderer().render(descriptor, plan),
+                new CompleteBackendErrorRenderer().render(descriptor, plan),
+                new CompleteBackendSecurityRenderer().render(descriptor, plan),
+                new CompleteBackendBootstrapRenderer().render(descriptor, plan),
+                new CompleteBackendAuditRenderer().render(descriptor, plan),
+                new CompleteBackendObservabilityRenderer().render(descriptor, plan),
+                new CompleteBackendOpenApiRenderer().render(descriptor, plan));
+    }
+
     /** Package-private seam for checking cross-renderer output before any file is returned. */
     static Assembled combine(BackendModelInput input, BackendModelOutputValidator.Accepted model,
             Provenance provenance, List<Map<String, byte[]>> rendered) {

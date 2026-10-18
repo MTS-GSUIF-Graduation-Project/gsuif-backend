@@ -15,9 +15,12 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -74,7 +77,7 @@ class CompleteBackendAiStockUnitAcceptanceTest {
         var adapter = new OpenRouterBackendModelAdapter(
                 (payload, key, timeout) -> new OpenRouterBackendModelAdapter.Reply(200,
                         providerResponse(selected.input(), fixture)),
-                input -> (chosen, source, remaining) -> compiler.compile(chosen, source, dependencies, remaining),
+                input -> compilerWithManifest(compiler, dependencies),
                 System::nanoTime, duration -> Thread.sleep(duration.toMillis()));
         var accepted = adapter.generate(selected.input(), "disposable-fake-key", OpenRouterBackendModelAdapter.MODEL);
         var assembled = new CompleteBackendPackageAssembler(selected.runtime())
@@ -123,10 +126,23 @@ class CompleteBackendAiStockUnitAcceptanceTest {
                     .provision(selected.input());
             assertEquals(sha256(selected.input().pom()), dependencies.pomSha256());
             var compiler = new DockerBackendJavaCompiler(image);
+
+            stage = "RESPONSE_CAPTURE_SETUP";
+            OpenRouterBackendModelAdapter.ModelContentObserver observer = ignored -> { };
+            if (Boolean.getBoolean("gsuif.test.ai-capture-response")) {
+                Path diagnosticDirectory = Path.of(requiredProperty("gsuif.test.ai-response-dir"));
+                var diagnostic = BackendModelResponseDiagnostic.openLive(diagnosticDirectory);
+                observer = new OpenRouterBackendModelAdapter.ModelContentObserver() {
+                    @Override public void received(byte[] content) { diagnostic.capture(content); }
+                    @Override public void normalized(OpenRouterBackendModelAdapter.Normalization code) {
+                        diagnostic.recordNormalization(code);
+                    }
+                };
+            }
             var adapter = new OpenRouterBackendModelAdapter(
                     OpenRouterBackendModelAdapter.httpsTransport(),
-                    input -> (chosen, source, remaining) -> compiler.compile(chosen, source, dependencies, remaining),
-                    System::nanoTime, duration -> Thread.sleep(duration.toMillis()));
+                    input -> compilerWithManifest(compiler, dependencies),
+                    System::nanoTime, duration -> Thread.sleep(duration.toMillis()), observer);
 
             stage = "PROVIDER_VALIDATE_COMPILE";
             var accepted = adapter.generate(selected.input(), environment.get("OPENROUTER_API_KEY"),
@@ -147,6 +163,113 @@ class CompleteBackendAiStockUnitAcceptanceTest {
             else writeFailureAtAttempt(attempt, stage, failure);
             throw failure;
         }
+    }
+
+    @Test void capturedResponseReplaysThroughAdapterAndUnchangedValidatorWithoutProviderTransport() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("gsuif.test.ai-replay-response"),
+                "Offline replay requires an explicitly selected private capture directory");
+        byte[] response = BackendModelResponseDiagnostic.readPrivate(
+                Path.of(requiredProperty("gsuif.test.ai-response-dir")));
+        String expected = requiredProperty("gsuif.test.ai-replay-expected");
+        Selected selected = selected();
+        Path maven = Path.of(requiredProperty("gsuif.test.maven-command"));
+        Path repository = Path.of(requiredProperty("maven.repo.local"));
+        String image = requiredImage("gsuif.test.ai-jdk-image");
+        var dependencies = new BackendMavenDependencyProvisioner(maven, repository,
+                CompleteBackendAiStockUnitAcceptanceTest::runOfflineMaven).provision(selected.input());
+        var compiler = new DockerBackendJavaCompiler(image);
+        var normalization = new java.util.concurrent.atomic.AtomicReference<OpenRouterBackendModelAdapter.Normalization>();
+        var observer = new OpenRouterBackendModelAdapter.ModelContentObserver() {
+            @Override public void received(byte[] content) { assertArrayEquals(response, content); }
+            @Override public void normalized(OpenRouterBackendModelAdapter.Normalization code) {
+                normalization.set(code);
+            }
+        };
+        var adapter = new OpenRouterBackendModelAdapter((payload, key, timeout) ->
+                new OpenRouterBackendModelAdapter.Reply(200, providerContent(response)),
+                input -> compilerWithManifest(compiler, dependencies),
+                System::nanoTime, ignored -> fail("offline replay must not retry"), observer);
+        try {
+            var accepted = adapter.generate(selected.input(), "disposable-replay-key",
+                    OpenRouterBackendModelAdapter.MODEL);
+            assertEquals("ACCEPTED", expected);
+            assertEquals(selected.input().writablePath(), accepted.path());
+        } catch (OpenRouterBackendModelAdapter.Failed rejection) {
+            assertEquals(expected, rejection.validatorReason() == null
+                    ? rejection.reason().name() : rejection.validatorReason().name());
+        }
+        assertEquals(OpenRouterBackendModelAdapter.Normalization.TOP_LEVEL_ARRAY_WRAPPED,
+                normalization.get());
+    }
+
+    @Test void mockedResponseCaptureAndReplayKeepExactBytesAndRejection() throws Exception {
+        Selected selected = selected();
+        var provider = (ObjectNode) JSON.readTree(providerResponse(selected.input(), mockedSource()));
+        ((ObjectNode) provider.path("choices").path(0).path("message")).put("content", "not-json");
+        byte[] response = JSON.writeValueAsBytes(provider);
+        byte[] content = "not-json".getBytes(StandardCharsets.UTF_8);
+        Path directory = scratch.resolve("response-capture");
+        var capture = BackendModelResponseDiagnostic.openMock(directory);
+        var calls = new AtomicInteger();
+        var adapter = new OpenRouterBackendModelAdapter((payload, key, timeout) -> {
+            calls.incrementAndGet();
+            return new OpenRouterBackendModelAdapter.Reply(200, response);
+        }, input -> (selectedInput, source, limit) -> fail("invalid response must not compile"),
+                System::nanoTime, ignored -> fail("invalid response must not retry"), capture::capture);
+        var initial = assertThrows(OpenRouterBackendModelAdapter.Failed.class,
+                () -> adapter.generate(selected.input(), "disposable-fake-key", OpenRouterBackendModelAdapter.MODEL));
+        assertEquals(BackendModelOutputValidator.Reason.INVALID_RESPONSE, initial.validatorReason());
+        assertEquals(1, calls.get());
+        assertArrayEquals(content, BackendModelResponseDiagnostic.readVerified(directory));
+        assertEquals(sha256(content), Files.readString(directory.resolve(
+                BackendModelResponseDiagnostic.HASH_FILE)).trim());
+        try (var saved = Files.list(directory)) { assertEquals(2, saved.count()); }
+        var replay = new BackendModelOutputValidator((input, source) ->
+                fail("invalid response must not compile"));
+        var repeated = assertThrows(BackendModelOutputValidator.Rejected.class,
+                () -> replay.validate(selected.input(), BackendModelResponseDiagnostic.readVerified(directory)));
+        assertEquals(initial.validatorReason(), repeated.reason());
+        Files.writeString(directory.resolve(BackendModelResponseDiagnostic.HASH_FILE), "0".repeat(64));
+        assertThrows(BackendModelResponseDiagnostic.Failed.class,
+                () -> BackendModelResponseDiagnostic.readVerified(directory));
+        assertThrows(BackendModelResponseDiagnostic.Failed.class,
+                () -> BackendModelResponseDiagnostic.openLive(Path.of("target", "response-capture")));
+    }
+
+    @Test void recordedNormalizationDoesNotChangeCapturedContentOrHash() throws Exception {
+        byte[] content = "[{\"path\":\"disposable.java\",\"content\":\"package demo;\"}]"
+                .getBytes(StandardCharsets.UTF_8);
+        Path directory = scratch.resolve("normalization-capture");
+        var diagnostic = BackendModelResponseDiagnostic.openMock(directory);
+        diagnostic.capture(content);
+        diagnostic.recordNormalization(OpenRouterBackendModelAdapter.Normalization.TOP_LEVEL_ARRAY_WRAPPED);
+        assertArrayEquals(content, BackendModelResponseDiagnostic.readVerified(directory));
+        assertEquals(sha256(content), Files.readString(directory.resolve(
+                BackendModelResponseDiagnostic.HASH_FILE)).trim());
+        assertEquals("TOP_LEVEL_ARRAY_WRAPPED", Files.readString(directory.resolve(
+                BackendModelResponseDiagnostic.NORMALIZATION_FILE)).trim());
+        assertThrows(BackendModelResponseDiagnostic.Failed.class,
+                () -> diagnostic.recordNormalization(OpenRouterBackendModelAdapter.Normalization.CANONICAL_FILES_OBJECT));
+    }
+
+    private static BackendMavenDependencyProvisioner.Exit runOfflineMaven(
+            List<String> command, Path directory, Duration timeout) throws IOException, InterruptedException {
+        var offline = new ArrayList<>(command);
+        offline.add(1, "-o");
+        var builder = new ProcessBuilder(offline).directory(directory.toFile())
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD);
+        BackendMavenDependencyProvisioner.removeProviderCredential(builder.environment());
+        builder.environment().remove("OPENROUTER_MODEL");
+        Process process = builder.start();
+        if (!process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+            process.descendants().forEach(child -> child.destroyForcibly());
+            process.destroyForcibly();
+            process.waitFor();
+            return BackendMavenDependencyProvisioner.Exit.TIMEOUT;
+        }
+        return process.exitValue() == 0 ? BackendMavenDependencyProvisioner.Exit.SUCCESS
+                : BackendMavenDependencyProvisioner.Exit.FAILURE;
     }
 
     @Test void liveConfigurationAndFailureEvidenceUseOnlyDisposableValues() throws Exception {
@@ -221,6 +344,7 @@ class CompleteBackendAiStockUnitAcceptanceTest {
     private static void writeFailureAtAttempt(Path attempt, String stage, Throwable failure) throws IOException {
         String code = failure instanceof OpenRouterBackendModelAdapter.Failed model ? model.reason().name()
                 : failure instanceof BackendMavenDependencyProvisioner.Failed dependency ? dependency.reason().name()
+                : failure instanceof BackendModelResponseDiagnostic.Failed ? "RESPONSE_DIAGNOSTIC_FAILED"
                 : "ACCEPTANCE_FAILED";
         String validatorReason = failure instanceof OpenRouterBackendModelAdapter.Failed model
                 && model.validatorReason() != null ? "validatorReason=" + model.validatorReason().name() + "\n" : "";
@@ -273,10 +397,24 @@ class CompleteBackendAiStockUnitAcceptanceTest {
         ObjectNode files = JSON.createObjectNode();
         files.putArray("files").addObject().put("path", input.writablePath())
                 .put("content", new String(source, StandardCharsets.UTF_8));
+        return providerContent(JSON.writeValueAsBytes(files));
+    }
+
+    private static OpenRouterBackendModelAdapter.IsolatedCompiler compilerWithManifest(
+            DockerBackendJavaCompiler compiler, BackendCompileClasspath dependencies) {
+        return new OpenRouterBackendModelAdapter.IsolatedCompiler() {
+            @Override public boolean compile(BackendModelInput input, byte[] source, Duration remaining) {
+                return compiler.compile(input, source, dependencies, remaining);
+            }
+            @Override public BackendCompileClasspath manifest() { return dependencies; }
+        };
+    }
+
+    private static byte[] providerContent(byte[] content) throws IOException {
         ObjectNode response = JSON.createObjectNode();
         response.put("model", OpenRouterBackendModelAdapter.MODEL);
         response.putArray("choices").addObject().put("finish_reason", "stop")
-                .putObject("message").put("content", JSON.writeValueAsString(files));
+                .putObject("message").put("content", new String(content, StandardCharsets.UTF_8));
         response.putObject("usage").put("completion_tokens", 100);
         return JSON.writeValueAsBytes(response);
     }

@@ -200,10 +200,15 @@ final class CompleteBackendDefinitionRenderer {
             if (!parameter.schema().enumName().isEmpty()) type = d.basePackage() + ".dto." + type;
             parameters.add(member(type, name, List.of()));
         });
+        String paginationGuidance = list.ordering() == null ? "" :
+                "Apply selected filters before pagination; use page and size from the method arguments. "
+                + "Sort by entity " + list.ordering().field() + " " + list.ordering().direction()
+                + ". Return totals for all matching records and empty data for an out-of-range page.";
         return renderTemplate("service.java.ftl", Map.of("packageName", d.basePackage(),
                 "dtoPackage", d.basePackage() + ".dto", "serviceName", d.contractServiceName(),
                 "dtoName", d.dtoName(), "createName", d.createRequestName(), "pageName", d.pageDtoName(),
-                "updateName", d.updateRequestName(), "listParameters", parameters));
+                "updateName", d.updateRequestName(), "listParameters", parameters,
+                "paginationGuidance", paginationGuidance));
     }
 
     private String recordSource(CompleteOutputDescriptor d, String name, List<Map<String, Object>> members) {

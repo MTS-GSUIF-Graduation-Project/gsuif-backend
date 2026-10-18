@@ -75,9 +75,47 @@ Generated code runs only with the disposable PostgreSQL database on the internal
 Docker network. Build and runtime
 children receive no provider credential, host directory or Docker socket mount.
 
+The backend model request names Java and Spring Boot versions from the exact
+rendered POM and Spring Data JPA/Commons and Hibernate versions from the
+verified generated-POM compile manifest. It includes domain-independent
+compatibility guidance: the pinned Spring Data API makes
+`Specification.where(null)` ambiguous; an unrestricted filter uses an explicitly
+typed `Specification<Entity>` lambda returning `criteriaBuilder.conjunction()`.
+The model still receives the selected service definitions and contract as the
+authoritative interfaces. This guidance does not alter captured output,
+validation, compilation, or the test-only handwritten service fixture.
+
 Each successful container run writes bounded provenance, source/JAR hashes, cleanup
 status and the package manifest in its attempt directory outside JUnit's temporary
 directory. A failed live attempt adds only a stage and fixed failure code to that
 directory; if validation already succeeded, its exact accepted source and hash remain.
-No raw provider response, prompt, password, token or API key is retained. This wiring remains disabled until an
+By default, no raw provider response, prompt, password, token or API key is retained. This wiring remains disabled until an
 explicit live run is approved; no paid request was made for this change.
+
+## Private response diagnostic (test-only)
+
+The separate `gsuif.test.ai-capture-response=true` opt-in requires
+`gsuif.test.ai-response-dir` to name a **fresh** directory with an existing parent
+outside every Git checkout and temporary build directory. The harness creates it
+with owner-only permissions. After the bounded HTTP 200 provider envelope is parsed,
+and immediately before model validation, it saves only the exact model content
+bytes as `model-content.bin` and their SHA-256 as `model-content.sha256`.
+After strict JSON parsing, it records a bounded `normalization-code.txt` value:
+`CANONICAL_FILES_OBJECT` or `TOP_LEVEL_ARRAY_WRAPPED`. A top-level array is
+wrapped as the `files` value using its original bytes; canonical objects pass
+unchanged. Duplicate keys, trailing content and malformed JSON are rejected
+before normalization. The original capture and hash are never rewritten.
+It never saves the provider envelope, request, headers, prompt, key or environment.
+The content is untrusted diagnostic data, not accepted Java;
+it is never executed directly. Capture failure stops the attempt without a retry.
+Ordinary tests and live runs without this opt-in retain no model content.
+
+`gsuif.test.ai-replay-response=true` selects the separate
+`capturedResponseReplaysThroughAdapterAndUnchangedValidatorWithoutProviderTransport` test.
+Set the same `gsuif.test.ai-response-dir` and an expected bounded value in
+`gsuif.test.ai-replay-expected` (for example `INVALID_RESPONSE` or `ACCEPTED`).
+The test verifies the saved bytes and hash, feeds them through the same adapter
+normalization and unchanged validator using a mocked HTTP envelope, and uses the
+pinned isolated compiler when reached. Maven dependency
+provisioning runs with `-o`, and the compiler container has no network. Replay
+does not load a key or contact OpenRouter. Content is not printed in tests or reports.

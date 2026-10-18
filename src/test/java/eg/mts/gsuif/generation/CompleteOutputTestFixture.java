@@ -79,6 +79,21 @@ final class CompleteOutputTestFixture {
                 new AngularSpec("StockUnit", Map.of()));
     }
 
+    GenerationSpecification pagedSpecification() {
+        var base = specification();
+        return new GenerationSpecification(base.specVersion(), base.basePackage(), base.entity(),
+                new OpenApiSpec("stock-unit-api", "3.0.0", base.openApi().bindingOperations()),
+                base.operationRoles(), base.angular());
+    }
+
+    ObjectNode pagedSnapshot() {
+        ObjectNode selected = snapshot("condition");
+        ObjectNode query = (ObjectNode) selected.withArray("apiBindings").get(0)
+                .path("requestMapping").path("query");
+        query.put("page", "page").put("size", "size");
+        return selected;
+    }
+
     ObjectNode snapshot(String queryName) {
         var snapshot = mapper.createObjectNode();
         snapshot.putArray("components");

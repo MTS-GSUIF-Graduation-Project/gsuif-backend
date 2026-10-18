@@ -47,6 +47,18 @@ public class GenerationRunService {
     /** Commits before any provider runs, so a later exception cannot erase the attempt. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public GenerationRun reserveAttempt(UUID attemptId, MetadataVersion version, GsuifUser user, String fingerprint) {
+        return reserve(attemptId, version, user, fingerprint, "TemplateOnlyProvider", null);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public GenerationRun reserveBackendAttempt(UUID attemptId, MetadataVersion version, GsuifUser user,
+            String fingerprint, CompleteBackendPackageAssembler.Provenance provenance) {
+        return reserve(attemptId, version, user, fingerprint, BackendPackageIntegrity.TOOL,
+                provenance.providerVersion() + "|" + provenance.modelId());
+    }
+
+    private GenerationRun reserve(UUID attemptId, MetadataVersion version, GsuifUser user,
+            String fingerprint, String tool, String backendVersion) {
         Objects.requireNonNull(attemptId);
         Objects.requireNonNull(version);
         Objects.requireNonNull(user);
@@ -72,10 +84,46 @@ public class GenerationRunService {
             // The workflow records CONFIG/CONFIG_MISSING after this committed reservation.
         }
         run.setGeneratorVersion(generatorVersion);
-        run.setToolName("TemplateOnlyProvider");
-        run.setToolVersion(providerVersion);
+        run.setToolName(tool);
+        run.setToolVersion(backendVersion == null ? providerVersion : backendVersion);
         run.setStatus(GenerationRunStatus.IN_PROGRESS);
         return runs.saveAndFlush(run);
+    }
+
+    /** Build has already passed; only row locking, registration and atomic publication occur here. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public GenerationRun completeBackendAttempt(UUID attemptId, String fingerprint,
+            GenerationArtifactStore.Staged staged, GenerationResult result,
+            CompleteBackendPackageAssembler.Provenance provenance) {
+        GenerationRun run = runs.findLockedByAttemptId(Objects.requireNonNull(attemptId))
+                .orElseThrow(() -> new IllegalStateException("Attempt was not reserved"));
+        requireSameAttempt(run, fingerprint);
+        if (run.getStatus() != GenerationRunStatus.IN_PROGRESS || !BackendPackageIntegrity.TOOL.equals(run.getToolName())
+                || !run.getId().equals(staged.runId()) || !fingerprint.equals(staged.fingerprint())
+                || !(provenance.providerVersion() + "|" + provenance.modelId()).equals(run.getToolVersion()))
+            throw new IllegalStateException("Backend attempt cannot be completed");
+        run.setTemplateVersion("complete-backend");
+        run.setGeneratorVersion(result.artifacts().getFirst().catalogVersion());
+        run.setPackageManifestSha256(result.artifacts().stream()
+                .filter(a -> a.relativePath().equals("generation-manifest.json"))
+                .findFirst().orElseThrow(() -> new IllegalStateException("Backend manifest missing")).sha256());
+        run.setCompileExitCode(0);
+        run.setCompileOutput("Isolated generated backend build passed");
+        run.setStatus(GenerationRunStatus.SUCCESS);
+        runs.saveAndFlush(run);
+        for (var generated : result.artifacts()) {
+            GeneratedArtifact artifact = new GeneratedArtifact();
+            artifact.setGenerationRun(run);
+            artifact.setRelativePath(generated.relativePath());
+            artifact.setTemplateVersion(generated.templateVersion());
+            String name = Path.of(generated.relativePath()).getFileName().toString();
+            artifact.setArtifactName(name);
+            artifact.setArtifactType(name.endsWith(".java") ? "java-source" : "generated-file");
+            artifacts.save(artifact);
+        }
+        artifacts.flush();
+        store.publish(staged);
+        return run;
     }
 
     /** Persist only a fixed stage and bounded code; exception text and provider output are excluded. */
@@ -195,16 +243,25 @@ public class GenerationRunService {
         return runs.findByAttemptId(Objects.requireNonNull(attemptId));
     }
 
+    @Transactional(readOnly = true)
     public GenerationResult readResult(GenerationRun run) {
         if (run.getStatus() != GenerationRunStatus.SUCCESS && run.getStatus() != GenerationRunStatus.BUILD_FAILED)
             throw new IllegalStateException("Attempt has no complete generation result: " + run.getStatus());
-        return store.read(Objects.requireNonNull(run.getId()));
+        boolean backend = BackendPackageIntegrity.TOOL.equals(run.getToolName());
+        GenerationResult result = backend
+                ? store.readVerified(Objects.requireNonNull(run.getId()), run.getInputFingerprint())
+                : store.read(Objects.requireNonNull(run.getId()));
+        if (backend)
+            BackendPackageIntegrity.verify(run, result,
+                    artifacts.findAllByGenerationRunIdOrderByRelativePathAsc(run.getId()));
+        return result;
     }
 
     @Transactional(readOnly = true)
     public byte[] readArtifact(UUID runId, String relativePath) {
         if (findFile(runId, relativePath).isEmpty()) throw new IllegalArgumentException("Artifact is not registered for run");
-        return store.read(runId).artifacts().stream()
+        GenerationRun run = runs.findById(runId).orElseThrow(() -> new IllegalArgumentException("Run missing"));
+        return readResult(run).artifacts().stream()
                 .filter(a -> a.relativePath().equals(relativePath)).findFirst()
                 .orElseThrow(() -> new IllegalStateException("Registered artifact is missing from storage")).bytes();
     }

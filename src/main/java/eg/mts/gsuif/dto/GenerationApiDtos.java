@@ -1,5 +1,6 @@
 package eg.mts.gsuif.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import eg.mts.gsuif.generation.GenerationSpecification;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -14,6 +15,16 @@ public final class GenerationApiDtos {
 
     public record GenerateRequest(@NotNull UUID pageId, @NotBlank String generationType,
                                   @NotNull GenerationSpecification specification) { }
+
+    /** Complete BACKEND output; provider and model are server configuration, not request fields. */
+    public record BackendRequest(@NotNull UUID pageId, @NotNull GenerationSpecification specification,
+                                 UUID attemptId) { }
+    public record BackendCreated(UUID runId, UUID attemptId, String status, UUID metadataVersionId,
+                                 int artifactCount, BackendPackage backendPackage) { }
+
+    /** Exact contract and validation evidence for a committed complete BACKEND package. */
+    public record BackendPackage(String contractId, String contractVersion, String manifestSha256,
+                                 ValidationScope validationScope) { }
 
     public record TextArtifact(String relativePath, String content, String sha256,
                                String templateVersion, String catalogVersion) { }
@@ -36,7 +47,16 @@ public final class GenerationApiDtos {
     public record RunDetails(UUID id, String status, Instant createdAt, Instant updatedAt,
                              UUID metadataVersionId, List<LinkedArtifact> artifacts,
                              Integer compileExitCode, String compileOutput,
-                             Integer testExitCode, String testOutput, ValidationScope validationScope) { }
+                             Integer testExitCode, String testOutput, ValidationScope validationScope,
+                             @JsonInclude(JsonInclude.Include.NON_NULL) BackendPackage backendPackage) {
+        public RunDetails(UUID id, String status, Instant createdAt, Instant updatedAt,
+                UUID metadataVersionId, List<LinkedArtifact> artifacts,
+                Integer compileExitCode, String compileOutput,
+                Integer testExitCode, String testOutput, ValidationScope validationScope) {
+            this(id, status, createdAt, updatedAt, metadataVersionId, artifacts,
+                    compileExitCode, compileOutput, testExitCode, testOutput, validationScope, null);
+        }
+    }
 
     public record FailedAttempt(UUID runId, UUID attemptId, UUID metadataVersionId,
                                 String status, String failureStage, String failureCode) { }

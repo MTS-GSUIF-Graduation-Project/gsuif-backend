@@ -14,9 +14,11 @@ final class PackagedContractLoader {
     PackagedContractLoader(PackagedContractRegistry registry) { this.registry = registry; }
 
     record Operation(String verb, String path, String kind, String request, Set<String> requestFields,
-                     CrudAction action, Map<String, QueryParameter> queryFields, int successStatus,
+                     CrudAction action, Map<String, QueryParameter> queryFields, Ordering ordering, int successStatus,
                      String responseDto, String successEnvelope, Map<Integer, String> errorEnvelopes) { }
-    record QueryParameter(boolean required, FieldSchema schema) { }
+    record QueryParameter(boolean required, FieldSchema schema, Integer defaultValue,
+                          Integer minimum, Integer maximum) { }
+    record Ordering(String field, String direction) { }
     record UpdateField(boolean required, boolean nullable) { }
     record FieldSchema(String type, String format, String enumName, List<String> values, boolean nullable) {
         FieldSchema { values = List.copyOf(values); }
@@ -136,14 +138,16 @@ final class PackagedContractLoader {
                     if (methods.put(methodKey, id) != null) errors.add("contract." + id + ": duplicate CRUD operation");
                     Map<String, QueryParameter> queryFields = parseQueryParameters(op.get("parameters"), action,
                             schemas, id, errors);
+                    Ordering ordering = parseOrdering(op.get("x-gsuif-ordering"), action, id, errors);
                     Map<Integer, String> errorEnvelopes = new LinkedHashMap<>();
                     for (String errorCode : List.of("400", "404")) {
                         String errorRef = refName(nested(op, "responses", errorCode, "content", "application/json", "schema").get("$ref"));
                         if (!errorRef.isEmpty()) errorEnvelopes.put(Integer.parseInt(errorCode), errorRef);
                     }
+                    validatePagination(queryFields, ordering, action, id, errorEnvelopes, schemas, errors);
                     if (operations.put(id, new Operation(verb.toUpperCase(Locale.ROOT), pathEntry.getKey(), kind, request,
                             Set.copyOf(nested(nested(schemas, request), "properties").keySet()), action,
-                            Map.copyOf(queryFields), Integer.parseInt(code), body, envelopeName,
+                            Map.copyOf(queryFields), ordering, Integer.parseInt(code), body, envelopeName,
                             Map.copyOf(errorEnvelopes))) != null)
                         errors.add("contract." + id + ": duplicate operation ID");
                 }
@@ -294,12 +298,14 @@ final class PackagedContractLoader {
                 continue;
             }
             Map<String, Object> schema = nested(item, "schema");
-            if (!supportedScalarParameter(schema, schemas)) {
+            boolean pagination = name.equals("page") || name.equals("size");
+            if (!supportedScalarParameter(schema, schemas, pagination)) {
                 errors.add(path + ": unsupported parameter schema");
                 continue;
             }
             if (parsed.put(name, new QueryParameter(Boolean.TRUE.equals(item.get("required")),
-                    fieldSchema(schema, schemas))) != null)
+                    fieldSchema(schema, schemas), integer(schema.get("default")),
+                    integer(schema.get("minimum")), integer(schema.get("maximum")))) != null)
                 errors.add(path + ": duplicate query parameter");
         }
         return Collections.unmodifiableMap(parsed);
@@ -327,8 +333,10 @@ final class PackagedContractLoader {
             errors.add("contract.paths." + path + ".parameters: unsupported path parameter shape");
     }
 
-    private static boolean supportedScalarParameter(Map<String, Object> schema, Map<String, Object> schemas) {
+    private static boolean supportedScalarParameter(Map<String, Object> schema, Map<String, Object> schemas,
+            boolean pagination) {
         if (schema.isEmpty()) return false;
+        if (pagination && schema.containsKey("$ref")) return false;
         Map<String, Object> resolved = schema;
         if (schema.containsKey("$ref")) {
             Object ref = schema.get("$ref");
@@ -337,8 +345,14 @@ final class PackagedContractLoader {
             resolved = nested(schemas, refName(ref));
         }
         if (resolved.isEmpty() || resolved.keySet().stream().anyMatch(key ->
-                !Set.of("type", "format", "enum", "nullable", "description").contains(key))
+                !(pagination ? Set.of("type", "format", "default", "minimum", "maximum", "description")
+                        : Set.of("type", "format", "enum", "nullable", "description")).contains(key))
                 || Boolean.TRUE.equals(resolved.get("nullable"))) return false;
+        if (pagination && (!"integer".equals(resolved.get("type"))
+                || !"int32".equals(resolved.get("format"))
+                || !(resolved.get("default") instanceof Integer)
+                || !(resolved.get("minimum") instanceof Integer)
+                || resolved.containsKey("maximum") && !(resolved.get("maximum") instanceof Integer))) return false;
         String type = String.valueOf(resolved.getOrDefault("type", ""));
         String format = String.valueOf(resolved.getOrDefault("format", ""));
         if (resolved.containsKey("enum") && (!(resolved.get("enum") instanceof List<?> values)
@@ -351,6 +365,41 @@ final class PackagedContractLoader {
             case "number", "boolean" -> format.isEmpty();
             default -> false;
         };
+    }
+
+    private static Integer integer(Object value) { return value instanceof Integer number ? number : null; }
+
+    private static Ordering parseOrdering(Object source, CrudAction action, String operationId, List<String> errors) {
+        if (source == null) return null;
+        if (action != CrudAction.LIST || !(source instanceof Map<?, ?> map)
+                || map.size() != 2 || !"id".equals(map.get("field")) || !"ASC".equals(map.get("direction"))) {
+            errors.add("contract." + operationId + ".x-gsuif-ordering: only ascending entity id is supported");
+            return null;
+        }
+        return new Ordering("id", "ASC");
+    }
+
+    static void validatePagination(Map<String, QueryParameter> parameters, Ordering ordering,
+            CrudAction action, String operationId, Map<Integer, String> errorsByStatus,
+            Map<String, Object> schemas, List<String> errors) {
+        boolean hasPage = parameters.containsKey("page"), hasSize = parameters.containsKey("size");
+        if (!hasPage && !hasSize && ordering == null) return;
+        String path = "contract." + operationId + ".pagination";
+        if (action != CrudAction.LIST || !hasPage || !hasSize || ordering == null) {
+            errors.add(path + ": page, size and ascending id ordering are required together");
+            return;
+        }
+        QueryParameter page = parameters.get("page"), size = parameters.get("size");
+        if (page.required() || size.required() || !"integer".equals(page.schema().type())
+                || !"int32".equals(page.schema().format()) || !"integer".equals(size.schema().type())
+                || !"int32".equals(size.schema().format()) || !Objects.equals(page.defaultValue(), 0)
+                || !Objects.equals(page.minimum(), 0) || page.maximum() != null
+                || !Objects.equals(size.defaultValue(), 20) || !Objects.equals(size.minimum(), 1)
+                || !Objects.equals(size.maximum(), 100))
+            errors.add(path + ": unsupported defaults or bounds");
+        String errorName = errorsByStatus.get(400);
+        if (errorName == null || !validErrorEnvelope(nested(schemas, errorName)))
+            errors.add(path + ": contracted 400 five-field envelope required");
     }
 
     @SuppressWarnings("unchecked")

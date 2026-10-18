@@ -112,7 +112,16 @@ final class CompleteBackendApiRenderer {
             };
             params.add(Map.of("type", type, "name", name, "annotation",
                     "@org.springframework.web.bind.annotation.RequestParam(name = \"" + name
-                    + "\", required = " + parameter.required() + ")" + temporalFormat));
+                    + "\", required = " + parameter.required()
+                    + (parameter.defaultValue() == null ? "" : ", defaultValue = \"" + parameter.defaultValue() + "\"")
+                    + ")" + temporalFormat));
+        });
+        List<Map<String, String>> bounds = new ArrayList<>();
+        if (action == CrudAction.LIST) op.queryFields().forEach((name, parameter) -> {
+            if (parameter.minimum() != null) bounds.add(Map.of("name", name, "condition",
+                    name + " == null || " + name + " < " + parameter.minimum()));
+            if (parameter.maximum() != null) bounds.add(Map.of("name", name, "condition",
+                    name + " == null || " + name + " > " + parameter.maximum()));
         });
         if (action == CrudAction.CREATE || action == CrudAction.UPDATE)
             params.add(Map.of("type", d.basePackage() + ".dto."
@@ -133,6 +142,7 @@ final class CompleteBackendApiRenderer {
         model.put("roles", roleExpression); model.put("parameters", List.copyOf(params));
         model.put("delete", action == CrudAction.DELETE);
         model.put("item", item); model.put("write", action == CrudAction.CREATE || action == CrudAction.UPDATE);
+        model.put("bounds", List.copyOf(bounds));
         return Collections.unmodifiableMap(model);
     }
 

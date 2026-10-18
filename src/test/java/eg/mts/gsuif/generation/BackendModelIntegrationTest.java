@@ -22,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Flow;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -130,6 +131,56 @@ class BackendModelIntegrationTest {
         assertTrue(prompt.path("entityFields").toString().contains("title"));
         assertTrue(prompt.path("fullUpdateRules").path("note").path("nullable").asBoolean());
         assertEquals(input.handoff().definitions().size(), prompt.path("definitions").size());
+    }
+
+    @Test void promptUsesRenderedPomAndVerifiedCompileManifestForSpringDataGuidance(
+            @org.junit.jupiter.api.io.TempDir Path scratch) throws Exception {
+        var input = input();
+        Path repository = Files.createDirectory(scratch.resolve("repository"));
+        List<Path> artifacts = new ArrayList<>();
+        for (String[] coordinate : List.of(
+                new String[]{"org.springframework.boot", "spring-boot-starter-data-jpa", "4.0.8"},
+                new String[]{"org.springframework.data", "spring-data-jpa", "4.0.7"},
+                new String[]{"org.springframework.data", "spring-data-commons", "4.0.7"},
+                new String[]{"org.hibernate.orm", "hibernate-core", "7.2.24.Final"})) {
+            Path jar = repository.resolve(coordinate[0].replace('.', '/')).resolve(coordinate[1])
+                    .resolve(coordinate[2]).resolve(coordinate[1] + "-" + coordinate[2] + ".jar");
+            Files.createDirectories(jar.getParent());
+            artifacts.add(Files.writeString(jar, "disposable test artifact"));
+        }
+        var manifest = BackendCompileClasspath.fromRepository(input.pom(), repository, artifacts);
+        var capturedPayload = new AtomicReference<byte[]>();
+        var adapter = new OpenRouterBackendModelAdapter((payload, key, timeout) -> {
+            capturedPayload.set(payload.clone());
+            return new OpenRouterBackendModelAdapter.Reply(400, new byte[0]);
+        }, selected -> new OpenRouterBackendModelAdapter.IsolatedCompiler() {
+            @Override public boolean compile(BackendModelInput chosen, byte[] source, Duration remaining) {
+                return fail("HTTP rejection must not compile");
+            }
+            @Override public BackendCompileClasspath manifest() { return manifest; }
+        }, System::nanoTime, ignored -> fail("HTTP rejection must not retry"));
+        assertEquals(OpenRouterBackendModelAdapter.Failure.HTTP_REJECTED,
+                assertThrows(OpenRouterBackendModelAdapter.Failed.class,
+                        () -> adapter.generate(input, "disposable-key", OpenRouterBackendModelAdapter.MODEL)).reason());
+        var instructions = json.readTree(json.readTree(capturedPayload.get())
+                .path("messages").path(0).path("content").asText());
+        var versions = instructions.path("pinnedFramework");
+        assertEquals("21", versions.path("java").asText());
+        assertEquals("4.0.8", versions.path("springBootParent").asText());
+        assertEquals("4.0.8", versions.path("springBootDataJpaStarter").asText());
+        assertEquals("4.0.7", versions.path("springDataJpa").asText());
+        assertEquals("4.0.7", versions.path("springDataCommons").asText());
+        assertEquals("7.2.24.Final", versions.path("hibernateCore").asText());
+        String guidance = instructions.path("springDataCompatibility").asText();
+        assertTrue(guidance.contains("Specification.where(null) is ambiguous"));
+        assertTrue(guidance.contains("Specification<Entity>"));
+        assertTrue(guidance.contains("criteriaBuilder.conjunction()"));
+        for (String domain : List.of("StockUnit", "Gadget", "AssetTicket", "WorkOrder"))
+            assertFalse(guidance.contains(domain));
+        var mismatched = new BackendCompileClasspath("0".repeat(64), manifest.artifacts());
+        assertEquals(OpenRouterBackendModelAdapter.Failure.DEPENDENCY_INTEGRITY,
+                assertThrows(OpenRouterBackendModelAdapter.Failed.class,
+                        () -> adapter.request(input, mismatched)).reason());
     }
 
     @Test void outputMapRejectsMissingExtraDuplicateUnsafeAndWrongOwnerPaths() throws Exception {
@@ -253,6 +304,88 @@ class BackendModelIntegrationTest {
                     assertThrows(OpenRouterBackendModelAdapter.Failed.class,
                             () -> adapter.generate(input, "fake-key", OpenRouterBackendModelAdapter.MODEL)).reason());
             assertEquals(1, calls.get());
+        }
+    }
+
+    @Test void canonicalObjectAndBareArrayUseTheSameUnchangedSourceValidator() throws Exception {
+        var input = input();
+        byte[] canonical = files(input.writablePath());
+        byte[] bareArray = json.writeValueAsBytes(json.readTree(canonical).path("files"));
+        for (byte[] content : List.of(canonical, bareArray)) {
+            var captured = new AtomicReference<byte[]>();
+            var code = new AtomicReference<OpenRouterBackendModelAdapter.Normalization>();
+            var compiled = new AtomicReference<byte[]>();
+            var observer = new OpenRouterBackendModelAdapter.ModelContentObserver() {
+                @Override public void received(byte[] original) { captured.set(original.clone()); }
+                @Override public void normalized(OpenRouterBackendModelAdapter.Normalization value) {
+                    code.set(value);
+                }
+            };
+            var adapter = new OpenRouterBackendModelAdapter((payload, key, timeout) ->
+                    new OpenRouterBackendModelAdapter.Reply(200,
+                            provider(new String(content, StandardCharsets.UTF_8))),
+                    invocation -> (selected, source, time) -> { compiled.set(source.clone()); return true; },
+                    System::nanoTime, ignored -> fail("no retry"), observer);
+            var accepted = adapter.generate(input, "disposable-key", OpenRouterBackendModelAdapter.MODEL);
+            assertArrayEquals(content, captured.get());
+            assertArrayEquals(accepted.source(), compiled.get());
+            assertEquals(input.writablePath(), accepted.path());
+            assertEquals(content == canonical
+                    ? OpenRouterBackendModelAdapter.Normalization.CANONICAL_FILES_OBJECT
+                    : OpenRouterBackendModelAdapter.Normalization.TOP_LEVEL_ARRAY_WRAPPED, code.get());
+        }
+    }
+
+    @Test void bareArrayParsingRejectsDuplicateKeysTrailingTextAndMalformedJsonBeforeValidation() throws Exception {
+        var input = input();
+        String path = input.writablePath();
+        String validArray = new String(json.writeValueAsBytes(json.readTree(files(path)).path("files")),
+                StandardCharsets.UTF_8);
+        for (String content : List.of(
+                "[{\"path\":\"" + path + "\",\"path\":\"" + path + "\",\"content\":\"x\"}]",
+                validArray + " {}", "[{]", "true")) {
+            var calls = new AtomicInteger();
+            var captured = new AtomicReference<byte[]>();
+            var normalized = new AtomicBoolean();
+            var adapter = new OpenRouterBackendModelAdapter((payload, key, timeout) -> {
+                calls.incrementAndGet();
+                return new OpenRouterBackendModelAdapter.Reply(200, provider(content));
+            }, invocation -> (selected, source, time) -> fail("invalid JSON must not compile"),
+                    System::nanoTime, ignored -> fail("invalid JSON must not retry"),
+                    new OpenRouterBackendModelAdapter.ModelContentObserver() {
+                        @Override public void received(byte[] original) { captured.set(original.clone()); }
+                        @Override public void normalized(OpenRouterBackendModelAdapter.Normalization value) {
+                            normalized.set(true);
+                        }
+                    });
+            var failure = assertThrows(OpenRouterBackendModelAdapter.Failed.class,
+                    () -> adapter.generate(input, "disposable-key", OpenRouterBackendModelAdapter.MODEL));
+            assertEquals(OpenRouterBackendModelAdapter.Failure.INVALID_MODEL_OUTPUT, failure.reason());
+            assertEquals(BackendModelOutputValidator.Reason.INVALID_RESPONSE, failure.validatorReason());
+            assertEquals(1, calls.get());
+            assertArrayEquals(content.getBytes(StandardCharsets.UTF_8), captured.get());
+            assertFalse(normalized.get());
+        }
+    }
+
+    @Test void wrappedArrayStillRejectsMissingExtraUnsafeAndIncorrectlyOwnedPaths() throws Exception {
+        var input = input();
+        for (var caseData : List.of(
+                new Object[]{"[]", BackendModelOutputValidator.Reason.MISSING_PATH},
+                new Object[]{new String(json.writeValueAsBytes(json.readTree(files("other.java")).path("files")),
+                        StandardCharsets.UTF_8), BackendModelOutputValidator.Reason.EXTRA_PATH},
+                new Object[]{new String(json.writeValueAsBytes(json.readTree(files("../unsafe.java")).path("files")),
+                        StandardCharsets.UTF_8), BackendModelOutputValidator.Reason.UNSAFE_PATH},
+                new Object[]{new String(json.writeValueAsBytes(json.readTree(
+                        files(input.handoff().definitions().getFirst().path())).path("files")),
+                        StandardCharsets.UTF_8), BackendModelOutputValidator.Reason.WRONG_OWNER})) {
+            var adapter = new OpenRouterBackendModelAdapter((payload, key, timeout) ->
+                    new OpenRouterBackendModelAdapter.Reply(200, provider((String) caseData[0])),
+                    (selected, source, time) -> fail("invalid path must not compile"),
+                    System::nanoTime, ignored -> fail("invalid path must not retry"));
+            var failure = assertThrows(OpenRouterBackendModelAdapter.Failed.class,
+                    () -> adapter.generate(input, "disposable-key", OpenRouterBackendModelAdapter.MODEL));
+            assertEquals(caseData[1], failure.validatorReason());
         }
     }
 
@@ -443,6 +576,13 @@ class BackendModelIntegrationTest {
                 "spring-security-oauth2-jose", "springdoc-openapi-starter-webmvc-ui"))
             assertTrue(plain.artifacts().stream().anyMatch(artifact ->
                     artifact.artifactId().equals(required)), "Missing compile dependency: " + required);
+        var adapter = new OpenRouterBackendModelAdapter((body, key, timeout) -> fail("no provider request"),
+                (selected, source, remaining) -> fail("no model compilation"), System::nanoTime, ignored -> { });
+        var prompt = json.readTree(json.readTree(adapter.request(input, plain))
+                .path("messages").path(0).path("content").asText());
+        assertEquals("4.0.8", prompt.path("pinnedFramework").path("springBootParent").asText());
+        assertEquals("4.0.7", prompt.path("pinnedFramework").path("springDataJpa").asText());
+        assertTrue(prompt.path("springDataCompatibility").asText().contains("criteriaBuilder.conjunction()"));
         var auditedDescriptor = fixture.auditedSchemaDescriptor(input.descriptor(), "stock_unit");
         var auditedPlan = GenerationFilePlan.forDescriptor(auditedDescriptor);
         var auditedInput = BackendModelInput.from(auditedDescriptor, auditedPlan,

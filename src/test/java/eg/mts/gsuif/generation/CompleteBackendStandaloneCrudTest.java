@@ -159,17 +159,114 @@ class CompleteBackendStandaloneCrudTest {
         }
     }
 
+    @Test void pagedStockUnitJarFiltersAndOrdersMoreThanTwentyMatches() throws Exception {
+        requireOptIn();
+        StandaloneBackendTestSupport processes = new StandaloneBackendTestSupport(scratch);
+        Path jar = buildFixtureJar(processes, true);
+        String dbPassword = "disposable-" + UUID.randomUUID();
+        String adminPassword = "admin-" + UUID.randomUUID();
+        String jwt = randomSecret();
+        String ownershipLabel = "gsuif.scrum65.pagination=" + UUID.randomUUID();
+        Path envFile = scratch.resolve("stock-unit-pagination-postgres.env");
+        Files.writeString(envFile, "POSTGRES_PASSWORD=" + dbPassword + "\n", StandardCharsets.UTF_8);
+        try {
+            var created = processes.docker(List.of("run", "-d", "--name", "gsuif-scrum65-pagination-" + UUID.randomUUID(),
+                    "--label", ownershipLabel, "--env-file", envFile.toString(),
+                    "-e", "POSTGRES_USER=generated_test", "-e", "POSTGRES_DB=generated_app",
+                    "-p", "127.0.0.1::5432", System.getProperty("gsuif.test.postgres-image")));
+            assertEquals(0, created.exit());
+            assertTrue(created.output().matches("[a-f0-9]{64}"));
+            String container = created.output();
+            String port = processes.docker(List.of("port", container, "5432/tcp")).output().trim()
+                    .replaceFirst("^127\\.0\\.0\\.1:", "");
+            assertTrue(port.matches("[0-9]{2,5}"));
+            String url = "jdbc:postgresql://127.0.0.1:" + port
+                    + "/generated_app?connectTimeout=5&socketTimeout=5";
+            awaitPostgres(processes, container);
+            Path bootstrapLog = scratch.resolve("stock-unit-pagination-bootstrap.log");
+            Process bootstrap = processes.bootstrapJar(jar, url, "generated_test", dbPassword,
+                    "FirstAdmin", adminPassword, bootstrapLog);
+            try {
+                assertTrue(bootstrap.waitFor(100, TimeUnit.SECONDS));
+                assertEquals(0, bootstrap.exitValue(), StandaloneBackendTestSupport.safeLines(bootstrapLog));
+            } finally {
+                StandaloneBackendTestSupport.stop(bootstrap);
+                processes.preserveEvidence(bootstrapLog, dbPassword, adminPassword);
+            }
+            int webPort = StandaloneBackendTestSupport.freePort();
+            Path appLog = scratch.resolve("stock-unit-pagination-startup.log");
+            Process app = processes.startJar(jar, url, "generated_test", dbPassword, jwt, webPort, appLog);
+            try {
+                awaitHttp(app, webPort, appLog);
+                String token = login(webPort, "FirstAdmin", adminPassword);
+                List<String> matchingIds = new java.util.ArrayList<>();
+                for (int i = 0; i < 27; i++) {
+                    JsonNode createdBody = assertSuccess(send(webPort, "POST", ROOT, token,
+                            "{\"label\":\"group\",\"condition\":\"OPEN\",\"retiredOn\":null}"), 201);
+                    matchingIds.add(createdBody.path("id").asText());
+                }
+                for (int i = 0; i < 3; i++) assertSuccess(send(webPort, "POST", ROOT, token,
+                        "{\"label\":\"other\",\"condition\":\"CLOSED\",\"retiredOn\":null}"), 201);
+                matchingIds.sort(String::compareTo);
+                JsonNode defaults = assertSuccess(send(webPort, "GET", ROOT + "?condition=OPEN", token, null), 200);
+                assertPage(defaults, 0, 20, 27, matchingIds.subList(0, 20));
+                JsonNode next = assertSuccess(send(webPort, "GET", ROOT + "?condition=OPEN&page=1", token, null), 200);
+                assertPage(next, 1, 20, 27, matchingIds.subList(20, 27));
+                JsonNode beyond = assertSuccess(send(webPort, "GET", ROOT + "?condition=OPEN&page=3", token, null), 200);
+                assertPage(beyond, 3, 20, 27, List.of());
+                List<String> collected = new java.util.ArrayList<>();
+                for (int page = 0; page < 4; page++) {
+                    JsonNode body = assertSuccess(send(webPort, "GET",
+                            ROOT + "?condition=OPEN&label=group&page=" + page + "&size=7", token, null), 200);
+                    List<String> expected = matchingIds.subList(page * 7, Math.min((page + 1) * 7, 27));
+                    assertPage(body, page, 7, 27, expected);
+                    body.path("data").forEach(item -> collected.add(item.path("id").asText()));
+                }
+                assertEquals(matchingIds, collected, "Pages must have no gaps or duplicates");
+                assertPage(assertSuccess(send(webPort, "GET", ROOT + "?condition=CLOSED&size=100", token, null),
+                        200), 0, 100, 3, null);
+                for (String query : List.of("page=-1", "size=0", "size=101", "page=oops", "size=oops"))
+                    assertError(send(webPort, "GET", ROOT + "?condition=OPEN&" + query, token, null),
+                            400, "Invalid request");
+                assertEquals(30, count(url, dbPassword, "SELECT count(*) FROM stock_unit"));
+            } finally {
+                StandaloneBackendTestSupport.stop(app);
+                processes.preserveEvidence(appLog, dbPassword, jwt);
+            }
+        } finally {
+            processes.cleanupOwned("stock-unit-pagination", ownershipLabel, envFile, dbPassword);
+        }
+    }
+
+    private static void assertPage(JsonNode page, int number, int size, long total, List<String> ids) {
+        assertEquals(number, page.path("number").asInt());
+        assertEquals(size, page.path("size").asInt());
+        assertEquals(total, page.path("totalElements").asLong());
+        assertEquals((int) Math.ceil((double) total / size), page.path("totalPages").asInt());
+        if (ids != null) {
+            assertEquals(ids.size(), page.path("data").size());
+            for (int i = 0; i < ids.size(); i++) assertEquals(ids.get(i), page.path("data").get(i).path("id").asText());
+        }
+    }
+
     private Path buildFixtureJar(StandaloneBackendTestSupport processes) throws Exception {
+        return buildFixtureJar(processes, false);
+    }
+
+    private Path buildFixtureJar(StandaloneBackendTestSupport processes, boolean paged) throws Exception {
         var fixture = new CompleteOutputTestFixture();
-        var descriptor = fixture.preflight().describe(fixture.version(fixture.snapshot("condition")),
-                fixture.specification(), OutputMode.BACKEND);
+        var descriptor = fixture.preflight().describe(fixture.version(paged ? fixture.pagedSnapshot()
+                : fixture.snapshot("condition")), paged ? fixture.pagedSpecification()
+                : fixture.specification(), OutputMode.BACKEND);
         var registry = new PackagedContractRegistry("/generation/stock-unit-contracts.yaml");
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var runtime = new CompleteBackendRuntimeRenderer(registry);
         var input = BackendModelInput.from(descriptor, plan,
                 new CompleteBackendDefinitionRenderer().render(descriptor, plan), runtime);
         byte[] fixtureBytes;
-        try (var resource = getClass().getResourceAsStream("/generation/fixtures/StockUnitServiceImpl.java.txt")) {
+        try (var resource = getClass().getResourceAsStream(paged
+                ? "/generation/fixtures/StockUnitPagedServiceImpl.java.txt"
+                : "/generation/fixtures/StockUnitServiceImpl.java.txt")) {
             assertNotNull(resource);
             fixtureBytes = resource.readAllBytes();
         }
@@ -181,7 +278,8 @@ class CompleteBackendStandaloneCrudTest {
                 .validate(input, JSON.writeValueAsBytes(response));
         assertArrayEquals(fixtureBytes, accepted.source());
         var files = new CompleteBackendPackageAssembler(runtime).assemble(input, accepted, FIXTURE).files();
-        Path extracted = Files.createDirectory(scratch.resolve("stock-unit-crud-package"));
+        Path extracted = Files.createDirectory(scratch.resolve(paged ? "stock-unit-pagination-package"
+                : "stock-unit-crud-package"));
         for (var entry : files.entrySet()) {
             Path destination = extracted.resolve(entry.getKey()).normalize();
             assertTrue(destination.startsWith(extracted));
@@ -195,7 +293,7 @@ class CompleteBackendStandaloneCrudTest {
         assertTrue(manifest.path("provider").path("mocked").asBoolean());
         assertEquals("handwritten-test-fixture", manifest.path("provider").path("id").asText());
         assertEquals(files.size() - 1, manifest.path("files").size());
-        return processes.buildJar("stock-unit-crud", extracted);
+        return processes.buildJar(paged ? "stock-unit-pagination" : "stock-unit-crud", extracted);
     }
 
     private static void requireOptIn() {
@@ -282,7 +380,7 @@ class CompleteBackendStandaloneCrudTest {
         assertTrue(envelope.path("errors").isObject());
         assertTrue(envelope.path("errors").size() >= 1);
         envelope.path("errors").fieldNames().forEachRemaining(key ->
-                assertTrue(Set.of("_global", "label", "condition", "retiredOn").contains(key)));
+                assertTrue(Set.of("_global", "label", "condition", "retiredOn", "page", "size").contains(key)));
         if (status != 400) {
             assertEquals(1, envelope.path("errors").size());
             assertEquals(message, envelope.path("errors").path("_global").asText());
