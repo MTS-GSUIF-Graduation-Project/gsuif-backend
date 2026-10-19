@@ -53,8 +53,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -243,6 +246,62 @@ class GenerationPermissionIntegrationTest {
 
         assertThat(EXPORT_ROOT.resolve(fixture.projectId().toString())).doesNotExist();
         verify(runs, never()).findById(any());
+    }
+
+    @Test
+    void zipDownloadAnonymousIsRejectedByEnforcedSecurity() throws Exception {
+        mvc.perform(get("/api/v1/generation/runs/{id}/exports/zip/download", UUID.randomUUID())
+                        .with(anonymous()))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(runs);
+    }
+
+    @Test
+    void zipDownloadRequiresProjectPageAndMetadataGrants() throws Exception {
+        assertZipDownloadDenied("zip-no-project", "ROLE_ZIP_NO_PROJECT",
+                "ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion");
+        assertZipDownloadDenied("zip-no-page", "ROLE_ZIP_NO_PAGE",
+                "ENTITY_ACCESS:GsuifProject", "ENTITY_ACCESS:MetadataVersion");
+        assertZipDownloadDenied("zip-no-version", "ROLE_ZIP_NO_VERSION",
+                "ENTITY_ACCESS:GsuifProject", "ENTITY_ACCESS:GsuifPage");
+        verify(runs, never()).findById(any());
+    }
+
+    private void assertZipDownloadDenied(String username, String role, String... grants) throws Exception {
+        fixture(username, role, grants);
+        var requestAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        mvc.perform(get("/api/v1/generation/runs/{id}/exports/zip/download", UUID.randomUUID())
+                        .with(authentication(requestAuthentication)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.statusCode").value(403));
+    }
+
+    @Test
+    void authorizedZipDownloadReturnsVerifiedArchive() throws Exception {
+        Fixture fixture = fixture("zip-allowed", "ROLE_ZIP_ALLOWED",
+                "ENTITY_ACCESS:GsuifProject", "ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion");
+        exportService.configure(fixture.projectId(), "zip",
+                new GenerationExportService.DestinationConfig("ZIP", "delivery/archive"));
+        UUID runId = UUID.randomUUID();
+        String path = "src/main/java/Thing.java";
+        byte[] bytes = "class Thing {}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Path zip = EXPORT_ROOT.resolve(fixture.projectId().toString())
+                .resolve("delivery/archive").resolve(runId + ".zip");
+        Files.createDirectories(zip.getParent());
+        new ZipExportDestination().export(zip, java.util.Map.of(path, bytes));
+        GenerationRun run = mock(GenerationRun.class);
+        when(run.getStatus()).thenReturn(GenerationRunStatus.SUCCESS);
+        when(run.getMetadataVersion()).thenReturn(entityManager.find(MetadataVersion.class, fixture.versionId()));
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
+        when(runs.readResult(run)).thenReturn(new GenerationResult(List.of(
+                new GenerationResult.Artifact(path, bytes, "hash", "1", "1")), List.of()));
+
+        mvc.perform(get("/api/v1/generation/runs/{id}/exports/zip/download", runId)
+                        .with(authentication(SecurityContextHolder.getContext().getAuthentication())))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/zip"))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"" + runId + ".zip\""))
+                .andExpect(content().bytes(Files.readAllBytes(zip)));
     }
 
     @Test

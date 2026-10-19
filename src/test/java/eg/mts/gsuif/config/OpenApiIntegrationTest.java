@@ -92,6 +92,7 @@ public class OpenApiIntegrationTest {
                 "GET /api/v1/generation/runs/{id}",
                 "GET /api/v1/generation/runs/{id}/failure",
                 "GET /api/v1/generation/runs/{id}/artifacts/download",
+                "GET /api/v1/generation/runs/{id}/exports/{name}/download",
                 "PUT /api/v1/generation/projects/{projectId}/destinations/{name}",
                 "POST /api/v1/generation/runs/{id}/exports/{name}",
                 "GET /api/v1/generation/artifacts/history"), getOperations(generationDocs));

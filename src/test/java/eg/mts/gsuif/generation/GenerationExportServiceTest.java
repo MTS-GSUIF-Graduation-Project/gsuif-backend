@@ -2,6 +2,7 @@ package eg.mts.gsuif.generation;
 
 import eg.mts.gsuif.entity.GeneratedArtifact;
 import eg.mts.gsuif.entity.GenerationRun;
+import eg.mts.gsuif.entity.GenerationRunStatus;
 import eg.mts.gsuif.entity.GsuifPage;
 import eg.mts.gsuif.entity.GsuifProject;
 import eg.mts.gsuif.entity.MetadataVersion;
@@ -47,6 +48,7 @@ class GenerationExportServiceTest {
         var artifact = mock(GeneratedArtifact.class);
         when(projects.existsById(projectId)).thenReturn(true);
         when(runs.findById(runId)).thenReturn(Optional.of(run));
+        when(run.getStatus()).thenReturn(GenerationRunStatus.SUCCESS);
         when(run.getMetadataVersion()).thenReturn(version);
         when(version.getPage()).thenReturn(page);
         when(page.getProject()).thenReturn(project);
@@ -60,14 +62,54 @@ class GenerationExportServiceTest {
                 mock(EntityPermissionChecker.class));
         service.configure(projectId, "local", new GenerationExportService.DestinationConfig("LOCAL_FOLDER", "delivery/folder"));
         service.configure(projectId, "zip", new GenerationExportService.DestinationConfig("ZIP", "delivery/archive"));
+        assertThrows(eg.mts.gsuif.exception.ResourceNotFoundException.class,
+                () -> service.download(runId, "zip"));
         var folder = Path.of(java.net.URI.create(service.export(runId, "local").location()));
         assertEquals(temp.resolve(projectId.toString()).resolve("delivery/folder").resolve(runId.toString()), folder);
         assertArrayEquals(bytes, Files.readAllBytes(folder.resolve(path)));
-        var zip = Path.of(java.net.URI.create(service.export(runId, "zip").location()));
+        var exported = service.export(runId, "zip");
+        var zip = Path.of(java.net.URI.create(exported.location()));
+        assertEquals("/api/v1/generation/runs/" + runId + "/exports/zip/download", exported.downloadUrl());
+        assertEquals(runId + ".zip", service.download(runId, "zip").fileName());
+        assertArrayEquals(Files.readAllBytes(zip), service.download(runId, "zip").bytes());
+        byte[] originalZip = Files.readAllBytes(zip);
+        Files.write(zip, java.util.Arrays.copyOf(originalZip, originalZip.length + 1));
+        assertThrows(IllegalStateException.class, () -> service.download(runId, "zip"));
+        Files.write(zip, originalZip);
+        byte[] centralTampered = originalZip.clone();
+        int central = -1;
+        for (int i = 0; i < centralTampered.length - 4; i++) {
+            if (centralTampered[i] == 'P' && centralTampered[i + 1] == 'K'
+                    && centralTampered[i + 2] == 1 && centralTampered[i + 3] == 2) {
+                central = i;
+                break;
+            }
+        }
+        assertTrue(central >= 0);
+        centralTampered[central + 46] ^= 1; // Central filename only; local entry and payload stay intact.
+        Files.write(zip, centralTampered);
+        assertThrows(IllegalStateException.class, () -> service.download(runId, "zip"));
+        Files.write(zip, originalZip);
+        centralTampered = originalZip.clone();
+        centralTampered[central + 38] ^= 1; // Central external attributes only.
+        Files.write(zip, centralTampered);
+        assertThrows(IllegalStateException.class, () -> service.download(runId, "zip"));
+        Files.write(zip, originalZip);
         assertEquals(temp.resolve(projectId.toString()).resolve("delivery/archive").resolve(runId + ".zip"), zip);
         try (var archive = new ZipFile(zip.toFile())) {
             assertArrayEquals(bytes, archive.getInputStream(archive.getEntry(path)).readAllBytes());
         }
+        assertThrows(eg.mts.gsuif.exception.ResourceNotFoundException.class,
+                () -> service.download(runId, "missing"));
+        assertThrows(eg.mts.gsuif.exception.ResourceNotFoundException.class,
+                () -> service.download(runId, "local"));
+        Path altered = temp.resolve("altered.zip");
+        new ZipExportDestination().export(altered, java.util.Map.of(path, "tampered".getBytes()));
+        Files.copy(altered, zip, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        assertThrows(IllegalStateException.class, () -> service.download(runId, "zip"));
+        when(run.getStatus()).thenReturn(GenerationRunStatus.BUILD_FAILED);
+        assertThrows(IllegalStateException.class, () -> service.download(runId, "zip"));
+        when(run.getStatus()).thenReturn(GenerationRunStatus.SUCCESS);
         assertThrows(IllegalStateException.class, () -> service.export(runId, "zip"));
         assertThrows(GenerationValidationException.class, () -> service.configure(projectId, "../escape",
                 new GenerationExportService.DestinationConfig("ZIP", "safe")));
@@ -136,6 +178,7 @@ class GenerationExportServiceTest {
         var service = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissionChecker);
 
         assertThrows(AccessDeniedException.class, () -> service.export(UUID.randomUUID(), "local"));
+        assertThrows(AccessDeniedException.class, () -> service.download(UUID.randomUUID(), "local"));
 
         try (var entries = Files.list(temp)) {
             assertTrue(entries.findAny().isEmpty());
@@ -199,6 +242,7 @@ class GenerationExportServiceTest {
         var artifact = mock(GeneratedArtifact.class);
         when(projects.existsById(projectId)).thenReturn(true);
         when(runs.findById(runId)).thenReturn(Optional.of(run));
+        when(run.getStatus()).thenReturn(GenerationRunStatus.SUCCESS);
         when(run.getMetadataVersion()).thenReturn(version);
         when(version.getPage()).thenReturn(page);
         when(page.getProject()).thenReturn(project);

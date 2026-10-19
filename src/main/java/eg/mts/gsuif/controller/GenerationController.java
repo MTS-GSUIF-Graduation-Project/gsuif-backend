@@ -143,6 +143,17 @@ public class GenerationController {
         return ApiResponse.success(exports.export(id, name), "Run exported");
     }
 
+    @GetMapping("/runs/{id}/exports/{name}/download")
+    @Operation(summary = "Download a verified ZIP export", operationId = "downloadGenerationExport")
+    @ApiCommonResponses
+    public ResponseEntity<byte[]> downloadExport(@PathVariable UUID id, @PathVariable String name) {
+        var file = exports.download(id, name);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.fileName() + "\"")
+                .body(file.bytes());
+    }
+
     @GetMapping("/artifacts/history")
     @Operation(summary = "Trace registered file history to runs and metadata versions", operationId = "getGeneratedArtifactHistory")
     @ApiCommonResponses

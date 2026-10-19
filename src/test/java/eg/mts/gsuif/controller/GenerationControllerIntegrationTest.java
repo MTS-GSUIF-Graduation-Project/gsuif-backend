@@ -222,5 +222,21 @@ class GenerationControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.body.runId").value(run.toString()))
                 .andExpect(jsonPath("$.body.location").value("file:/example/run"));
+
+        byte[] zip = {80, 75, 3, 4};
+        when(exports.download(run, "zip"))
+                .thenReturn(new GenerationExportService.DownloadedExport(run + ".zip", zip));
+        mvc.perform(get("/api/v1/generation/runs/{id}/exports/{name}/download", run, "zip"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/zip"))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"" + run + ".zip\""))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().bytes(zip));
+    }
+
+    @Test void anonymousCannotDownloadExport() throws Exception {
+        mvc.perform(get("/api/v1/generation/runs/{id}/exports/{name}/download", UUID.randomUUID(), "zip")
+                        .with(anonymous()))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(exports);
     }
 }

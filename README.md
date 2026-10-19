@@ -157,7 +157,31 @@ curl -fsS -X POST -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN/exports/local" |
 
 # 11. Configure and export the same verified run to ZIP.
 curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/json' -d '{"type":"ZIP","path":"delivery/archive"}' "$BASE/api/v1/generation/projects/$PROJECT/destinations/zip" | jq -e 'select(.body.type == "ZIP" and .body.path == "delivery/archive")'
-curl -fsS -X POST -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN/exports/zip" | jq -e --arg run "$RUN" 'select(.body.runId == $run and (.body.location | endswith(".zip")))'
+ZIP_RESPONSE=$(curl -fsS -X POST -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN/exports/zip")
+printf '%s' "$ZIP_RESPONSE" | jq -e --arg run "$RUN" 'select(.body.runId == $run and (.body.location | endswith(".zip")))'
+
+# 12. Download the complete ZIP over HTTP with the same Authorization header.
+DOWNLOAD_URL=$(printf '%s' "$ZIP_RESPONSE" | jq -er '.body.downloadUrl')
+curl -fsS -H "$AUTH" "$BASE$DOWNLOAD_URL" -o /tmp/woms-export.zip
+```
+
+The ZIP export response adds a relative `downloadUrl` alongside the existing
+server-local `location`. The download endpoint verifies the committed run and
+ZIP contents before returning `application/zip`. A frontend should use the
+Authorization header and save the response as a Blob. Never place a JWT in the
+URL:
+
+```js
+const response = await fetch(`${baseUrl}${exportResult.body.downloadUrl}`, {
+  headers: { Authorization: `Bearer ${token}` },
+});
+if (!response.ok) throw new Error('ZIP download failed');
+const blobUrl = URL.createObjectURL(await response.blob());
+const link = document.createElement('a');
+link.href = blobUrl;
+link.download = `${exportResult.body.runId}.zip`;
+link.click();
+URL.revokeObjectURL(blobUrl);
 ```
 
 `validationScope.passedTargets` reports Java compilation and generated consumer
