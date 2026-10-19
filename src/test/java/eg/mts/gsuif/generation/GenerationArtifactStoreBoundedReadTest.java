@@ -28,6 +28,8 @@ class GenerationArtifactStoreBoundedReadTest {
                 () -> store.readVerified(run, "fingerprint", source.length, 0));
         assertArrayEquals(source, store.readVerified(run, "fingerprint", source.length, 1)
                 .artifacts().getFirst().bytes());
+        assertArrayEquals(source, store.readVerified(run, "fingerprint", Long.MAX_VALUE, 1)
+                .artifacts().getFirst().bytes());
 
         Files.writeString(directory.resolve(run.toString()).resolve("src/Safe.java"), "changed");
         assertThrows(IllegalStateException.class,

@@ -221,7 +221,9 @@ public class GenerationArtifactStore {
                 byte[] bytes;
                 if (!bounded) bytes = Files.readAllBytes(checked);
                 else try (var input = Files.newInputStream(checked)) {
-                    bytes = input.readNBytes((int) Math.min(remaining + 1, (long) Integer.MAX_VALUE));
+                    int readLimit = remaining >= Integer.MAX_VALUE - 1L
+                            ? Integer.MAX_VALUE : (int) remaining + 1;
+                    bytes = input.readNBytes(readLimit);
                 }
                 if (bytes.length > remaining)
                     throw new IOException("Stored artifacts exceed download limit");

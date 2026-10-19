@@ -38,9 +38,13 @@ The list comes from the packaged production registry and contract parser. Legacy
 {"status":"OK","clientMessage":"Generation attempt retrieved","statusCode":200,"body":{"runId":"00000000-0000-0000-0000-000000000001","attemptId":"00000000-0000-0000-0000-000000000002","status":"IN_PROGRESS","metadataVersionId":"00000000-0000-0000-0000-000000000003","failureStage":null,"failureCode":null},"errors":null}
 ```
 
+This matches the existing owner-scoped failed-attempt status policy. A package ZIP is an export of project artifacts, so its service also requires the Project grant. The status lookup grants no artifact download access.
+
 FAILED attempts return only recognized persisted failure stage/code; other statuses return null failure fields. Missing and other-user IDs both return HTTP 404 (`clientMessage: "Generation attempt not found"`); a known owner's revoked grant returns the standard HTTP 403. A 404 is a snapshot of persistence, not proof that a concurrent POST cannot reserve that ID later. Continue to use the existing POST idempotency behavior.
 
 `GET /api/v1/generation/runs/{runId}/package.zip` downloads a committed complete BACKEND package directly. It needs no destination configuration or export POST. The service checks Project, Page and MetadataVersion grants, SUCCESS and BACKEND identity, registry, private storage, package manifest, exact selected contract and hashes before sending ZIP headers. The response is `application/zip` with `Content-Disposition: attachment; filename="{runId}.zip"`. The direct path bounds the verified snapshot to 512 files, 64 MiB of artifact content and a 1 MiB private storage manifest, then streams the ZIP without a temporary archive. Frontends should use an authorized `fetch`, check `response.ok`, and save the response Blob; do not put tokens in the URL. Existing configurable export APIs remain available.
+
+The snapshot is held in memory within those limits; concurrent downloads near the limit need separate performance testing before increasing the limits.
 
 Before binary output, missing runs return the standard 404 envelope, missing grants return 403, and incomplete, oversized or damaged packages return the safe 500 envelope. For example:
 
