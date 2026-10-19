@@ -1,5 +1,8 @@
 package eg.mts.gsuif.generation;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import eg.mts.gsuif.dto.GenerationApiDtos;
@@ -249,9 +252,32 @@ class BackendConnectedPathIntegrationTest {
         } finally { Files.write(stored, original); }
     }
 
+    @Test void packageBuildFailureIsLoggedWithItsReasonAndRunIdOnly() throws Exception {
+        prepare();
+        UUID attempt = UUID.randomUUID();
+        doThrow(new BackendFinalPackageValidator.Failed(BackendFinalPackageValidator.Failure.TIMEOUT))
+                .when(finalBuild).validate(any());
+        var events = captureDiagnostics();
+        try {
+            mvc.perform(post("/api/v1/generation/backend").with(authentication(fixture.auth()))
+                            .contentType("application/json").content(request(attempt)))
+                    .andExpect(status().is5xxServerError())
+                    .andExpect(header().string("X-Generation-Failure-Stage", "FINAL_VALIDATION"))
+                    .andExpect(header().string("X-Generation-Failure-Code", "RESULT_VALIDATION_FAILED"));
+            var run = runRepository.findByAttemptId(attempt).orElseThrow();
+            assertEquals("RESULT_VALIDATION_FAILED", run.getFailureCode());
+            assertEquals(1, events.list.size());
+            String logged = events.list.get(0).getFormattedMessage();
+            assertTrue(logged.contains("runId=" + run.getId()), logged);
+            assertTrue(logged.contains("attemptId=" + attempt), logged);
+            assertTrue(logged.contains("reason=TIMEOUT"), logged);
+        } finally { detachDiagnostics(events); }
+    }
+
     @Test void publicationCollisionRecordsFailureWithoutRegistryOrSuccess() throws Exception {
         prepare();
         UUID attempt = UUID.randomUUID();
+        var events = captureDiagnostics();
         doAnswer(invocation -> {
             UUID runId = runRepository.findByAttemptId(attempt).orElseThrow().getId();
             Files.createDirectories(STORE.resolve(runId.toString()));
@@ -265,7 +291,11 @@ class BackendConnectedPathIntegrationTest {
             assertEquals(GenerationRunStatus.FAILED, run.getStatus());
             assertEquals("FINAL_VALIDATION", run.getFailureStage());
             assertEquals(0, artifactRepository.findAllByGenerationRunIdOrderByRelativePathAsc(run.getId()).size());
+            assertEquals(1, events.list.size());
+            String logged = events.list.get(0).getFormattedMessage();
+            assertTrue(logged.contains("runId=" + run.getId()) && logged.contains("reason=PERSISTENCE_COMPLETION"), logged);
         } finally {
+            detachDiagnostics(events);
             Path collision = runRepository.findByAttemptId(attempt)
                     .map(run -> STORE.resolve(run.getId().toString())).orElse(null);
             if (collision != null) Files.deleteIfExists(collision);
@@ -495,6 +525,17 @@ class BackendConnectedPathIntegrationTest {
         var processes = new StandaloneBackendTestSupport(scratch);
         Path jar = processes.buildJar("connected-export", extracted);
         acceptExportedPagedRuntime(processes, jar);
+    }
+
+    private static ListAppender<ILoggingEvent> captureDiagnostics() {
+        ListAppender<ILoggingEvent> events = new ListAppender<>();
+        events.start();
+        ((Logger) org.slf4j.LoggerFactory.getLogger(FinalValidationDiagnostics.class)).addAppender(events);
+        return events;
+    }
+
+    private static void detachDiagnostics(ListAppender<ILoggingEvent> events) {
+        ((Logger) org.slf4j.LoggerFactory.getLogger(FinalValidationDiagnostics.class)).detachAppender(events);
     }
 
     private void prepare() {

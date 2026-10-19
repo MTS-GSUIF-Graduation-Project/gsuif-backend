@@ -62,8 +62,14 @@ public class GenerationWorkflow {
         try {
             run = runs.completeReservedAttempt(attemptId, version, user, result, consumerInputs, fingerprint);
         } catch (RuntimeException ex) {
-            GenerationRun failed = runs.recordFailure(attemptId, fingerprint, GenerationFailureStage.FINAL_VALIDATION, GenerationFailureCode.RESULT_VALIDATION_FAILED);
-            throw new GenerationStageException(GenerationFailureStage.FINAL_VALIDATION, GenerationFailureCode.RESULT_VALIDATION_FAILED, idOf(failed));
+            UUID failedId = null;
+            try {
+                GenerationRun failed = runs.recordFailure(attemptId, fingerprint, GenerationFailureStage.FINAL_VALIDATION, GenerationFailureCode.RESULT_VALIDATION_FAILED);
+                failedId = idOf(failed);
+            } finally {
+                FinalValidationDiagnostics.report(failedId, attemptId, FinalValidationDiagnostics.Reason.PERSISTENCE_COMPLETION, ex);
+            }
+            throw new GenerationStageException(GenerationFailureStage.FINAL_VALIDATION, GenerationFailureCode.RESULT_VALIDATION_FAILED, failedId);
         }
         return new CompletedAttempt(runs.readResult(run), run);
     }
