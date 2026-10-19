@@ -257,6 +257,30 @@ class GenerationPermissionIntegrationTest {
     }
 
     @Test
+    void directPackageAnonymousIsRejectedBeforeLookup() throws Exception {
+        mvc.perform(get("/api/v1/generation/runs/{id}/package.zip", UUID.randomUUID())
+                        .with(anonymous()))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(runs);
+    }
+
+    @Test
+    void directPackageNeedsProjectPageAndMetadataGrants() throws Exception {
+        for (String missing : List.of("GsuifProject", "GsuifPage", "MetadataVersion")) {
+            String username = "direct-" + missing.toLowerCase() + "-" + UUID.randomUUID().toString().substring(0, 6);
+            String role = "ROLE_DIRECT_" + UUID.randomUUID().toString().substring(0, 8);
+            var allowed = List.of("GsuifProject", "GsuifPage", "MetadataVersion").stream()
+                    .filter(name -> !name.equals(missing)).map(name -> "ENTITY_ACCESS:" + name).toArray(String[]::new);
+            fixture(username, role, allowed);
+            mvc.perform(get("/api/v1/generation/runs/{id}/package.zip", UUID.randomUUID())
+                            .with(authentication(SecurityContextHolder.getContext().getAuthentication())))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.statusCode").value(403));
+        }
+        verify(runs, never()).findById(any());
+    }
+
+    @Test
     void zipDownloadRequiresProjectPageAndMetadataGrants() throws Exception {
         assertZipDownloadDenied("zip-no-project", "ROLE_ZIP_NO_PROJECT",
                 "ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion");

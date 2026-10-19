@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous;
@@ -43,6 +44,38 @@ class GenerationControllerIntegrationTest {
     @MockitoBean GenerationApiService service;
     @MockitoBean GenerationExportService exports;
     @MockitoBean GenerationRunService runs;
+
+    @Test void backendContractCatalogIsAuthenticatedAndVersionExact() throws Exception {
+        mvc.perform(get("/api/v1/generation/contracts").param("output", "BACKEND"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.length()").value(3))
+                .andExpect(jsonPath("$.body[0].contractId").value("asset-ticket-api"))
+                .andExpect(jsonPath("$.body[0].contractVersion").value("2.0.0"))
+                .andExpect(jsonPath("$.body[2].contractId").value("stock-unit-api"))
+                .andExpect(jsonPath("$.body[2].contractVersion").value("3.0.0"))
+                .andExpect(jsonPath("$.body[2].pageCompatibilityChecked").value(false));
+        mvc.perform(get("/api/v1/generation/contracts").param("output", "FRONTEND"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/generation/contracts").param("output", "BACKEND").with(anonymous()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test void directPackageErrorsStayInSafeEnvelopeBeforeBinaryResponse() throws Exception {
+        UUID run = UUID.randomUUID();
+        doThrow(new ResourceNotFoundException("Generation run not found")).when(exports).directPackage(run);
+        mvc.perform(get("/api/v1/generation/runs/{id}/package.zip", run))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.statusCode").value(404))
+                .andExpect(jsonPath("$.body").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.errors").value(org.hamcrest.Matchers.nullValue()));
+        doThrow(new IllegalStateException("private integrity detail")).when(exports).directPackage(run);
+        mvc.perform(get("/api/v1/generation/runs/{id}/package.zip", run))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.statusCode").value(500))
+                .andExpect(jsonPath("$.clientMessage").value("An unexpected error occurred"))
+                .andExpect(jsonPath("$.body").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.errors").value(org.hamcrest.Matchers.nullValue()));
+    }
 
     @Test void generateReturnsCreatedEnvelopeAndArtifactText() throws Exception {
         UUID page = UUID.randomUUID(), run = UUID.randomUUID(), version = UUID.randomUUID();

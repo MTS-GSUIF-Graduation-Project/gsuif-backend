@@ -29,6 +29,50 @@ import static org.mockito.Mockito.*;
 class GenerationExportServiceTest {
     @TempDir Path temp;
 
+    @Test void directPackageNeedsCommittedBackendAndNeverConfiguresExport() throws Exception {
+        UUID runId = UUID.randomUUID();
+        var runs = mock(GenerationRunService.class);
+        var artifacts = mock(GeneratedArtifactRepository.class);
+        var projects = mock(GsuifProjectRepository.class);
+        var permissions = mock(EntityPermissionChecker.class);
+        var run = mock(GenerationRun.class);
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
+        var service = new GenerationExportService(temp.toString(), runs, artifacts, projects, permissions);
+
+        assertThrows(IllegalStateException.class, () -> service.directPackage(runId));
+        when(run.getStatus()).thenReturn(GenerationRunStatus.SUCCESS);
+        when(run.getToolName()).thenReturn("TemplateOnlyProvider");
+        assertThrows(IllegalStateException.class, () -> service.directPackage(runId));
+        when(run.getToolName()).thenReturn(BackendPackageIntegrity.TOOL);
+        byte[] source = "class Thing {}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        when(runs.readBackendPackage(eq(run), eq(64L * 1024 * 1024), eq(512)))
+                .thenReturn(new GenerationResult(List.of(new GenerationResult.Artifact(
+                        "src/main/java/Thing.java", source, BackendPackageIntegrity.hash(source), "1", "1")), List.of()));
+        var direct = service.directPackage(runId);
+        assertEquals(runId + ".zip", direct.fileName());
+        var output = new java.io.ByteArrayOutputStream();
+        direct.writeTo(output);
+        try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(output.toByteArray()))) {
+            assertEquals("src/main/java/Thing.java", zip.getNextEntry().getName());
+            assertArrayEquals(source, zip.readAllBytes());
+            assertNull(zip.getNextEntry());
+        }
+        assertFalse(Files.exists(temp.resolve(runId + ".zip")));
+        var closed = new java.util.concurrent.atomic.AtomicBoolean();
+        var disconnected = new java.io.OutputStream() {
+            @Override public void write(int value) throws java.io.IOException { throw new java.io.IOException("client closed"); }
+            @Override public void close() { closed.set(true); }
+        };
+        assertThrows(java.io.IOException.class, () -> direct.writeTo(disconnected));
+        assertTrue(closed.get());
+        verifyNoInteractions(artifacts, projects);
+
+        doThrow(new AccessDeniedException("denied"))
+                .when(permissions).requireEntityAccess(eq("GsuifPage"), any());
+        assertThrows(AccessDeniedException.class, () -> service.directPackage(runId));
+        verify(runs, times(1)).readBackendPackage(eq(run), anyLong(), anyInt());
+    }
+
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();

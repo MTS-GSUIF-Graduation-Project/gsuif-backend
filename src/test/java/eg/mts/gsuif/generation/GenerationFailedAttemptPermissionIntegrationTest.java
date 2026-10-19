@@ -23,6 +23,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -44,8 +46,77 @@ class GenerationFailedAttemptPermissionIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private EntityManager entities;
     @Autowired private GsuifPermissionRepository permissions;
+    @MockitoBean private BackendModelGateway model;
 
     @AfterEach void clearSecurityContext() { SecurityContextHolder.clearContext(); }
+
+    @Test void attemptLookupReturnsOnlyPersistedOwnerStateWithoutGeneration() throws Exception {
+        Fixture fixture = fixture("attempt-states", "ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion");
+        GenerationRun run = entities.find(GenerationRun.class, fixture.runId());
+        UUID attemptId = run.getAttemptId();
+        String path = "/api/v1/generation/attempts/{id}";
+        for (GenerationRunStatus state : List.of(GenerationRunStatus.IN_PROGRESS,
+                GenerationRunStatus.SUCCESS, GenerationRunStatus.FAILED)) {
+            run.setStatus(state);
+            entities.flush();
+            var response = mvc.perform(get(path, attemptId).with(authentication(fixture.authentication())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.body.runId").value(fixture.runId().toString()))
+                    .andExpect(jsonPath("$.body.attemptId").value(attemptId.toString()))
+                    .andExpect(jsonPath("$.body.metadataVersionId").value(fixture.versionId().toString()))
+                    .andExpect(jsonPath("$.body.status").value(state.name()));
+            if (state == GenerationRunStatus.FAILED) {
+                response.andExpect(jsonPath("$.body.failureStage").value("AI"))
+                        .andExpect(jsonPath("$.body.failureCode").value("MODEL_UNAVAILABLE"));
+            } else {
+                response.andExpect(jsonPath("$.body.failureStage").value(org.hamcrest.Matchers.nullValue()))
+                        .andExpect(jsonPath("$.body.failureCode").value(org.hamcrest.Matchers.nullValue()));
+            }
+            org.junit.jupiter.api.Assertions.assertEquals(state,
+                    entities.find(GenerationRun.class, fixture.runId()).getStatus());
+        }
+        verifyNoInteractions(model);
+    }
+
+    @Test void attemptLookupDoesNotDiscloseOtherUsersOrMissingReservations() throws Exception {
+        Fixture fixture = fixture("attempt-hidden", "ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion");
+        UUID attempt = entities.find(GenerationRun.class, fixture.runId()).getAttemptId();
+        Authentication other = new UsernamePasswordAuthenticationToken("admin", null,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        mvc.perform(get("/api/v1/generation/attempts/{id}", attempt).with(authentication(other)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.statusCode").value(404));
+        mvc.perform(get("/api/v1/generation/attempts/{id}", UUID.randomUUID())
+                        .with(authentication(fixture.authentication())))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/generation/attempts/{id}", attempt).with(anonymous()))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(model);
+    }
+
+    @Test void attemptLookupRequiresCurrentPageAndVersionGrants() throws Exception {
+        for (String missing : List.of("ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion")) {
+            Fixture fixture = fixture("attempt-missing-" + UUID.randomUUID().toString().substring(0, 4),
+                    missing.equals("ENTITY_ACCESS:GsuifPage")
+                            ? "ENTITY_ACCESS:MetadataVersion" : "ENTITY_ACCESS:GsuifPage");
+            UUID attempt = entities.find(GenerationRun.class, fixture.runId()).getAttemptId();
+            mvc.perform(get("/api/v1/generation/attempts/{id}", attempt)
+                            .with(authentication(fixture.authentication())))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.statusCode").value(403));
+        }
+        Fixture revoked = fixture("attempt-revoked", "ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion");
+        UUID attempt = entities.find(GenerationRun.class, revoked.runId()).getAttemptId();
+        var permission = permissions.findByCode("ENTITY_ACCESS:MetadataVersion").orElseThrow();
+        entities.remove(entities.find(GsuifRolePermission.class,
+                new GsuifRolePermissionId(revoked.roleId(), permission.getId())));
+        entities.flush();
+        entities.clear();
+        mvc.perform(get("/api/v1/generation/attempts/{id}", attempt)
+                        .with(authentication(revoked.authentication())))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(model);
+    }
 
     @Test void ownerWithBothPersistedGrantsCanReadBoundedFailure() throws Exception {
         Fixture fixture = fixture("both", "ENTITY_ACCESS:GsuifPage", "ENTITY_ACCESS:MetadataVersion");

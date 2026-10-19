@@ -19,3 +19,37 @@ On 18 October 2026, one real-provider public BACKEND request selected `stock-uni
 A later credential-free continuation used only that preserved ZIP. It verified the ZIP, source, manifest, exact file set and selected contract, then built and ran the extracted application in disposable isolated containers. Bootstrap, CRUD, pagination across more than 20 matches, restart and targeted cleanup passed: one Surefire test passed with no failures, errors or skips. Its separate continuation evidence records the generated JAR SHA-256 `28acdfe15efbeb11621d9d69d9bc82b9c53197e3ce2d75064ead179078a141af`. No provider request, generated-source repair, or handwritten ServiceImpl substitution occurred during the continuation. The original generation result and subsequent runtime acceptance remain separate results.
 
 Successful BACKEND create and run-detail responses include the selected contract ID/version, committed manifest SHA-256, and a backend validation scope. For mocked provenance, the scope does not claim isolated compilation or package build even when an opt-in test performs them; that evidence lives in the test report. For real configured provider runs, completion records source-structure validation, isolated Java compilation, and standalone Maven package validation. Runtime startup and CRUD behavior are never claimed by the generation response. Legacy fragment run details omit the additive `backendPackage` field.
+
+## Read-only frontend workspace APIs
+
+All three routes require the normal bearer authentication outside the explicit dev profile. They do not call the model, reserve an attempt, build, or change generation state.
+
+`GET /api/v1/generation/contracts?output=BACKEND` returns a five-field `ApiResponse` whose `body` is an ordered array of `{contractId, contractVersion, label, operationIds, updateMode, pageCompatibilityChecked}`. For example, a registered entry can read:
+
+```json
+{"contractId":"stock-unit-api","contractVersion":"3.0.0","label":"StockUnit fixture API","operationIds":["registerStockUnit","inspectStockUnit","scanStockUnits","replaceStockUnit","discardStockUnit"],"updateMode":"FULL","pageCompatibilityChecked":false}
+```
+
+The list comes from the packaged production registry and contract parser. Legacy optional-update and invalid contracts are omitted. It does not say that any entry fits a particular page; the frontend must send the exact version and its explicit operation bindings in `POST /api/v1/generation/backend`. Other `output` values return HTTP 400 in the standard error envelope. No specification skeleton is offered.
+
+`GET /api/v1/generation/attempts/{attemptId}` returns the owner's persisted attempt after current Page and MetadataVersion grant checks. An in-progress example is:
+
+```json
+{"status":"OK","clientMessage":"Generation attempt retrieved","statusCode":200,"body":{"runId":"00000000-0000-0000-0000-000000000001","attemptId":"00000000-0000-0000-0000-000000000002","status":"IN_PROGRESS","metadataVersionId":"00000000-0000-0000-0000-000000000003","failureStage":null,"failureCode":null},"errors":null}
+```
+
+This matches the existing owner-scoped failed-attempt status policy. A package ZIP is an export of project artifacts, so its service also requires the Project grant. The status lookup grants no artifact download access.
+
+FAILED attempts return only recognized persisted failure stage/code; other statuses return null failure fields. Missing and other-user IDs both return HTTP 404 (`clientMessage: "Generation attempt not found"`); a known owner's revoked grant returns the standard HTTP 403. A 404 is a snapshot of persistence, not proof that a concurrent POST cannot reserve that ID later. Continue to use the existing POST idempotency behavior.
+
+`GET /api/v1/generation/runs/{runId}/package.zip` downloads a committed complete BACKEND package directly. It needs no destination configuration or export POST. The service checks Project, Page and MetadataVersion grants, SUCCESS and BACKEND identity, registry, private storage, package manifest, exact selected contract and hashes before sending ZIP headers. The response is `application/zip` with `Content-Disposition: attachment; filename="{runId}.zip"`. The direct path bounds the verified snapshot to 512 files, 64 MiB of artifact content and a 1 MiB private storage manifest, then streams the ZIP without a temporary archive. Frontends should use an authorized `fetch`, check `response.ok`, and save the response Blob; do not put tokens in the URL. Existing configurable export APIs remain available.
+
+The snapshot is held in memory within those limits; concurrent downloads near the limit need separate performance testing before increasing the limits.
+
+Before binary output, missing runs return the standard 404 envelope, missing grants return 403, and incomplete, oversized or damaged packages return the safe 500 envelope. For example:
+
+```json
+{"status":"INTERNAL_SERVER_ERROR","clientMessage":"An unexpected error occurred","statusCode":500,"body":null,"errors":null}
+```
+
+A client disconnect during streaming terminates that response; there is no server-side temporary ZIP to retain. The generated application and OpenRouter are never invoked by these read routes.

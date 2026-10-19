@@ -155,6 +155,33 @@ public class GenerationApiService {
                 persisted.stage().name(), persisted.code().name());
     }
 
+    /** Read a globally unique reservation within its owner's persisted permission scope. */
+    @Transactional(readOnly = true)
+    public GenerationApiDtos.AttemptStatus attempt(UUID attemptId, String username) {
+        if (username == null || username.isBlank())
+            throw new InsufficientAuthenticationException("Authentication required");
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || !username.equals(authentication.getName()))
+            throw new InsufficientAuthenticationException("Authentication required");
+        var run = runs.findByAttemptId(attemptId)
+                .orElseThrow(() -> new ResourceNotFoundException("Generation attempt not found"));
+        if (run.getTriggeringUser() == null || !username.equals(run.getTriggeringUser().getUsername()))
+            throw new ResourceNotFoundException("Generation attempt not found");
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
+        permissionChecker.requireEntityAccess("MetadataVersion", authentication);
+        String stage = null, code = null;
+        if (run.getStatus() == eg.mts.gsuif.entity.GenerationRunStatus.FAILED) {
+            var failure = runs.persistedFailure(run.getId(), username);
+            if (failure.isPresent()) {
+                stage = failure.get().stage().name();
+                code = failure.get().code().name();
+            }
+        }
+        return new GenerationApiDtos.AttemptStatus(run.getId(), run.getAttemptId(),
+                run.getStatus().name(), run.getMetadataVersion().getId(), stage, code);
+    }
+
     private static GenerationApiDtos.ValidationScope validationScope(List<String> paths, String status,
             Integer compileExitCode, Integer testExitCode) {
         List<String> passed = new java.util.ArrayList<>();
