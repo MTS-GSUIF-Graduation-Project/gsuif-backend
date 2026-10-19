@@ -186,17 +186,46 @@ public class GenerationArtifactStore {
     public GenerationResult read(UUID runId) { return readVerified(runId, null); }
 
     public GenerationResult readVerified(UUID runId, String expectedFingerprint) {
+        return readVerified(runId, expectedFingerprint, Long.MAX_VALUE, Integer.MAX_VALUE);
+    }
+
+    /** Read a download-sized snapshot before response headers are sent. */
+    public GenerationResult readVerified(UUID runId, String expectedFingerprint,
+            long maxArtifactBytes, int maxFiles) {
         Path directory = runDirectory(runId);
         try {
             Path manifestPath = checkedStoredFile(directory, directory.resolve(MANIFEST));
-            Manifest manifest = mapper.readValue(manifestPath.toFile(), Manifest.class);
+            boolean bounded = maxArtifactBytes != Long.MAX_VALUE || maxFiles != Integer.MAX_VALUE;
+            Manifest manifest;
+            if (bounded) {
+                byte[] manifestBytes;
+                try (var input = Files.newInputStream(manifestPath)) {
+                    manifestBytes = input.readNBytes(1024 * 1024 + 1);
+                }
+                if (manifestBytes.length > 1024 * 1024)
+                    throw new IOException("Stored artifact manifest exceeds download limit");
+                manifest = mapper.readValue(manifestBytes, Manifest.class);
+            } else manifest = mapper.readValue(manifestPath.toFile(), Manifest.class);
             if (manifest.version() != 1) throw new IOException("Unsupported artifact manifest version");
             if (expectedFingerprint != null && !expectedFingerprint.equals(manifest.inputFingerprint()))
                 throw new IOException("Stored attempt fingerprint differs from run");
+            if (manifest.artifacts().size() > maxFiles)
+                throw new IOException("Stored artifact count exceeds download limit");
             List<GenerationResult.Artifact> artifacts = new ArrayList<>();
+            long remaining = maxArtifactBytes;
             for (Entry entry : manifest.artifacts()) {
                 Path file = directory.resolve(safeRelative(entry.relativePath()));
-                byte[] bytes = Files.readAllBytes(checkedStoredFile(directory, file));
+                Path checked = checkedStoredFile(directory, file);
+                if (Files.size(checked) > remaining)
+                    throw new IOException("Stored artifacts exceed download limit");
+                byte[] bytes;
+                if (!bounded) bytes = Files.readAllBytes(checked);
+                else try (var input = Files.newInputStream(checked)) {
+                    bytes = input.readNBytes((int) Math.min(remaining + 1, (long) Integer.MAX_VALUE));
+                }
+                if (bytes.length > remaining)
+                    throw new IOException("Stored artifacts exceed download limit");
+                remaining -= bytes.length;
                 if (!digest(bytes).equals(entry.contentSha256())
                         || expectedFingerprint != null && !digest(bytes).equals(entry.sha256()))
                     throw new IOException("Stored artifact content changed");

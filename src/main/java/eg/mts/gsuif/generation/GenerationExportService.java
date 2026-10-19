@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -33,6 +34,8 @@ import java.util.zip.CRC32;
 /** Project settings live outside immutable metadata snapshots. */
 @Service
 public class GenerationExportService {
+    private static final long MAX_DIRECT_PACKAGE_BYTES = 64L * 1024 * 1024;
+    private static final int MAX_DIRECT_PACKAGE_FILES = 512;
     private static final Logger log = LoggerFactory.getLogger(GenerationExportService.class);
     private final Path root;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -64,6 +67,33 @@ public class GenerationExportService {
         }
     }
     public record DownloadedExport(String fileName, byte[] bytes) { }
+
+    /** Verified before response headers; writing requires no export destination or temporary file. */
+    public record DirectPackage(String fileName, Map<String, byte[]> files) {
+        public DirectPackage {
+            files = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(files));
+        }
+        public void writeTo(OutputStream output) throws IOException {
+            ZipExportDestination.write(output, files);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public DirectPackage directPackage(UUID runId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        permissionChecker.requireEntityAccess("GsuifProject", authentication);
+        permissionChecker.requireEntityAccess("GsuifPage", authentication);
+        permissionChecker.requireEntityAccess("MetadataVersion", authentication);
+        var run = runs.findById(runId).orElseThrow(() -> new ResourceNotFoundException("Generation run not found"));
+        if (run.getStatus() != GenerationRunStatus.SUCCESS
+                || !BackendPackageIntegrity.TOOL.equals(run.getToolName()))
+            throw new IllegalStateException("Run is not a successful complete BACKEND package");
+        var verified = runs.readBackendPackage(run, MAX_DIRECT_PACKAGE_BYTES, MAX_DIRECT_PACKAGE_FILES);
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        verified.artifacts().stream().sorted(Comparator.comparing(GenerationResult.Artifact::relativePath))
+                .forEach(artifact -> files.put(artifact.relativePath(), artifact.bytes()));
+        return new DirectPackage(runId + ".zip", files);
+    }
 
     public DestinationConfig configure(UUID projectId, String name, DestinationConfig config) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

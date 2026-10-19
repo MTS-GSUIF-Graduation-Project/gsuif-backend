@@ -257,6 +257,18 @@ public class GenerationRunService {
         return result;
     }
 
+    /** Complete BACKEND package only, with a bounded in-memory snapshot for ZIP streaming. */
+    @Transactional(readOnly = true)
+    public GenerationResult readBackendPackage(GenerationRun run, long maxBytes, int maxFiles) {
+        if (run.getStatus() != GenerationRunStatus.SUCCESS
+                || !BackendPackageIntegrity.TOOL.equals(run.getToolName()))
+            throw new IllegalStateException("Run is not a successful complete BACKEND package");
+        GenerationResult result = store.readVerified(run.getId(), run.getInputFingerprint(), maxBytes, maxFiles);
+        BackendPackageIntegrity.verify(run, result,
+                artifacts.findAllByGenerationRunIdOrderByRelativePathAsc(run.getId()));
+        return result;
+    }
+
     @Transactional(readOnly = true)
     public byte[] readArtifact(UUID runId, String relativePath) {
         if (findFile(runId, relativePath).isEmpty()) throw new IllegalArgumentException("Artifact is not registered for run");

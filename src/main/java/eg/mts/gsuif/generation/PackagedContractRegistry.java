@@ -6,6 +6,8 @@ import java.io.InputStream;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.Comparator;
 
 /** Versioned, explicit mapping for the approved packaged CRUD contracts. */
 final class PackagedContractRegistry {
@@ -71,6 +73,12 @@ final class PackagedContractRegistry {
     Entry find(String id, String version) {
         if (id == null || version == null) return null;
         return contracts.getOrDefault(id, Map.of()).get(version);
+    }
+
+    List<Entry> entries() {
+        return contracts.values().stream().flatMap(versions -> versions.values().stream())
+                .sorted(Comparator.comparing(Entry::id).thenComparing(Entry::version))
+                .toList();
     }
 
     boolean containsId(String id) { return id != null && contracts.containsKey(id); }

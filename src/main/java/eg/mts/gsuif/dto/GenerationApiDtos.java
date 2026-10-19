@@ -60,4 +60,12 @@ public final class GenerationApiDtos {
 
     public record FailedAttempt(UUID runId, UUID attemptId, UUID metadataVersionId,
                                 String status, String failureStage, String failureCode) { }
+
+    /** Catalog eligibility is contract-level; a page still requires its own preflight. */
+    public record AvailableContract(String contractId, String contractVersion, String label,
+                                    List<String> operationIds, String updateMode,
+                                    boolean pageCompatibilityChecked) { }
+
+    public record AttemptStatus(UUID runId, UUID attemptId, String status, UUID metadataVersionId,
+                                String failureStage, String failureCode) { }
 }

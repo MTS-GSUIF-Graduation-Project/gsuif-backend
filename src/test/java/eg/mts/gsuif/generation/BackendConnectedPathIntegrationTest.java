@@ -154,6 +154,28 @@ class BackendConnectedPathIntegrationTest {
         try (var resource = getClass().getResourceAsStream("/openapi/asset-ticket-api-2.yaml")) {
             assertArrayEquals(resource.readAllBytes(), selectedContract);
         }
+        // No destination has been configured: the new path reads the committed package directly.
+        var pendingZip = mvc.perform(get("/api/v1/generation/runs/{id}/package.zip", runId)
+                        .with(authentication(fixture.auth())))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                .andReturn();
+        byte[] directZip = mvc.perform(asyncDispatch(pendingZip))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/zip"))
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"" + runId + ".zip\""))
+                .andReturn().getResponse().getContentAsByteArray();
+        Map<String, byte[]> extracted = new LinkedHashMap<>();
+        try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(directZip))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                assertNull(extracted.putIfAbsent(entry.getName(), zip.readAllBytes()));
+            }
+        }
+        assertArrayEquals(manifest, extracted.get("generation-manifest.json"));
+        assertArrayEquals(selectedContract, extracted.get("contracts/asset-ticket-api-2.0.0.yaml"));
+        assertEquals(artifactRepository.findAllByGenerationRunIdOrderByRelativePathAsc(runId).size(),
+                extracted.size());
         mvc.perform(post("/api/v1/generation/backend").with(authentication(fixture.auth()))
                         .contentType("application/json").content(request))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.body.runId").value(runId.toString()));
@@ -190,6 +212,10 @@ class BackendConnectedPathIntegrationTest {
         byte[] original = Files.readAllBytes(stored);
         try {
             Files.writeString(stored, "{}", StandardCharsets.UTF_8);
+            mvc.perform(get("/api/v1/generation/runs/{id}/package.zip", runId)
+                            .with(authentication(fixture.auth())))
+                    .andExpect(status().is5xxServerError())
+                    .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("PK"))));
             mvc.perform(get("/api/v1/generation/runs/{id}/artifacts/download", runId)
                             .param("path", "generation-manifest.json").with(authentication(fixture.auth())))
                     .andExpect(status().is5xxServerError());
@@ -205,6 +231,9 @@ class BackendConnectedPathIntegrationTest {
         byte[] original = Files.readAllBytes(stored);
         try {
             Files.delete(stored);
+            mvc.perform(get("/api/v1/generation/runs/{id}/package.zip", runId)
+                            .with(authentication(fixture.auth())))
+                    .andExpect(status().is5xxServerError());
             mvc.perform(get("/api/v1/generation/runs/{id}/artifacts/download", runId)
                             .param("path", "README.md").with(authentication(fixture.auth())))
                     .andExpect(status().is5xxServerError());
