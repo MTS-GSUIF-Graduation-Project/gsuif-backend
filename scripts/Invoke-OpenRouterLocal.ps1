@@ -1,8 +1,21 @@
 param(
     [Parameter(Mandatory = $true)][string]$BackendCommand,
-    [string[]]$BackendArguments = @()
+    [string[]]$BackendArguments = @(),
+    # Additional non-secret variables for the launched process; restored like the key and model.
+    [hashtable]$Environment = @{}
 )
 $ErrorActionPreference = 'Stop'
+foreach ($name in @($Environment.Keys)) {
+    if ([string]$name -cnotmatch '^[A-Z][A-Z0-9_]*$') { throw "Invalid environment variable name: $name" }
+    if (@('OPENROUTER_API_KEY', 'OPENROUTER_MODEL') -contains [string]$name) {
+        throw "$name cannot be passed through -Environment."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$Environment[$name])) { throw "$name must not be empty." }
+}
+$previousExtra = @{}
+foreach ($name in @($Environment.Keys)) {
+    $previousExtra[$name] = @{ Had = (Test-Path "Env:$name"); Value = [Environment]::GetEnvironmentVariable($name, 'Process') }
+}
 $previousModel = $env:OPENROUTER_MODEL
 $hadModel = Test-Path Env:OPENROUTER_MODEL
 $previousKey = $env:OPENROUTER_API_KEY
@@ -31,6 +44,7 @@ try {
     $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
     $env:OPENROUTER_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
     if ([string]::IsNullOrWhiteSpace($env:OPENROUTER_API_KEY)) { throw 'Stored OpenRouter key is empty.' }
+    foreach ($name in @($Environment.Keys)) { [Environment]::SetEnvironmentVariable($name, [string]$Environment[$name], 'Process') }
     $global:LASTEXITCODE = $null
     & $BackendCommand @BackendArguments
     if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) {
@@ -43,4 +57,8 @@ try {
     if ($null -ne $secureKey) { $secureKey.Dispose() }
     if ($hadModel) { $env:OPENROUTER_MODEL = $previousModel }
     else { Remove-Item Env:OPENROUTER_MODEL -ErrorAction SilentlyContinue }
+    foreach ($name in @($previousExtra.Keys)) {
+        if ($previousExtra[$name].Had) { [Environment]::SetEnvironmentVariable($name, $previousExtra[$name].Value, 'Process') }
+        else { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
+    }
 }

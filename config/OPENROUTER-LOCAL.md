@@ -1,5 +1,8 @@
 # Local OpenRouter runtime configuration
 
+For backend generation, `scripts/Initialize-GsuifLocal.ps1` and `scripts/Start-GsuifLocal.ps1` reuse the key
+store and launcher below and add the pinned image IDs and Maven paths; see `docs/local-startup.md`.
+
 This setup prepares the GSUIF backend for later OpenRouter integration. The bounded Gadget qualification harness is opt-in and separate from application generation. Generated applications do not use these variables.
 
 On Windows, run `scripts/Save-OpenRouterKey.ps1` interactively once. It prompts with masked input and writes DPAPI-encrypted ciphertext to `%APPDATA%\GSUIF\openrouter-key.dpapi`, outside this repository and bound to the current Windows user. The script restricts file access to that user. Repeat the command to rotate the key; do not paste it into a terminal command, chat, repository file, CI log or issue.

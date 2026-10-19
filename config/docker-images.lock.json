@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "images": {
+    "compiler": {
+      "variable": "GSUIF_BACKEND_COMPILER_IMAGE_ID",
+      "reference": "eclipse-temurin@sha256:f9bf7e9fe2f9bc4657537c1a7e20c768f0c3bafca41598263be4714783dd62eb",
+      "reviewedTag": "eclipse-temurin:21-jdk",
+      "reviewedVersion": "21.0.12.1_1-jdk-resolute",
+      "requires": "Linux JDK 21: /bin/sh, mkdir and javac 21 runnable as UID 65532 with a read-only root, no network and tmpfs /work and /tmp."
+    },
+    "build": {
+      "variable": "GSUIF_BACKEND_BUILD_IMAGE_ID",
+      "reference": "eclipse-temurin@sha256:f9bf7e9fe2f9bc4657537c1a7e20c768f0c3bafca41598263be4714783dd62eb",
+      "reviewedTag": "eclipse-temurin:21-jdk",
+      "reviewedVersion": "21.0.12.1_1-jdk-resolute",
+      "requires": "Linux JDK 21 (javac, not only a JRE): /bin/sh, cp, find and grep runnable as UID 65532 offline. Maven is not taken from the image; the trusted host Maven installation is mounted read-only at /maven."
+    }
+  }
+}
