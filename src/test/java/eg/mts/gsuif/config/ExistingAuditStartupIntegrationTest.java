@@ -47,6 +47,8 @@ class ExistingAuditStartupIntegrationTest {
                     new ClassPathResource("sql/V8__add_generation_attempt_lifecycle.sql"));
             ScriptUtils.executeSqlScript(connection,
                     new ClassPathResource("sql/V9__add_backend_package_manifest_hash.sql"));
+            ScriptUtils.executeSqlScript(connection,
+                    new ClassPathResource("sql/V10__repair_generation_run_status_constraint.sql"));
             connection.createStatement().executeUpdate("INSERT INTO revinfo (revtstmp) VALUES (1)");
             connection.createStatement().executeUpdate("""
                     INSERT INTO gsuif_project (id, name, description, created_at, updated_at, created_by, last_modified_by)

@@ -8,7 +8,16 @@ Reusing an attempt ID with changed inputs is rejected by its fingerprint. Reusin
 
 If the process stops after reservation, its row remains `IN_PROGRESS` so it cannot be mistaken for success. No automatic or callable status reset is provided in this increment: without a durable worker-ownership check, changing an `IN_PROGRESS` row to `INTERRUPTED` could overwrite an active worker. After confirming the original process is stopped, an operator may start a fresh attempt ID; the abandoned row remains visible for later controlled reconciliation. A future recovery operation must prove the worker no longer owns the attempt before marking it `INTERRUPTED`. No age-based reset is performed.
 
-`sql/V7__bootstrap_entity_permissions.sql` provisions SCRUM-61 grants after V6 WorkOrder. `sql/V8__add_generation_attempt_lifecycle.sql` follows V7, adds nullable failure columns and extends the status check without rewriting prior rows. H2 tests and packaged SQL use the V6 → V7 → V8 order; production schema remains under explicit SQL migration control. V8 is additive and does not reset GSUIF data. Do not renumber or reapply a migration already recorded in a shared database.
+`sql/V7__bootstrap_entity_permissions.sql` provisions SCRUM-61 grants after V6 WorkOrder. `sql/V8__add_generation_attempt_lifecycle.sql` follows V7 and adds nullable failure columns. V9 adds the backend package manifest hash. `sql/V10__repair_generation_run_status_constraint.sql` drops both the canonical and reported legacy status-check names in one PostgreSQL transaction, then installs the five-state check. It leaves historical runs and artifact links intact. Provision V1 through V10 in numeric order; on an existing database, apply only versions not yet recorded. Do not renumber or reapply a migration already recorded in a shared database.
+
+The real PostgreSQL regression test is `GenerationRunPostgresStatusMigrationTest`.
+It requires an explicitly designated disposable database named
+`gsuif_status_migration_test` on `127.0.0.1`, plus the Maven properties
+`gsuif.test.status-migration-disposable=true`,
+`gsuif.test.status-migration-jdbc-url=jdbc:postgresql://127.0.0.1:<port>/gsuif_status_migration_test`,
+and `gsuif.test.status-migration-password`. It creates and removes a unique
+schema for each constraint layout; without those properties, its three cases
+are skipped.
 
 ## Diagnostic access
 
