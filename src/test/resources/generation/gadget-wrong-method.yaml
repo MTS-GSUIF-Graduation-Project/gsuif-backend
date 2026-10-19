@@ -1,0 +1,11 @@
+contracts:
+  gadget-api:
+    2.0.0:
+      resource: /openapi/gadget-api.yaml
+      updateMode: FULL
+      operations:
+        LIST: fetchGadgets
+        CREATE: submitGadget
+        READ: findGadget
+        UPDATE: removeGadget
+        DELETE: replaceGadget

@@ -1,0 +1,20 @@
+contracts:
+  stock-unit-api:
+    2.0.0:
+      resource: /openapi/stock-unit-api.yaml
+      updateMode: FULL
+      operations:
+        LIST: scanStockUnits
+        CREATE: registerStockUnit
+        READ: inspectStockUnit
+        UPDATE: replaceStockUnit
+        DELETE: discardStockUnit
+    3.0.0:
+      resource: /openapi/stock-unit-api-paged.yaml
+      updateMode: FULL
+      operations:
+        LIST: scanStockUnits
+        CREATE: registerStockUnit
+        READ: inspectStockUnit
+        UPDATE: replaceStockUnit
+        DELETE: discardStockUnit

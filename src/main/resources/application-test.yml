@@ -15,6 +15,9 @@ spring:
         - classpath:sql/V5__add_permission_role_permission.sql
         - classpath:sql/V6__add_work_orders.sql
         - classpath:sql/V7__bootstrap_entity_permissions.sql
+        - classpath:sql/V8__add_generation_attempt_lifecycle.sql
+        - classpath:sql/V9__add_backend_package_manifest_hash.sql
+        - classpath:sql/V10__repair_generation_run_status_constraint.sql
         - classpath:sql/test-support-schema.sql
   jpa:
     hibernate:

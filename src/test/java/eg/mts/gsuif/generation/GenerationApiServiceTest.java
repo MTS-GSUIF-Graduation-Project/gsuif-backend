@@ -81,6 +81,65 @@ class GenerationApiServiceTest {
         assertThrows(GenerationValidationException.class, () -> GenerationApiService.targets("ALL"));
     }
 
+    @Test void nullCollectionMembersAreRejectedBeforeFingerprinting() {
+        var base = new GenerationSpecification("1.0.0", "com.example.fixture",
+                new GenerationSpecification.EntitySpec("Gadget", "gadget",
+                        java.util.Arrays.asList((GenerationSpecification.FieldSpec) null), false),
+                null, Map.of(), null);
+        assertTrue(assertThrows(GenerationValidationException.class,
+                () -> GenerationAttemptFingerprint.validateClientShape(base)).getMessage()
+                .contains("specification.entity.fields[0]"));
+
+        var bindings = new java.util.HashMap<UUID, String>();
+        bindings.put(UUID.randomUUID(), null);
+        var withBindings = new GenerationSpecification(base.specVersion(), base.basePackage(),
+                new GenerationSpecification.EntitySpec("Gadget", "gadget", List.of(), false),
+                new GenerationSpecification.OpenApiSpec("gadget-api", "1.0.0", bindings), Map.of(), null);
+        assertThrows(GenerationValidationException.class,
+                () -> GenerationAttemptFingerprint.validateClientShape(withBindings));
+
+        var roles = new java.util.HashMap<String, Set<GenerationSpecification.SupportedRole>>();
+        roles.put("findGadget", null);
+        var withRoles = new GenerationSpecification(base.specVersion(), base.basePackage(),
+                withBindings.entity(), null, roles, null);
+        assertThrows(GenerationValidationException.class,
+                () -> GenerationAttemptFingerprint.validateClientShape(withRoles));
+
+        var columns = new java.util.HashMap<UUID, List<String>>();
+        columns.put(UUID.randomUUID(), java.util.Arrays.asList((String) null));
+        var withColumns = new GenerationSpecification(base.specVersion(), base.basePackage(),
+                withBindings.entity(), null, Map.of(), new GenerationSpecification.AngularSpec("Gadget", columns));
+        assertThrows(GenerationValidationException.class,
+                () -> GenerationAttemptFingerprint.validateClientShape(withColumns));
+
+        UUID binding = UUID.randomUUID();
+        var valid = new GenerationSpecification("1.0.0", "com.example.fixture",
+                new GenerationSpecification.EntitySpec("Gadget", "gadget",
+                        List.of(new GenerationSpecification.FieldSpec("label", "label", "String",
+                                false, 100, null)), false),
+                new GenerationSpecification.OpenApiSpec("gadget-api", "1.0.0",
+                        Map.of(binding, "findGadget")),
+                Map.of("findGadget", Set.of(GenerationSpecification.SupportedRole.ROLE_ADMIN)),
+                new GenerationSpecification.AngularSpec("Gadget", Map.of(binding, List.of("label"))));
+        MetadataVersion version = mock(MetadataVersion.class);
+        GsuifUser user = mock(GsuifUser.class);
+        when(version.getId()).thenReturn(UUID.randomUUID());
+        when(version.getSchemaVersion()).thenReturn("1.2.0");
+        when(version.getSnapshot()).thenReturn("{}");
+        when(user.getId()).thenReturn(UUID.randomUUID());
+        String fingerprint = GenerationAttemptFingerprint.request(version, user, valid,
+                Set.of(Target.ANGULAR), "spring-angular", Map.of());
+        assertEquals(fingerprint, GenerationAttemptFingerprint.request(version, user, valid,
+                Set.of(Target.ANGULAR), "spring-angular", Map.of()));
+        var changed = new GenerationSpecification(valid.specVersion(), valid.basePackage(),
+                new GenerationSpecification.EntitySpec("Gadget", "gadget",
+                        List.of(new GenerationSpecification.FieldSpec("label", "label", "String",
+                                true, 100, null)), false),
+                valid.openApi(), valid.operationRoles(), valid.angular());
+        assertNotEquals(fingerprint, GenerationAttemptFingerprint.request(version, user, changed,
+                Set.of(Target.ANGULAR), "spring-angular", Map.of()));
+    }
+
     @Test void invalidTypeAndAbsentSelectionNeverStartGeneration() {
         UUID pageId = UUID.randomUUID();
         var request = new eg.mts.gsuif.dto.GenerationApiDtos.GenerateRequest(pageId, "OTHER", specification());
@@ -153,6 +212,50 @@ class GenerationApiServiceTest {
         assertTrue(detail.validationScope().passedTargets().isEmpty());
         assertEquals(List.of("ANGULAR"), detail.validationScope().notValidatedTargets());
         assertThrows(ResourceNotFoundException.class, () -> service.run(UUID.randomUUID()));
+    }
+
+    @Test void failedAttemptRequiresOwnerAndBothResourcePermissions() {
+        UUID id = UUID.randomUUID();
+        GenerationRun run = mock(GenerationRun.class);
+        GsuifUser owner = mock(GsuifUser.class);
+        MetadataVersion version = mock(MetadataVersion.class);
+        when(runs.findById(id)).thenReturn(Optional.of(run));
+        when(run.getId()).thenReturn(id);
+        when(run.getTriggeringUser()).thenReturn(owner);
+        when(owner.getUsername()).thenReturn("owner");
+        when(run.getStatus()).thenReturn(GenerationRunStatus.FAILED);
+        when(run.getMetadataVersion()).thenReturn(version);
+        when(version.getId()).thenReturn(UUID.randomUUID());
+        when(runs.persistedFailure(id, "owner")).thenReturn(Optional.of(
+                new GenerationRunService.PersistedFailure(id, GenerationFailureStage.CONFIG,
+                        GenerationFailureCode.CONFIG_MISSING)));
+
+        assertThrows(org.springframework.security.authentication.InsufficientAuthenticationException.class,
+                () -> service.failedAttempt(id, null));
+        var context = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        context.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                "other", null, List.of()));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> service.failedAttempt(id, "other"));
+        try {
+            context.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                    "owner", null, List.of()));
+            doThrow(new AccessDeniedException("missing Page"))
+                    .when(permissionChecker).requireEntityAccess(eq("GsuifPage"), any());
+            assertThrows(AccessDeniedException.class, () -> service.failedAttempt(id, "owner"));
+            reset(permissionChecker);
+            doThrow(new AccessDeniedException("missing Version"))
+                    .when(permissionChecker).requireEntityAccess(eq("MetadataVersion"), any());
+            assertThrows(AccessDeniedException.class, () -> service.failedAttempt(id, "owner"));
+            reset(permissionChecker);
+            var detail = service.failedAttempt(id, "owner");
+            assertEquals(id, detail.runId());
+            assertEquals("CONFIG", detail.failureStage());
+            assertEquals("CONFIG_MISSING", detail.failureCode());
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+        verifyNoInteractions(artifacts);
     }
 
     @Test void runDeniedWhenPageAccessDenied() {

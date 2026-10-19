@@ -9,12 +9,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.io.IOException;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
 
 /** Stable, length-framed fingerprint of inputs that determine a generation/build attempt. */
 final class GenerationAttemptFingerprint {
     private final MessageDigest digest;
     private final Map<String, byte[]> resourceOverrides;
+    private boolean resourceUnavailable;
 
     private GenerationAttemptFingerprint() { this(Map.of()); }
 
@@ -26,13 +28,27 @@ final class GenerationAttemptFingerprint {
 
     static String request(MetadataVersion version, GsuifUser user, GenerationSpecification spec,
             Set<GenerationContext.Target> targets, String framework, Map<String, byte[]> consumerInputs) {
-        return request(version, user, spec, targets, framework, consumerInputs, Map.of());
+        return prepare(version, user, spec, targets, framework, consumerInputs).value();
+    }
+
+    record Prepared(String value, boolean resourceUnavailable) { }
+
+    static Prepared prepare(MetadataVersion version, GsuifUser user, GenerationSpecification spec,
+            Set<GenerationContext.Target> targets, String framework, Map<String, byte[]> consumerInputs) {
+        return prepare(version, user, spec, targets, framework, consumerInputs, Map.of());
     }
 
     /** Allows tests to simulate a packaged resource changing between attempts. */
     static String request(MetadataVersion version, GsuifUser user, GenerationSpecification spec,
             Set<GenerationContext.Target> targets, String framework, Map<String, byte[]> consumerInputs,
             Map<String, byte[]> resourceOverrides) {
+        return prepare(version, user, spec, targets, framework, consumerInputs, resourceOverrides).value();
+    }
+
+    static Prepared prepare(MetadataVersion version, GsuifUser user, GenerationSpecification spec,
+            Set<GenerationContext.Target> targets, String framework, Map<String, byte[]> consumerInputs,
+            Map<String, byte[]> resourceOverrides) {
+        validateClientShape(spec);
         var hash = new GenerationAttemptFingerprint(resourceOverrides);
         hash.add("generation-request-v1");
         hash.identity(version, user);
@@ -84,26 +100,67 @@ final class GenerationAttemptFingerprint {
             }
         }
         hash.inputs(consumerInputs);
-        var catalog = GenerationCatalog.load();
-        hash.add(catalog.version()); hash.add(catalog.providerVersion());
+        GenerationCatalog catalog = null;
+        try {
+            catalog = GenerationCatalog.load();
+            hash.add(catalog.version()); hash.add(catalog.providerVersion());
+        } catch (RuntimeException ex) {
+            hash.resourceUnavailable = true;
+            hash.add("unavailable-generation-catalog");
+        }
         hash.resource("components.yaml");
         hash.resource("generation/packaged-contracts.yaml");
         if (spec != null && spec.openApi() != null && spec.openApi().contractId() != null) {
-            String contract = new PackagedContractRegistry().resource(spec.openApi().contractId());
-            if (contract != null) hash.resource(contract.substring(1));
+            try {
+                String contract = new PackagedContractRegistry().resource(
+                        spec.openApi().contractId(), spec.openApi().contractVersion());
+                if (contract != null) hash.resource(contract.substring(1));
+            } catch (IllegalStateException ex) {
+                hash.resourceUnavailable = true;
+                hash.add("unavailable-contract-registry");
+            }
         }
-        java.util.stream.Stream.of(catalog.entity().path(), catalog.controller().path(),
+        if (catalog != null) java.util.stream.Stream.of(catalog.entity().path(), catalog.controller().path(),
                 catalog.angularTypescript().path(), catalog.angularHtml().path()).distinct().sorted()
                 .forEach(hash::resource);
         // The HTML template includes a fragment selected by each registered handler.
         // Hash the entire packaged set so a template edit cannot reuse an old attempt.
-        AngularComponentHandlers.templatePaths().stream().map(path -> path.substring(1)).sorted().forEach(hash::resource);
+        try {
+            AngularComponentHandlers.templatePaths().stream().map(path -> path.substring(1)).sorted().forEach(hash::resource);
+        } catch (RuntimeException ex) {
+            hash.resourceUnavailable = true;
+            hash.add("unavailable-component-templates");
+        }
         hash.resource("templates/freemarker/angular-visibility.ts.ftl");
         java.util.stream.Stream.of("eg/mts/gsuif/dto/ApiResponse.java", "eg/mts/gsuif/dto/PagedBody.java",
                 "eg/mts/gsuif/entity/AuditableEntity.java", "eg/mts/gsuif/audit/AuditorAwareImpl.java",
                 "eg/mts/gsuif/config/JpaAuditingConfig.java")
                 .forEach(path -> hash.resource("consumer-support/" + path));
-        return hash.finish();
+        return new Prepared(hash.finish(), hash.resourceUnavailable);
+    }
+
+    /** Reject malformed collection members before hashing or reserving an attempt. */
+    static void validateClientShape(GenerationSpecification spec) {
+        if (spec == null) return; // The existing context validator reports a missing specification.
+        var entity = spec.entity();
+        if (entity != null && entity.fields() != null) {
+            for (int i = 0; i < entity.fields().size(); i++)
+                if (entity.fields().get(i) == null)
+                    throw new GenerationValidationException(List.of("specification.entity.fields[" + i + "]: required"));
+        }
+        var api = spec.openApi();
+        if (api != null && api.bindingOperations() != null && api.bindingOperations().entrySet().stream()
+                .anyMatch(entry -> entry.getKey() == null || entry.getValue() == null))
+            throw new GenerationValidationException(List.of("specification.openApi.bindingOperations: null entry"));
+        if (spec.operationRoles() != null && spec.operationRoles().entrySet().stream()
+                .anyMatch(entry -> entry.getKey() == null || entry.getValue() == null
+                        || entry.getValue().stream().anyMatch(role -> role == null)))
+            throw new GenerationValidationException(List.of("specification.operationRoles: null entry"));
+        var angular = spec.angular();
+        if (angular != null && angular.tableColumns() != null && angular.tableColumns().entrySet().stream()
+                .anyMatch(entry -> entry.getKey() == null || entry.getValue() == null
+                        || entry.getValue().stream().anyMatch(column -> column == null)))
+            throw new GenerationValidationException(List.of("specification.angular.tableColumns: null entry"));
     }
 
     static String result(MetadataVersion version, GsuifUser user, GenerationResult result,
@@ -144,11 +201,16 @@ final class GenerationAttemptFingerprint {
 
     private void resource(String path) {
         add(path);
-        if (resourceOverrides.containsKey(path)) { add(resourceOverrides.get(path)); return; }
+        if (resourceOverrides.containsKey(path)) {
+            byte[] replacement = resourceOverrides.get(path);
+            if (replacement == null) { resourceUnavailable = true; add("unavailable-resource"); }
+            else add(replacement);
+            return;
+        }
         try (var stream = GenerationAttemptFingerprint.class.getResourceAsStream("/" + path)) {
-            if (stream == null) throw new IllegalStateException("Generation input resource is missing: " + path);
+            if (stream == null) { resourceUnavailable = true; add("unavailable-resource"); return; }
             add(stream.readAllBytes());
-        } catch (IOException ex) { throw new IllegalStateException("Cannot fingerprint generation input: " + path, ex); }
+        } catch (IOException ex) { resourceUnavailable = true; add("unreadable-resource"); }
     }
 
     private void add(String value) {

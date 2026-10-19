@@ -40,6 +40,7 @@ build/
 
 # Node.js
 node_modules/
+__pycache__/
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
@@ -48,6 +49,8 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+*.dpapi
+/config/openrouter.local.ps1
 
 # Pilot local validation caches
 /.pilot-cache/
@@ -63,6 +66,9 @@ doc/
 # Local-only agent / personal notes (never commit)
 NOTES.local.md
 *.local.md
+
+# Local review and acceptance evidence
+/review-packages/
 
 # hash password for admin user to be used when creating user manually
 ../HashPassword.java

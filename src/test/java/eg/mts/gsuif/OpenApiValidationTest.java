@@ -189,9 +189,12 @@ public class OpenApiValidationTest {
         baseExpected.put("put /api/v1/work-orders/{id}", "updateWorkOrder");
         baseExpected.put("delete /api/v1/work-orders/{id}", "deleteWorkOrder");
         baseExpected.put("post /api/v1/generation/generate", "generateSource");
+        baseExpected.put("post /api/v1/generation/backend", "generateBackend");
         baseExpected.put("get /api/v1/generation/providers", "listGenerationProviders");
         baseExpected.put("get /api/v1/generation/runs/{id}", "getGenerationRun");
+        baseExpected.put("get /api/v1/generation/runs/{id}/failure", "getFailedGenerationAttempt");
         baseExpected.put("get /api/v1/generation/runs/{id}/artifacts/download", "downloadGeneratedArtifact");
+        baseExpected.put("get /api/v1/generation/runs/{id}/exports/{name}/download", "downloadGenerationExport");
         baseExpected.put("put /api/v1/generation/projects/{projectId}/destinations/{name}", "configureGenerationExport");
         baseExpected.put("post /api/v1/generation/runs/{id}/exports/{name}", "exportGenerationRun");
         baseExpected.put("get /api/v1/generation/artifacts/history", "getGeneratedArtifactHistory");

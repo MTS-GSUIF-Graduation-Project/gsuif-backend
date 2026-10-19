@@ -18,6 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -195,7 +198,7 @@ class GenerationWorkflowTransactionIntegrationTest {
         UUID attempt = UUID.randomUUID();
         when(service.findByAttemptId(attempt)).thenReturn(java.util.Optional.empty());
         when(engine.generate(any(), any(), anySet(), anyString())).thenReturn(fresh);
-        when(service.validateAndRecord(eq(attempt), any(), any(), same(fresh), anyMap(), anyString()))
+        when(service.completeReservedAttempt(eq(attempt), any(), any(), same(fresh), anyMap(), anyString()))
                 .thenReturn(winningRun);
         when(service.readResult(winningRun)).thenReturn(persisted);
 
@@ -207,7 +210,7 @@ class GenerationWorkflowTransactionIntegrationTest {
         assertSame(persisted, completed.result());
     }
 
-    @Test void generationFailureBeforeResultDoesNotCreateRun() {
+    @Test void generationFailureBeforeResultPersistsSafeStageWithoutArtifacts() {
         Fixture fixture = fixture();
         GenerationEngine engine = mock(GenerationEngine.class);
         when(engine.generate(eq(fixture.version()), isNull(), anySet(), eq("spring-angular")))
@@ -216,11 +219,127 @@ class GenerationWorkflowTransactionIntegrationTest {
         long beforeRuns = runRepository.count();
         long beforeFiles = artifactRepository.count();
 
+        UUID attempt = UUID.randomUUID();
         assertThrows(GenerationValidationException.class, () -> workflow.generateAndRecord(
-                UUID.randomUUID(), fixture.version(), fixture.user(), null,
+                attempt, fixture.version(), fixture.user(), null,
                 Set.of(GenerationContext.Target.ENTITY), "spring-angular", Map.of()));
-        assertEquals(beforeRuns, runRepository.count());
+        GenerationRun failed = runRepository.findByAttemptId(attempt).orElseThrow();
+        recordedRunId = failed.getId();
+        assertEquals(beforeRuns + 1, runRepository.count());
         assertEquals(beforeFiles, artifactRepository.count());
+        assertEquals(GenerationRunStatus.FAILED, failed.getStatus());
+        assertEquals("CONTRACT", failed.getFailureStage());
+        assertEquals("VALIDATION_FAILED", failed.getFailureCode());
+        assertThrows(IllegalStateException.class, () -> runs.readResult(failed));
+        assertThrows(IllegalStateException.class, () -> workflow.generateAndRecord(attempt,
+                fixture.version(), fixture.user(), null, Set.of(GenerationContext.Target.ENTITY),
+                "spring-angular", Map.of()));
+        verify(engine, times(1)).generate(any(), any(), anySet(), anyString());
+    }
+
+    @Test void explicitAiFailureAndInterruptedAttemptStayTerminal() {
+        Fixture fixture = fixture();
+        GenerationEngine engine = mock(GenerationEngine.class);
+        when(engine.generate(any(), any(), anySet(), anyString()))
+                .thenThrow(new GenerationStageException(GenerationFailureStage.AI, GenerationFailureCode.MODEL_UNAVAILABLE));
+        UUID attempt = UUID.randomUUID();
+        var workflow = new GenerationWorkflow(engine, runs);
+        assertThrows(GenerationStageException.class, () -> workflow.generateAndRecord(attempt,
+                fixture.version(), fixture.user(), null, Set.of(GenerationContext.Target.ENTITY),
+                "spring-angular", Map.of()));
+        GenerationRun failed = runRepository.findByAttemptId(attempt).orElseThrow();
+        recordedRunId = failed.getId();
+        assertEquals("AI", failed.getFailureStage());
+        assertEquals("MODEL_UNAVAILABLE", failed.getFailureCode());
+
+        UUID interruptedId = UUID.randomUUID();
+        String fingerprint = GenerationAttemptFingerprint.request(fixture.version(), fixture.user(), null,
+                Set.of(GenerationContext.Target.ENTITY), "spring-angular", Map.of());
+        GenerationRun pending = runs.reserveAttempt(interruptedId, fixture.version(), fixture.user(), fingerprint);
+        // This test removes both rows during fixture cleanup.
+        transactions.executeWithoutResult(status -> entityManager.createQuery("delete from GenerationRun r where r.id = :runId")
+                .setParameter("runId", failed.getId()).executeUpdate());
+        recordedRunId = pending.getId();
+        assertEquals(GenerationRunStatus.IN_PROGRESS, pending.getStatus());
+        assertThrows(IllegalStateException.class, () -> workflow.generateAndRecord(interruptedId,
+                fixture.version(), fixture.user(), null, Set.of(GenerationContext.Target.ENTITY),
+                "spring-angular", Map.of()));
+        assertEquals(GenerationRunStatus.IN_PROGRESS,
+                runRepository.findByAttemptId(interruptedId).orElseThrow().getStatus());
+    }
+
+    @Test void concurrentSameIdRequestCannotGenerateOrChangeReservedFingerprint() throws Exception {
+        Fixture fixture = fixture();
+        GenerationEngine engine = mock(GenerationEngine.class);
+        CountDownLatch generating = new CountDownLatch(1), release = new CountDownLatch(1);
+        when(engine.generate(any(), any(), anySet(), anyString())).thenAnswer(invocation -> {
+            generating.countDown();
+            if (!release.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("timed out");
+            return new GenerationResult(List.of(), List.of());
+        });
+        var workflow = new GenerationWorkflow(engine, runs);
+        UUID attempt = UUID.randomUUID();
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var first = executor.submit(() -> workflow.generateAndRecord(attempt, fixture.version(), fixture.user(),
+                    null, Set.of(GenerationContext.Target.ENTITY), "spring-angular", Map.of()));
+            assertTrue(generating.await(20, TimeUnit.SECONDS));
+            assertThrows(IllegalStateException.class, () -> workflow.generateAndRecord(attempt,
+                    fixture.version(), fixture.user(), null, Set.of(GenerationContext.Target.ENTITY),
+                    "spring-angular", Map.of()));
+            assertThrows(IllegalArgumentException.class, () -> workflow.generateAndRecord(attempt,
+                    fixture.version(), fixture.user(), null, Set.of(GenerationContext.Target.CONTROLLER),
+                    "spring-angular", Map.of()));
+            release.countDown();
+            var completed = first.get(30, TimeUnit.SECONDS);
+            recordedRunId = completed.run().getId();
+            assertEquals(GenerationRunStatus.BUILD_FAILED, completed.run().getStatus());
+            assertEquals(1, runRepository.findByAttemptId(attempt).stream().count());
+            verify(engine, times(1)).generate(any(), any(), anySet(), anyString());
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test void failedCompletionRollsBackArtifactsBeforeRecordingFailure() {
+        Fixture fixture = fixture();
+        GenerationEngine engine = mock(GenerationEngine.class);
+        var artifact = sample().artifacts().getFirst();
+        when(engine.generate(any(), any(), anySet(), anyString())).thenReturn(
+                new GenerationResult(List.of(artifact, artifact), List.of(), ConsumerBuildContract.phaseOne()));
+        UUID attempt = UUID.randomUUID();
+        long beforeFiles = artifactRepository.count();
+        assertThrows(GenerationStageException.class, () -> new GenerationWorkflow(engine, runs)
+                .generateAndRecord(attempt, fixture.version(), fixture.user(), null,
+                        Set.of(GenerationContext.Target.ENTITY), "spring-angular", Map.of()));
+        GenerationRun failed = runRepository.findByAttemptId(attempt).orElseThrow();
+        recordedRunId = failed.getId();
+        assertEquals(GenerationRunStatus.FAILED, failed.getStatus());
+        assertEquals("FINAL_VALIDATION", failed.getFailureStage());
+        assertEquals(beforeFiles, artifactRepository.count());
+        assertFalse(Files.exists(Path.of("target", "generation-artifact-tests", failed.getId().toString())));
+    }
+
+    @Test void failureReservationSurvivesCallerRollback() {
+        Fixture fixture = fixture();
+        GenerationEngine engine = mock(GenerationEngine.class);
+        when(engine.generate(any(), any(), anySet(), anyString()))
+                .thenThrow(new GenerationStageException(GenerationFailureStage.ASSEMBLY, GenerationFailureCode.INVALID_SOURCE_MAP));
+        UUID attempt = UUID.randomUUID();
+        var workflow = new GenerationWorkflow(engine, runs);
+        transactions.executeWithoutResult(status -> {
+            assertThrows(GenerationStageException.class, () -> workflow.generateAndRecord(attempt,
+                    fixture.version(), fixture.user(), null, Set.of(GenerationContext.Target.ENTITY),
+                    "spring-angular", Map.of()));
+            status.setRollbackOnly();
+        });
+        GenerationRun saved = runRepository.findByAttemptId(attempt).orElseThrow();
+        recordedRunId = saved.getId();
+        assertEquals(GenerationRunStatus.FAILED, saved.getStatus());
+        assertEquals("ASSEMBLY", saved.getFailureStage());
+        assertEquals("INVALID_SOURCE_MAP", saved.getFailureCode());
+        assertTrue(artifactRepository.findAllByGenerationRunIdOrderByRelativePathAsc(saved.getId()).isEmpty());
     }
 
     private Fixture fixture() {

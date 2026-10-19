@@ -2,7 +2,9 @@ package eg.mts.gsuif.exception;
 
 import eg.mts.gsuif.dto.ApiResponse;
 import eg.mts.gsuif.generation.GenerationValidationException;
+import eg.mts.gsuif.generation.GenerationRunService;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
@@ -10,6 +12,9 @@ import org.springframework.core.MethodParameter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.lang.Nullable;
 import org.springframework.validation.FieldError;
@@ -37,17 +42,56 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(GenerationValidationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleGenerationValidation(GenerationValidationException ex) {
-        return ResponseEntity.badRequest().body(ApiResponse.error(400, "Invalid generation request",
-                Map.of("_global", ex.getMessage())));
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private final GenerationRunService runs;
+
+    /** Retained for direct tests of unrelated exception branches. Spring uses the injected constructor. */
+    public GlobalExceptionHandler() {
+        this(null);
     }
 
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    @Autowired
+    public GlobalExceptionHandler(GenerationRunService runs) {
+        this.runs = runs;
+    }
+
+    private HttpHeaders persistedFailureHeaders(UUID runId) {
+        HttpHeaders headers = new HttpHeaders();
+        if (runId == null || runs == null) return headers;
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken) return headers;
+        try {
+            runs.persistedFailure(runId, authentication.getName()).ifPresent(failure -> {
+                headers.add("X-Generation-Run-Id", failure.runId().toString());
+                headers.add("X-Generation-Failure-Stage", failure.stage().name());
+                headers.add("X-Generation-Failure-Code", failure.code().name());
+            });
+        } catch (RuntimeException lookupFailure) {
+            log.warn("Could not resolve persisted generation failure headers");
+        }
+        return headers;
+    }
+
+    @ExceptionHandler(GenerationValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGenerationValidation(GenerationValidationException ex) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        errors.put("_global", ex.runId() == null ? ex.getMessage() : "Generation request failed validation");
+        return ResponseEntity.badRequest().headers(persistedFailureHeaders(ex.runId()))
+                .body(ApiResponse.error(400, "Invalid generation request", errors));
+    }
+
+    @ExceptionHandler(eg.mts.gsuif.generation.GenerationStageException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGenerationStage(eg.mts.gsuif.generation.GenerationStageException ex) {
+        return ResponseEntity.internalServerError().headers(persistedFailureHeaders(ex.runId()))
+                .body(ApiResponse.error(500, "Generation attempt failed",
+                        Map.of("_global", "Generation attempt failed")));
+    }
 
     /** Reserved errors-map key for object-level and cross-parameter validation messages (STD-03). */
     private static final String GLOBAL_ERROR_KEY = "_global";
@@ -398,14 +442,10 @@ public class GlobalExceptionHandler {
 
     }
 
-    // Branch 4: Authenticated principal lacks a required permission → 403
+    // Authenticated principal lacks a required persisted permission.
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(
-            org.springframework.security.access.AccessDeniedException ex) {
-        log.warn("Access denied: {}", ex.getMessage());
-        return ResponseEntity
-                .status(403)
-                .body(ApiResponse.error(403, "Access denied", null));
+    public ResponseEntity<ApiResponse<Void>> handleGenerationAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        return ResponseEntity.status(403).body(ApiResponse.error(403, "Access denied", null));
     }
 
     // HTTP method / media type errors

@@ -30,7 +30,7 @@ import java.util.UUID;
                 @Index(name = "idx_gsuif_generation_run_triggering_user_id", columnList = "triggering_user_id")
         }
 )
-@Check(name = "ck_gsuif_generation_run_status", constraints = "status IN ('SUCCESS', 'BUILD_FAILED')")
+@Check(name = "ck_gsuif_generation_run_status", constraints = "status IN ('SUCCESS', 'BUILD_FAILED', 'IN_PROGRESS', 'FAILED', 'INTERRUPTED')")
 public class GenerationRun extends AuditableEntity {
 
     @Id
@@ -45,6 +45,13 @@ public class GenerationRun extends AuditableEntity {
 
     @Column(name = "input_fingerprint", length = 64)
     private String inputFingerprint;
+
+    /** Anchors every exported BACKEND file hash through generation-manifest.json; null for legacy runs. */
+    @Column(name = "package_manifest_sha256", length = 64)
+    private String packageManifestSha256;
+
+    public String getPackageManifestSha256() { return packageManifestSha256; }
+    public void setPackageManifestSha256(String value) { packageManifestSha256 = value; }
 
     public UUID getAttemptId() { return attemptId; }
     public void setAttemptId(UUID attemptId) { this.attemptId = attemptId; }
@@ -75,6 +82,17 @@ public class GenerationRun extends AuditableEntity {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "status", nullable = false, length = 20)
     private GenerationRunStatus status;
+
+    @Column(name = "failure_stage", length = 32)
+    private String failureStage;
+
+    @Column(name = "failure_code", length = 64)
+    private String failureCode;
+
+    public String getFailureStage() { return failureStage; }
+    public void setFailureStage(String value) { failureStage = value; }
+    public String getFailureCode() { return failureCode; }
+    public void setFailureCode(String value) { failureCode = value; }
 
     @Column(name = "compile_exit_code")
     private Integer compileExitCode;

@@ -12,12 +12,17 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.Set;
 import java.util.UUID;
 
@@ -37,10 +42,102 @@ public class GenerationArtifactStore {
         this.root = root.toAbsolutePath().normalize();
     }
 
+    /** A private, complete candidate. Publication is permitted only while completing its run. */
+    public record Staged(UUID runId, String fingerprint, Path directory,
+                         String privateManifestSha256, Map<String, String> fileHashes) {
+        public Staged { fileHashes = Map.copyOf(fileHashes); }
+    }
+
+    public Staged stage(UUID runId, String fingerprint, GenerationResult result) {
+        Objects.requireNonNull(runId);
+        Objects.requireNonNull(fingerprint);
+        Objects.requireNonNull(result);
+        Path directory = root.resolve(".pending-" + UUID.randomUUID());
+        try {
+            Files.createDirectories(root);
+            if (Files.isSymbolicLink(root)) throw new IOException("Unsafe artifact root");
+            Files.createDirectory(directory);
+            if (Files.getFileStore(directory).supportsFileAttributeView("posix"))
+                Files.setPosixFilePermissions(directory,
+                        java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+            writeResult(directory, fingerprint, result, true);
+            Map<String, String> hashes = new TreeMap<>();
+            result.artifacts().forEach(artifact -> hashes.put(artifact.relativePath(), artifact.sha256()));
+            return new Staged(runId, fingerprint, directory, digest(Files.readAllBytes(directory.resolve(MANIFEST))), hashes);
+        } catch (IOException | RuntimeException ex) {
+            deleteTree(directory);
+            throw new IllegalStateException("Could not stage generated artifacts", ex);
+        }
+    }
+
+    /** Atomic same-filesystem publication precedes DB commit; rollback removes the unreferenced directory. */
+    public void publish(Staged staged) {
+        requireTransaction();
+        Objects.requireNonNull(staged);
+        Path source = staged.directory();
+        Path destination = root.resolve(staged.runId().toString());
+        if (!source.getParent().equals(root) || !source.getFileName().toString().startsWith(".pending-")
+                || Files.isSymbolicLink(source) || !Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
+            throw new IllegalStateException("Staged artifacts are missing or unsafe");
+        boolean moved = false;
+        try {
+            verifyStaged(staged);
+            if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS))
+                throw new IOException("Run artifact directory already exists");
+            Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE);
+            moved = true;
+            verifyPublished(destination, staged);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCompletion(int status) {
+                    if (status != STATUS_COMMITTED) deleteTree(destination);
+                }
+            });
+        } catch (AtomicMoveNotSupportedException ex) {
+            if (moved) deleteTree(destination);
+            throw new IllegalStateException("Atomic artifact publication is unavailable", ex);
+        } catch (IOException ex) {
+            if (moved) deleteTree(destination);
+            throw new IllegalStateException("Could not publish generated artifacts", ex);
+        } catch (RuntimeException ex) {
+            if (moved) deleteTree(destination);
+            throw ex;
+        }
+    }
+
+    private void verifyStaged(Staged staged) throws IOException {
+        if (!digest(Files.readAllBytes(checkedStoredFile(staged.directory(), staged.directory().resolve(MANIFEST))))
+                .equals(staged.privateManifestSha256())) throw new IOException("Staged manifest changed");
+        Manifest manifest = mapper.readValue(staged.directory().resolve(MANIFEST).toFile(), Manifest.class);
+        if (manifest.version() != 1 || !staged.fingerprint().equals(manifest.inputFingerprint())
+                || manifest.artifacts().size() != staged.fileHashes().size())
+            throw new IOException("Staged artifact manifest differs");
+        Set<String> seen = new HashSet<>();
+        for (Entry entry : manifest.artifacts()) {
+            if (!seen.add(entry.relativePath()) || !Objects.equals(staged.fileHashes().get(entry.relativePath()), entry.sha256()))
+                throw new IOException("Staged artifact set differs");
+            Path file = staged.directory().resolve(safeRelative(entry.relativePath()));
+            String actual = digest(Files.readAllBytes(checkedStoredFile(staged.directory(), file)));
+            if (!actual.equals(entry.sha256()) || !actual.equals(entry.contentSha256()))
+                throw new IOException("Staged artifact changed");
+        }
+    }
+
+    private void verifyPublished(Path destination, Staged staged) throws IOException {
+        if (!digest(Files.readAllBytes(checkedStoredFile(destination, destination.resolve(MANIFEST))))
+                .equals(staged.privateManifestSha256())) throw new IOException("Published manifest changed");
+        for (var entry : staged.fileHashes().entrySet()) {
+            Path file = destination.resolve(safeRelative(entry.getKey()));
+            if (!digest(Files.readAllBytes(checkedStoredFile(destination, file))).equals(entry.getValue()))
+                throw new IOException("Published artifact changed");
+        }
+    }
+
+    public void discard(Staged staged) {
+        if (staged != null && staged.directory().getParent().equals(root)) deleteTree(staged.directory());
+    }
+
     public void save(UUID runId, String inputFingerprint, GenerationResult result) {
-        if (!TransactionSynchronizationManager.isActualTransactionActive()
-                || !TransactionSynchronizationManager.isSynchronizationActive())
-            throw new IllegalStateException("Artifact storage requires the generation-run transaction");
+        requireTransaction();
         Path destination = root.resolve(runId.toString());
         boolean created = false;
         try {
@@ -48,20 +145,7 @@ public class GenerationArtifactStore {
             if (Files.isSymbolicLink(root)) throw new IOException("Artifact root is a symbolic link");
             Files.createDirectory(destination);
             created = true;
-            Set<String> paths = new HashSet<>();
-            List<Entry> entries = new ArrayList<>();
-            for (GenerationResult.Artifact artifact : result.artifacts()) {
-                Path relative = safeRelative(artifact.relativePath());
-                if (!paths.add(relative.toString())) throw new IOException("Duplicate artifact path");
-                byte[] bytes = artifact.bytes();
-                Path file = destination.resolve(relative);
-                Files.createDirectories(file.getParent());
-                Files.write(file, bytes, StandardOpenOption.CREATE_NEW);
-                entries.add(new Entry(artifact.relativePath(), artifact.sha256(), digest(bytes),
-                        artifact.templateVersion(), artifact.catalogVersion()));
-            }
-            mapper.writeValue(destination.resolve(MANIFEST).toFile(),
-                    new Manifest(1, inputFingerprint, entries, result.diagnostics(), result.consumerBuild()));
+            writeResult(destination, inputFingerprint, result, false);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCompletion(int status) {
                     if (status != STATUS_COMMITTED) deleteTree(destination);
@@ -73,17 +157,49 @@ public class GenerationArtifactStore {
         }
     }
 
-    public GenerationResult read(UUID runId) {
+    private static void requireTransaction() {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive())
+            throw new IllegalStateException("Artifact storage requires the generation-run transaction");
+    }
+
+    private void writeResult(Path destination, String inputFingerprint, GenerationResult result,
+            boolean requireContentHash) throws IOException {
+        Set<String> paths = new HashSet<>();
+        List<Entry> entries = new ArrayList<>();
+        for (GenerationResult.Artifact artifact : result.artifacts()) {
+            Path relative = safeRelative(artifact.relativePath());
+            if (!paths.add(relative.toString())) throw new IOException("Duplicate artifact path");
+            byte[] bytes = artifact.bytes();
+            if (requireContentHash && !digest(bytes).equals(artifact.sha256()))
+                throw new IOException("Artifact hash differs from content");
+            Path file = destination.resolve(relative);
+            Files.createDirectories(file.getParent());
+            Files.write(file, bytes, StandardOpenOption.CREATE_NEW);
+            entries.add(new Entry(artifact.relativePath(), artifact.sha256(), digest(bytes),
+                    artifact.templateVersion(), artifact.catalogVersion()));
+        }
+        mapper.writeValue(destination.resolve(MANIFEST).toFile(),
+                new Manifest(1, inputFingerprint, entries, result.diagnostics(), result.consumerBuild()));
+    }
+
+    public GenerationResult read(UUID runId) { return readVerified(runId, null); }
+
+    public GenerationResult readVerified(UUID runId, String expectedFingerprint) {
         Path directory = runDirectory(runId);
         try {
             Path manifestPath = checkedStoredFile(directory, directory.resolve(MANIFEST));
             Manifest manifest = mapper.readValue(manifestPath.toFile(), Manifest.class);
             if (manifest.version() != 1) throw new IOException("Unsupported artifact manifest version");
+            if (expectedFingerprint != null && !expectedFingerprint.equals(manifest.inputFingerprint()))
+                throw new IOException("Stored attempt fingerprint differs from run");
             List<GenerationResult.Artifact> artifacts = new ArrayList<>();
             for (Entry entry : manifest.artifacts()) {
                 Path file = directory.resolve(safeRelative(entry.relativePath()));
                 byte[] bytes = Files.readAllBytes(checkedStoredFile(directory, file));
-                if (!digest(bytes).equals(entry.contentSha256())) throw new IOException("Stored artifact content changed");
+                if (!digest(bytes).equals(entry.contentSha256())
+                        || expectedFingerprint != null && !digest(bytes).equals(entry.sha256()))
+                    throw new IOException("Stored artifact content changed");
                 artifacts.add(new GenerationResult.Artifact(entry.relativePath(), bytes, entry.sha256(),
                         entry.templateVersion(), entry.catalogVersion()));
             }

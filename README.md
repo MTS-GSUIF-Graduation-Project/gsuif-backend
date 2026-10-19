@@ -64,13 +64,18 @@ psql -U postgres -d postgres -c "CREATE DATABASE gsuif_db OWNER gsuif_user"
 
 Provision the database once, before starting any API instances. Run the
 repository scripts as the database owner (or a dedicated schema owner), in
-version order. Stop on the first SQL error. A fresh database needs V1–V7;
-for a database that already has V1, apply only the later versions that have
-not been provisioned yet. Do not reapply V1 to an existing database.
+version order. Stop on the first SQL error. A fresh database needs V1–V10;
+an existing database provisioned through V8 must apply V9 then V10 once before starting
+the updated application. For a database that already has V1, apply only the
+later versions that have not been provisioned yet. Do not reapply V1 to an
+existing database. V10 repairs both known generation-status check names without
+rewriting runs or artifact links. Apply V10 to databases already through V9.
 
 ```sh
-for script in sql/V[1-7]__*.sql; do
-  PGPASSWORD=gsuif_pass psql -X -v ON_ERROR_STOP=1 -h localhost -U gsuif_user -d gsuif_db -f "$script" || exit 1
+for version in 1 2 3 4 5 6 7 8 9 10; do
+  for script in sql/V${version}__*.sql; do
+    PGPASSWORD=gsuif_pass psql -X -v ON_ERROR_STOP=1 -h localhost -U gsuif_user -d gsuif_db -f "$script" || exit 1
+  done
 done
 ```
 
@@ -152,7 +157,31 @@ curl -fsS -X POST -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN/exports/local" |
 
 # 11. Configure and export the same verified run to ZIP.
 curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/json' -d '{"type":"ZIP","path":"delivery/archive"}' "$BASE/api/v1/generation/projects/$PROJECT/destinations/zip" | jq -e 'select(.body.type == "ZIP" and .body.path == "delivery/archive")'
-curl -fsS -X POST -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN/exports/zip" | jq -e --arg run "$RUN" 'select(.body.runId == $run and (.body.location | endswith(".zip")))'
+ZIP_RESPONSE=$(curl -fsS -X POST -H "$AUTH" "$BASE/api/v1/generation/runs/$RUN/exports/zip")
+printf '%s' "$ZIP_RESPONSE" | jq -e --arg run "$RUN" 'select(.body.runId == $run and (.body.location | endswith(".zip")))'
+
+# 12. Download the complete ZIP over HTTP with the same Authorization header.
+DOWNLOAD_URL=$(printf '%s' "$ZIP_RESPONSE" | jq -er '.body.downloadUrl')
+curl -fsS -H "$AUTH" "$BASE$DOWNLOAD_URL" -o /tmp/woms-export.zip
+```
+
+The ZIP export response adds a relative `downloadUrl` alongside the existing
+server-local `location`. The download endpoint verifies the committed run and
+ZIP contents before returning `application/zip`. A frontend should use the
+Authorization header and save the response as a Blob. Never place a JWT in the
+URL:
+
+```js
+const response = await fetch(`${baseUrl}${exportResult.body.downloadUrl}`, {
+  headers: { Authorization: `Bearer ${token}` },
+});
+if (!response.ok) throw new Error('ZIP download failed');
+const blobUrl = URL.createObjectURL(await response.blob());
+const link = document.createElement('a');
+link.href = blobUrl;
+link.download = `${exportResult.body.runId}.zip`;
+link.click();
+URL.revokeObjectURL(blobUrl);
 ```
 
 `validationScope.passedTargets` reports Java compilation and generated consumer

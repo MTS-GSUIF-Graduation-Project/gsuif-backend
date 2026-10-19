@@ -15,15 +15,27 @@ public final class GenerationContextBuilder {
     private static final Set<String> RESERVED = Set.of("abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null", "var", "yield", "record", "sealed", "permits");
     private final ObjectMapper mapper;
     private final MetadataSchemaValidator schemaValidator;
-    private final PackagedContractRegistry contractRegistry = new PackagedContractRegistry();
-    private final PackagedContractLoader contractLoader = new PackagedContractLoader(contractRegistry);
+    private final PackagedContractRegistry contractRegistry;
+    private final PackagedContractLoader contractLoader;
 
     public GenerationContextBuilder(ObjectMapper mapper, MetadataSchemaValidator schemaValidator) {
+        this(mapper, schemaValidator, new PackagedContractRegistry());
+    }
+
+    GenerationContextBuilder(ObjectMapper mapper, MetadataSchemaValidator schemaValidator,
+                             PackagedContractRegistry contractRegistry) {
         this.mapper = Objects.requireNonNull(mapper);
         this.schemaValidator = Objects.requireNonNull(schemaValidator);
+        this.contractRegistry = Objects.requireNonNull(contractRegistry);
+        this.contractLoader = new PackagedContractLoader(contractRegistry);
     }
 
     public GenerationContext build(MetadataVersion version, GenerationSpecification spec, Set<Target> targets, String framework) {
+        return build(version, spec, targets, framework, false);
+    }
+
+    GenerationContext build(MetadataVersion version, GenerationSpecification spec, Set<Target> targets,
+                            String framework, boolean completeOutputProfile) {
         List<String> errors = new ArrayList<>();
         JsonNode snapshot = null;
         if (version == null) errors.add("metadataVersion: required");
@@ -38,7 +50,7 @@ public final class GenerationContextBuilder {
         if (!"spring-angular".equals(framework)) errors.add("context.framework: expected spring-angular");
         if (spec == null) errors.add("specification: required");
         Map<String, Object> api = spec == null ? Map.of() : validateSpecification(spec, snapshot, targets,
-                version == null ? null : version.getSchemaVersion(), errors);
+                version == null ? null : version.getSchemaVersion(), completeOutputProfile, errors);
         if (!errors.isEmpty()) throw new GenerationValidationException(errors);
 
         Map<String, Object> entity = new LinkedHashMap<>();
@@ -66,7 +78,8 @@ public final class GenerationContextBuilder {
     }
 
     private Map<String, Object> validateSpecification(GenerationSpecification s, JsonNode snapshot, Set<Target> targets,
-                                                       String schemaVersion, List<String> errors) {
+                                                       String schemaVersion, boolean completeOutputProfile,
+                                                       List<String> errors) {
         if (!"1.0.0".equals(s.specVersion())) errors.add("specification.specVersion: supported version is 1.0.0");
         if (!identifier(s.basePackage(), "[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+")) errors.add("specification.basePackage: invalid Java package");
         EntitySpec entity = s.entity();
@@ -86,13 +99,19 @@ public final class GenerationContextBuilder {
                     if (!identifier(f.columnName(), "[a-z][a-z0-9_]*") || !columns.add(f.columnName())) errors.add(p + ".columnName: invalid or duplicate");
                     if (f.javaType() == null || !(TYPES.contains(f.javaType()) || f.javaType().equals(f.enumType()) && identifier(f.enumType(), "[A-Z][A-Za-z0-9]*"))) errors.add(p + ".javaType: unsupported type");
                     if (f.enumType() != null && (!f.enumType().equals(f.javaType()) || TYPES.contains(f.enumType()))) errors.add(p + ".enumType: invalid enum");
-                    if (f.columnLength() != null && (f.columnLength() < 1 || !"String".equals(f.javaType()))) errors.add(p + ".columnLength: requires positive String length");
+                    if (f.columnLength() != null && (f.columnLength() < 1 || !("String".equals(f.javaType())
+                            || completeOutputProfile && f.enumType() != null)))
+                        errors.add(p + ".columnLength: requires positive String length"
+                                + (completeOutputProfile ? " or enum length" : ""));
                 }
             }
         }
         OpenApiSpec openApi = s.openApi();
         if (openApi == null) { errors.add("specification.openApi: required"); return Map.of(); }
-        if (openApi.contractId() == null || contractRegistry.resource(openApi.contractId()) == null) errors.add("specification.openApi.contractId: unsupported packaged contract");
+        if (!contractRegistry.containsId(openApi.contractId()))
+            errors.add("specification.openApi.contractId: unsupported packaged contract");
+        else if (contractRegistry.find(openApi.contractId(), openApi.contractVersion()) == null)
+            errors.add("specification.openApi.contractVersion: unsupported packaged version");
         PackagedContractLoader.Contract contract = contractLoader.load(openApi, errors);
         Map<String, Object> api = contract == null ? Map.of() : contract.api();
         Map<String, PackagedContractLoader.Operation> operations = contract == null ? Map.of() : contract.operations();
@@ -130,7 +149,15 @@ public final class GenerationContextBuilder {
                         errors.add(p + ".requestMapping.body." + field + ": DTO field mapping required");
                 }
                 if (operation.path().contains("{id}") && !"id".equals(request.path("path").path("id").asText())) errors.add(p + ".requestMapping.path.id: required");
-                if (operation.kind().equals("list") && !"status".equals(request.path("query").path("status").asText())) errors.add(p + ".requestMapping.query.status: required");
+                if (operation.kind().equals("list")) {
+                    for (String query : operation.queryFields().keySet())
+                        if (!query.equals(request.path("query").path(query).asText()))
+                            errors.add(p + ".requestMapping.query." + query + ": required");
+                    if (request.path("query").isObject()) request.path("query").fieldNames().forEachRemaining(query -> {
+                        if (!operation.queryFields().containsKey(query))
+                            errors.add(p + ".requestMapping.query." + query + ": absent from contract");
+                    });
+                }
             }
             if (!selected.keySet().equals(seenIds)) errors.add("specification.openApi.bindingOperations: unknown binding ID");
             if (targets != null && targets.contains(Target.CONTROLLER) && seenOperations.size() != operations.size()) errors.add("specification.openApi.bindingOperations: all contract operations required");
@@ -293,7 +320,7 @@ public final class GenerationContextBuilder {
         return ids;
     }
 
-    private static boolean identifier(String value, String regex) {
+    static boolean identifier(String value, String regex) {
         if (value == null || !value.matches(regex)) return false;
         for (String part : value.split("\\.")) if (RESERVED.contains(part)) return false;
         return true;
