@@ -52,3 +52,30 @@ On 2026-10-20:
 The full legacy `GenerationEngineTest` suite additionally requires its OpenAPI
 fixture profiles and Node/npm. Focused profile-independent generation tests
 passed; CI runs the repository's complete configured verification.
+
+## Final CI evidence
+
+GitHub Actions CI run
+[#170 (run ID 39396085868)](https://github.com/MTS-GSUIF-Graduation-Project/gsuif-backend/actions/runs/39396085868)
+completed successfully on 2026-10-20.
+
+- Pinned Angular dependency provisioning: passed.
+- Maven verify: passed.
+- `GeneratedAngularComponentGoldenTest`: 11 tests, 0 failures, 0 errors,
+  0 skipped. This includes the passing
+  `generatedAssetTicketAngularComponentConformsAndStrictlyCompiles` test and
+  all 10 passing deliberate Angular mutation cases.
+- `GeneratedSpringControllerGoldenTest`: 10 tests, 0 failures, 0 errors,
+  0 skipped.
+- `GeneratedValidatorBehaviorTest`: 2 tests, 0 failures, 0 errors, 0 skipped.
+- The normal Maven verify profile skipped the opt-in
+  `CompleteBackendStandaloneBuildTest` tests as designed. The dedicated
+  editable standalone CI step executed
+  `handEditedGeneratedServiceBuildsWithoutGeneratorRuntime`: 1 test,
+  0 failures, 0 errors, 0 skipped.
+- Editable standalone CI step: passed.
+- Overall run result: success.
+
+The Maven verify stage therefore executed 23 directly relevant SCRUM-50 golden
+and generated-validator tests. The dedicated editable-code stage executed one
+additional focused SCRUM-50 test.
