@@ -120,19 +120,19 @@ public final class BackendGenerationService {
         }
         try { finalBuild.validate(assembled); }
         catch (RuntimeException ex) {
-            throw failed(attemptId, prepared.fingerprint(), GenerationFailureStage.FINAL_VALIDATION,
-                    GenerationFailureCode.RESULT_VALIDATION_FAILED);
+            throw finalValidationFailed(attemptId, prepared.fingerprint(), FinalValidationDiagnostics.ofBuild(ex), ex);
         }
         GenerationResult result = result(assembled, selected.descriptor().catalogVersion());
         GenerationArtifactStore.Staged staged = null;
         GenerationRun completed;
+        FinalValidationDiagnostics.Reason step = FinalValidationDiagnostics.Reason.PERSISTENCE_STAGING;
         try {
             staged = store.stage(reserved.getId(), prepared.fingerprint(), result);
+            step = FinalValidationDiagnostics.Reason.PERSISTENCE_COMPLETION;
             completed = runs.completeBackendAttempt(attemptId, prepared.fingerprint(), staged,
                     result, provenance);
         } catch (RuntimeException ex) {
-            throw failed(attemptId, prepared.fingerprint(), GenerationFailureStage.FINAL_VALIDATION,
-                    GenerationFailureCode.RESULT_VALIDATION_FAILED);
+            throw finalValidationFailed(attemptId, prepared.fingerprint(), step, ex);
         } finally { store.discard(staged); }
         // Completion has committed. A subsequent integrity/read failure is not a failed generation attempt.
         return created(completed);
@@ -196,6 +196,20 @@ public final class BackendGenerationService {
             GenerationFailureStage stage, GenerationFailureCode code) {
         GenerationRun run = runs.recordFailure(attemptId, fingerprint, stage, code);
         return new GenerationStageException(stage, code, run.getId());
+    }
+
+    /** Records the unchanged public stage/code and logs which final step failed, even if recording fails. */
+    private GenerationStageException finalValidationFailed(UUID attemptId, String fingerprint,
+            FinalValidationDiagnostics.Reason reason, RuntimeException cause) {
+        UUID runId = null;
+        try {
+            GenerationStageException failure = failed(attemptId, fingerprint, GenerationFailureStage.FINAL_VALIDATION,
+                    GenerationFailureCode.RESULT_VALIDATION_FAILED);
+            runId = failure.runId();
+            return failure;
+        } finally {
+            FinalValidationDiagnostics.report(runId, attemptId, reason, cause);
+        }
     }
 
     private GenerationApiDtos.BackendCreated created(GenerationRun run) {

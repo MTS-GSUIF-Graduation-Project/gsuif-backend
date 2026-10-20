@@ -42,7 +42,20 @@ try {
     catch { if ($_.Exception.Message -eq 'Expected child failure') { throw } }
     if (Test-Path Env:OPENROUTER_API_KEY) { throw 'Failed invocation retained temporary key' }
     if ($env:OPENROUTER_MODEL -ne 'pre-existing-model') { throw 'Failed invocation changed caller model' }
-    Write-Output 'OpenRouter local loader: 5 disposable-value checks passed'
+    $env:GSUIF_LOADER_TEST_EXISTING = 'caller-value'
+    Remove-Item Env:GSUIF_LOADER_TEST_NEW -ErrorAction SilentlyContinue
+    Set-Content -LiteralPath $child -Value 'if ($env:GSUIF_LOADER_TEST_EXISTING -ne "launch-value" -or $env:GSUIF_LOADER_TEST_NEW -ne "added" -or $env:OPENROUTER_API_KEY -ne "disposable-test-only") { exit 23 }'
+    & $loader -BackendCommand 'powershell.exe' -BackendArguments @('-NoProfile', '-File', $child) `
+        -Environment @{ GSUIF_LOADER_TEST_EXISTING = 'launch-value'; GSUIF_LOADER_TEST_NEW = 'added' }
+    if ($env:GSUIF_LOADER_TEST_EXISTING -ne 'caller-value' -or (Test-Path Env:GSUIF_LOADER_TEST_NEW)) { throw 'Extra environment was not restored' }
+    if (Test-Path Env:OPENROUTER_API_KEY) { throw 'Extra environment invocation retained temporary key' }
+    foreach ($forbidden in @(@{ OPENROUTER_API_KEY = 'x' }, @{ OPENROUTER_MODEL = 'x' }, @{ 'bad-name' = 'x' }, @{ GSUIF_EMPTY = ' ' })) {
+        try { & $loader -BackendCommand 'powershell.exe' -BackendArguments @('-NoProfile', '-Command', 'exit 0') -Environment $forbidden; throw 'Expected environment rejection' }
+        catch { if ($_.Exception.Message -eq 'Expected environment rejection') { throw } }
+    }
+    if ((Test-Path Env:OPENROUTER_API_KEY) -or $env:GSUIF_LOADER_TEST_EXISTING -ne 'caller-value') { throw 'Environment rejection changed caller values' }
+    Remove-Item Env:GSUIF_LOADER_TEST_EXISTING
+    Write-Output 'OpenRouter local loader: 7 disposable-value checks passed'
 } finally {
     if ($hadKey) { $env:OPENROUTER_API_KEY = $originalKey } else { Remove-Item Env:OPENROUTER_API_KEY -ErrorAction SilentlyContinue }
     if ($hadModel) { $env:OPENROUTER_MODEL = $originalModel } else { Remove-Item Env:OPENROUTER_MODEL -ErrorAction SilentlyContinue }

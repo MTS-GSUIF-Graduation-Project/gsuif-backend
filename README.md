@@ -35,6 +35,14 @@ Example:
 
 `[SCRUM-17] Add project gitignore`
 
+## Local startup
+
+On Windows, run `.\scripts\Initialize-GsuifLocal.ps1` once, then start the backend with
+`.\scripts\Start-GsuifLocal.ps1`. It checks Docker, PostgreSQL, the schema and the generation settings,
+then loads the saved key, model, pinned image IDs and Maven paths for the backend process only. Use
+`-WithoutGeneration` for work that does not need generation. See
+[docs/local-startup.md](docs/local-startup.md).
+
 ## AssetTicket vertical slice (SCRUM-31)
 
 This example uses the packaged `asset-ticket-api` 1.0.0 contract. The fixed

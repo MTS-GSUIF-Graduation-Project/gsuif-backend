@@ -218,17 +218,37 @@ class BackendFinalPackageValidatorTest {
         new BackendFinalPackageValidator(image, Path.of(repository), Path.of(home)).validate(assembled());
     }
 
+    /** The StockUnit 3.0.0 (paged) contract, built offline in the pinned image without any provider call. */
+    @Test void pagedV3PackageBuildsInPinnedOfflineDockerWhenOptedIn() throws Exception {
+        String image = System.getProperty("gsuif.test.backend-build-image-id");
+        String home = System.getProperty("gsuif.test.maven-home");
+        String repository = System.getProperty("maven.repo.local");
+        Assumptions.assumeTrue(image != null && home != null && repository != null,
+                "Pinned image, Maven distribution and cache must be supplied explicitly");
+        var fixture = new CompleteOutputTestFixture();
+        assertEquals("3.0.0", fixture.pagedSpecification().openApi().contractVersion());
+        var assembled = assembled(fixture, fixture.pagedSnapshot(), fixture.pagedSpecification(),
+                "/generation/fixtures/StockUnitPagedServiceImpl.java.txt");
+        new BackendFinalPackageValidator(image, Path.of(repository), Path.of(home)).validate(assembled);
+    }
+
     private CompleteBackendPackageAssembler.Assembled assembled() throws Exception {
         var fixture = new CompleteOutputTestFixture();
-        var descriptor = fixture.preflight().describe(fixture.version(fixture.snapshot("condition")),
-                fixture.specification(), OutputMode.BACKEND);
+        return assembled(fixture, fixture.snapshot("condition"), fixture.specification(),
+                "/generation/fixtures/StockUnitServiceImpl.java.txt");
+    }
+
+    private CompleteBackendPackageAssembler.Assembled assembled(CompleteOutputTestFixture fixture,
+            com.fasterxml.jackson.databind.node.ObjectNode snapshot, GenerationSpecification specification,
+            String serviceResource) throws Exception {
+        var descriptor = fixture.preflight().describe(fixture.version(snapshot), specification, OutputMode.BACKEND);
         var plan = GenerationFilePlan.forDescriptor(descriptor);
         var runtime = new CompleteBackendRuntimeRenderer(
                 new PackagedContractRegistry("/generation/stock-unit-contracts.yaml"));
         var input = BackendModelInput.from(descriptor, plan,
                 new CompleteBackendDefinitionRenderer().render(descriptor, plan), runtime);
         String source;
-        try (var resource = getClass().getResourceAsStream("/generation/fixtures/StockUnitServiceImpl.java.txt")) {
+        try (var resource = getClass().getResourceAsStream(serviceResource)) {
             source = new String(resource.readAllBytes(), StandardCharsets.UTF_8);
         }
         var response = new ObjectMapper().createObjectNode();
