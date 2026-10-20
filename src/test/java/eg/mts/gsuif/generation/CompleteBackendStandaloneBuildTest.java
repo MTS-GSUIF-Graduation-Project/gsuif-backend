@@ -56,6 +56,26 @@ class CompleteBackendStandaloneBuildTest {
         buildAndInspect("stock-unit-unaudited", selected, false);
     }
 
+    @Test void handEditedGeneratedServiceBuildsWithoutGeneratorRuntime() throws Exception {
+        requireOptIn();
+        var descriptor = fixture.preflight().describe(fixture.version(fixture.snapshot("condition")),
+                fixture.specification(), OutputMode.BACKEND);
+        Selected selected = selected(descriptor,
+                new PackagedContractRegistry("/generation/stock-unit-contracts.yaml"), """
+                package com.example.inventory.service;
+                @org.springframework.stereotype.Service
+                public class StockUnitServiceImpl implements StockUnitService {
+                  public com.example.inventory.dto.StockUnitDto create(com.example.inventory.dto.CreateStockUnitRequest request) { return null; }
+                  public com.example.inventory.dto.StockUnitDto getById(java.util.UUID id) { return null; }
+                  public com.example.inventory.dto.StockUnitPage list(com.example.inventory.dto.StockUnitCondition condition, String label) { return null; }
+                  public com.example.inventory.dto.StockUnitDto update(java.util.UUID id, com.example.inventory.dto.UpdateStockUnitRequest request) { return null; }
+                  public void delete(java.util.UUID id) { }
+                  public String maintainerNote() { return "hand-edited after generation"; }
+                }
+                """);
+        buildAndInspect("stock-unit-hand-edited", selected, false, "maintainerNote", false);
+    }
+
     @Test void auditedRenamedGadgetBuildsAsStandaloneExecutableJar() throws Exception {
         requireOptIn();
         var registry = new PackagedContractRegistry("/generation/gadget-contracts.yaml");
@@ -111,6 +131,16 @@ class CompleteBackendStandaloneBuildTest {
     }
 
     private void buildAndInspect(String label, Selected selected, boolean audited) throws Exception {
+        buildAndInspect(label, selected, audited, null);
+    }
+
+    private void buildAndInspect(String label, Selected selected, boolean audited,
+                                 String editedMethod) throws Exception {
+        buildAndInspect(label, selected, audited, editedMethod, true);
+    }
+
+    private void buildAndInspect(String label, Selected selected, boolean audited,
+                                 String editedMethod, boolean offline) throws Exception {
         var input = selected.input();
         ObjectNode response = json.createObjectNode();
         response.putArray("files").addObject().put("path", input.writablePath())
@@ -128,11 +158,15 @@ class CompleteBackendStandaloneBuildTest {
         }
         verifyExtracted(input, extracted, packageFiles.keySet());
         Path backend = extracted.resolve("backend");
+        assertGeneratorRuntimeAbsent(backend);
         Path log = scratch.resolve(label + "-maven-build.log");
-        var command = List.of(Path.of(System.getProperty("gsuif.test.maven-command")).toAbsolutePath().toString(),
-                "-B", "-ntp", "-o", "-q", "-f", backend.resolve("pom.xml").toString(),
+        var command = new java.util.ArrayList<>(List.of(
+                Path.of(System.getProperty("gsuif.test.maven-command")).toAbsolutePath().toString(),
+                "-B", "-ntp"));
+        if (offline) command.add("-o");
+        command.addAll(List.of("-q", "-f", backend.resolve("pom.xml").toString(),
                 "-Dmaven.repo.local=" + Path.of(System.getProperty("maven.repo.local")).toAbsolutePath(),
-                "-DskipTests", "package");
+                "-DskipTests", "package"));
         ProcessBuilder builder = new ProcessBuilder(command).directory(backend.toFile())
                 .redirectErrorStream(true).redirectOutput(log.toFile());
         builder.environment().keySet().removeIf(key -> key.equalsIgnoreCase("OPENROUTER_API_KEY"));
@@ -169,10 +203,34 @@ class CompleteBackendStandaloneBuildTest {
                     entry.getName().startsWith("BOOT-INF/lib/hibernate-envers-")));
             assertEquals(audited, jar.getEntry(classes + "audit/AppRevision.class") != null);
             assertNull(jar.getEntry("BOOT-INF/classes/eg/mts/gsuif/generation/GenerationResult.class"));
+            if (editedMethod != null) {
+                byte[] implementation = jar.getInputStream(jar.getEntry(classes + "service/"
+                        + input.descriptor().entityName() + "ServiceImpl.class")).readAllBytes();
+                assertTrue(new String(implementation, StandardCharsets.ISO_8859_1).contains(editedMethod),
+                        "The hand-edited method must be present in compiled bytecode");
+            }
             assertEquals("org.springframework.boot.loader.launch.JarLauncher",
                     jar.getManifest().getMainAttributes().getValue("Main-Class"));
             assertEquals(input.descriptor().basePackage() + ".Application",
                     jar.getManifest().getMainAttributes().getValue("Start-Class"));
+        }
+    }
+
+    private static void assertGeneratorRuntimeAbsent(Path backend) throws Exception {
+        String pom = Files.readString(backend.resolve("pom.xml"));
+        for (String forbidden : List.of("eg.mts.gsuif", "freemarker", "io.jmix", "javaparser",
+                "openapi-generator", "openrouter"))
+            assertFalse(pom.toLowerCase(java.util.Locale.ROOT).contains(forbidden),
+                    "Generated POM must not depend on " + forbidden);
+        try (var paths = Files.walk(backend.resolve("src/main/java"))) {
+            for (Path source : paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java")).toList()) {
+                String java = Files.readString(source);
+                assertFalse(java.contains("import eg.mts.gsuif"), source.toString());
+                assertFalse(java.contains("import freemarker"), source.toString());
+                assertFalse(java.contains("import io.jmix"), source.toString());
+                assertFalse(java.contains("import com.github.javaparser"), source.toString());
+            }
         }
     }
 

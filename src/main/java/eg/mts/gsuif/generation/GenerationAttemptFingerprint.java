@@ -132,6 +132,7 @@ final class GenerationAttemptFingerprint {
             hash.add("unavailable-component-templates");
         }
         hash.resource("templates/freemarker/angular-visibility.ts.ftl");
+        hash.resource("templates/freemarker/generated-validator.java.ftl");
         java.util.stream.Stream.of("eg/mts/gsuif/dto/ApiResponse.java", "eg/mts/gsuif/dto/PagedBody.java",
                 "eg/mts/gsuif/entity/AuditableEntity.java", "eg/mts/gsuif/audit/AuditorAwareImpl.java",
                 "eg/mts/gsuif/config/JpaAuditingConfig.java")

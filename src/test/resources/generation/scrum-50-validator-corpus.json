@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "name": "valid create request at title boundary",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"status\":\"OPEN\"}",
+      "expected": []
+    },
+    {
+      "name": "missing required field",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.title","code":"REQUIRED_FIELD"}]
+    },
+    {
+      "name": "wrong field type",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":42,\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.title","code":"WRONG_TYPE"}]
+    },
+    {
+      "name": "invalid enum",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"ticket\",\"status\":\"BROKEN\"}",
+      "expected": [{"path":"$.status","code":"INVALID_ENUM"}]
+    },
+    {
+      "name": "duplicate value",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"first\",\"title\":\"second\",\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.title","code":"DUPLICATE_VALUE"}]
+    },
+    {
+      "name": "title above boundary",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.title","code":"BOUNDARY_VIOLATION"}]
+    },
+    {
+      "name": "empty legacy update remains valid",
+      "schema": "UpdateAssetTicketRequest",
+      "json": "{}",
+      "expected": []
+    }
+  ]
+}
