@@ -29,3 +29,27 @@ This is intentionally separate from the framework's
 `MetadataSchemaValidator`, `MetadataBusinessValidator`,
 `BackendModelOutputValidator`, and build validators. Those types neither
 implement nor stand in for the generated contract.
+
+## Scope: template-only output, not the complete package
+
+`TemplateOnlyProvider` emits this validator as
+`<basePackage>/util/<Entity>GeneratedValidator.java`. (It previously used a
+`validation` package; STD-06 designates no such layer, so it moved to `util`.)
+It is **not** listed
+in `GenerationFilePlan`, so the complete backend package (`OutputMode.BACKEND`,
+the ZIP users download) does not contain it, and no generated controller calls
+it. The validator class itself has no GSUIF import. The surrounding
+template-only output does: it copies support sources (`ApiResponse`,
+`PagedBody`, `AuditableEntity`, `AuditorAwareImpl`, `JpaAuditingConfig`) under
+`eg/mts/gsuif/...`, and the template controller imports
+`eg.mts.gsuif.dto.ApiResponse`. Those are copied sources, not a runtime
+dependency, and the complete package relocates them into the generated
+application's own packages.
+
+The complete package validates requests at the source instead: the request
+DTOs carry Bean Validation derived from the contract and the persistence
+columns (`RequestValidationRules`), `config/RequestJsonStrictnessConfig`
+enforces the contract's JSON types and rejects duplicate members, and
+`GlobalExceptionHandler` keys every 400 by the offending field. See
+`generated-output-conformance-evidence.md` for the historical (frozen ZIP) and
+regenerated results.
