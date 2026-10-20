@@ -115,7 +115,8 @@ public final class GenerationContextBuilder {
         PackagedContractLoader.Contract contract = contractLoader.load(openApi, errors);
         Map<String, Object> api = contract == null ? new LinkedHashMap<>() : new LinkedHashMap<>(contract.api());
         if (contract != null && entity != null && entity.fields() != null) {
-            api.put("validatorPackage", s.basePackage() + ".validation");
+            // STD-06 designates util (there is no "validation" layer) for standalone helpers.
+            api.put("validatorPackage", s.basePackage() + ".util");
             api.put("validatorClass", entity.className() + "GeneratedValidator");
             api.put("validatorSchemas", validatorSchemas(contract, entity, api));
         }

@@ -1,46 +1,103 @@
 {
+  "families": ["REQUIRED_FIELD", "WRONG_TYPE", "INVALID_ENUM", "DUPLICATE_VALUE", "BOUNDARY_VIOLATION"],
   "cases": [
     {
       "name": "valid create request at title boundary",
+      "family": "VALID",
       "schema": "CreateAssetTicketRequest",
-      "json": "{\"title\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"status\":\"OPEN\"}",
+      "json": "{\"title\":\"${a*100}\",\"status\":\"OPEN\"}",
       "expected": []
-    },
-    {
-      "name": "missing required field",
-      "schema": "CreateAssetTicketRequest",
-      "json": "{\"status\":\"OPEN\"}",
-      "expected": [{"path":"$.title","code":"REQUIRED_FIELD"}]
-    },
-    {
-      "name": "wrong field type",
-      "schema": "CreateAssetTicketRequest",
-      "json": "{\"title\":42,\"status\":\"OPEN\"}",
-      "expected": [{"path":"$.title","code":"WRONG_TYPE"}]
-    },
-    {
-      "name": "invalid enum",
-      "schema": "CreateAssetTicketRequest",
-      "json": "{\"title\":\"ticket\",\"status\":\"BROKEN\"}",
-      "expected": [{"path":"$.status","code":"INVALID_ENUM"}]
-    },
-    {
-      "name": "duplicate value",
-      "schema": "CreateAssetTicketRequest",
-      "json": "{\"title\":\"first\",\"title\":\"second\",\"status\":\"OPEN\"}",
-      "expected": [{"path":"$.title","code":"DUPLICATE_VALUE"}]
-    },
-    {
-      "name": "title above boundary",
-      "schema": "CreateAssetTicketRequest",
-      "json": "{\"title\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"status\":\"OPEN\"}",
-      "expected": [{"path":"$.title","code":"BOUNDARY_VIOLATION"}]
     },
     {
       "name": "empty legacy update remains valid",
+      "family": "VALID",
       "schema": "UpdateAssetTicketRequest",
       "json": "{}",
       "expected": []
+    },
+    {
+      "name": "valid partial update",
+      "family": "VALID",
+      "schema": "UpdateAssetTicketRequest",
+      "json": "{\"status\":\"OPEN\"}",
+      "expected": []
+    },
+    {
+      "name": "missing required title",
+      "family": "REQUIRED_FIELD",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.title","code":"REQUIRED_FIELD","detail":"required field is missing"}]
+    },
+    {
+      "name": "missing required status",
+      "family": "REQUIRED_FIELD",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"ticket\"}",
+      "expected": [{"path":"$.status","code":"REQUIRED_FIELD","detail":"required field is missing"}]
+    },
+    {
+      "name": "title as number",
+      "family": "WRONG_TYPE",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":42,\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.title","code":"WRONG_TYPE","detail":"expected string"}]
+    },
+    {
+      "name": "status as number",
+      "family": "WRONG_TYPE",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"ticket\",\"status\":1}",
+      "expected": [{"path":"$.status","code":"WRONG_TYPE","detail":"expected string"}]
+    },
+    {
+      "name": "update title as boolean",
+      "family": "WRONG_TYPE",
+      "schema": "UpdateAssetTicketRequest",
+      "json": "{\"title\":true}",
+      "expected": [{"path":"$.title","code":"WRONG_TYPE","detail":"expected string"}]
+    },
+    {
+      "name": "invalid enum on create",
+      "family": "INVALID_ENUM",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"ticket\",\"status\":\"BROKEN\"}",
+      "expected": [{"path":"$.status","code":"INVALID_ENUM","detail":"value is outside the contracted enum"}]
+    },
+    {
+      "name": "invalid enum casing on update",
+      "family": "INVALID_ENUM",
+      "schema": "UpdateAssetTicketRequest",
+      "json": "{\"status\":\"open\"}",
+      "expected": [{"path":"$.status","code":"INVALID_ENUM","detail":"value is outside the contracted enum"}]
+    },
+    {
+      "name": "duplicate title member",
+      "family": "DUPLICATE_VALUE",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"first\",\"title\":\"second\",\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.title","code":"DUPLICATE_VALUE","detail":"duplicate JSON object member"}]
+    },
+    {
+      "name": "duplicate status member on update",
+      "family": "DUPLICATE_VALUE",
+      "schema": "UpdateAssetTicketRequest",
+      "json": "{\"status\":\"OPEN\",\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.status","code":"DUPLICATE_VALUE","detail":"duplicate JSON object member"}]
+    },
+    {
+      "name": "title above boundary on create",
+      "family": "BOUNDARY_VIOLATION",
+      "schema": "CreateAssetTicketRequest",
+      "json": "{\"title\":\"${a*101}\",\"status\":\"OPEN\"}",
+      "expected": [{"path":"$.title","code":"BOUNDARY_VIOLATION","detail":"length exceeds 100"}]
+    },
+    {
+      "name": "title above boundary on update",
+      "family": "BOUNDARY_VIOLATION",
+      "schema": "UpdateAssetTicketRequest",
+      "json": "{\"title\":\"${a*101}\"}",
+      "expected": [{"path":"$.title","code":"BOUNDARY_VIOLATION","detail":"length exceeds 100"}]
     }
   ]
 }

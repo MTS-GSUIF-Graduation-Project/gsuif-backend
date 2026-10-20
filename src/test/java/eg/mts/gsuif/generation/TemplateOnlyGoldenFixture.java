@@ -25,7 +25,7 @@ final class TemplateOnlyGoldenFixture {
     static final String CONTROLLER_PATH =
             "src/main/java/com/example/fixture/controller/AssetTicketController.java";
     static final String VALIDATOR_PATH =
-            "src/main/java/com/example/fixture/validation/AssetTicketGeneratedValidator.java";
+            "src/main/java/com/example/fixture/util/AssetTicketGeneratedValidator.java";
     static final String ANGULAR_TYPESCRIPT_PATH =
             "src/app/generated/asset-ticket.component.ts";
     static final String ANGULAR_HTML_PATH =
