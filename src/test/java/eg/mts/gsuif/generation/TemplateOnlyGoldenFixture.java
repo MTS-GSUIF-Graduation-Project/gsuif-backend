@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-final class Scrum50GoldenFixture {
+final class TemplateOnlyGoldenFixture {
     static final String BASE_PACKAGE = "com.example.fixture";
     static final String CONTROLLER_PATH =
             "src/main/java/com/example/fixture/controller/AssetTicketController.java";

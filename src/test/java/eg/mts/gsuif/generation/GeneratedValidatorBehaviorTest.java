@@ -39,9 +39,9 @@ class GeneratedValidatorBehaviorTest {
 
     @Test
     void compiledGeneratedValidateImplementationRejectsSharedMutationCorpus() throws Exception {
-        GenerationResult result = new Scrum50GoldenFixture().generate(Set.of(Target.CONTROLLER));
+        GenerationResult result = new TemplateOnlyGoldenFixture().generate(Set.of(Target.CONTROLLER));
         var artifact = result.artifacts().stream()
-                .filter(item -> item.relativePath().equals(Scrum50GoldenFixture.VALIDATOR_PATH))
+                .filter(item -> item.relativePath().equals(TemplateOnlyGoldenFixture.VALIDATOR_PATH))
                 .findFirst().orElseThrow();
         String source = new String(artifact.bytes(), StandardCharsets.UTF_8);
         assertFalse(source.contains("eg.mts.gsuif"));
@@ -78,7 +78,7 @@ class GeneratedValidatorBehaviorTest {
     private static void assertCorpus(ValidatorInvocation validator) throws Exception {
         JsonNode corpus;
         try (var input = GeneratedValidatorBehaviorTest.class.getResourceAsStream(
-                "/generation/scrum-50-validator-corpus.json")) {
+                "/generation/generated-validator-corpus.json")) {
             assertNotNull(input);
             corpus = JSON.readTree(input);
         }

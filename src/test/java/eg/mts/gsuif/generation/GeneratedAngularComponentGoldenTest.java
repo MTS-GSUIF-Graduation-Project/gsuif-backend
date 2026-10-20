@@ -31,21 +31,21 @@ class GeneratedAngularComponentGoldenTest {
 
     @BeforeAll
     void generateAndProvisionHarness() throws Exception {
-        harness = Path.of("target", "scrum-50-angular-golden");
+        harness = Path.of("target", "angular-component-golden");
         Files.createDirectories(harness);
         for (String file : List.of("package.json", "package-lock.json", "tsconfig.json",
-                "scrum-50-golden.mjs"))
+                "angular-component-golden.mjs"))
             Files.copy(Path.of("src/test/angular-harness", file), harness.resolve(file),
                     StandardCopyOption.REPLACE_EXISTING);
 
-        GenerationResult generated = new Scrum50GoldenFixture().generate(Set.of(Target.ANGULAR));
+        GenerationResult generated = new TemplateOnlyGoldenFixture().generate(Set.of(Target.ANGULAR));
         for (var artifact : generated.artifacts()) {
             Path destination = harness.resolve(artifact.relativePath());
             Files.createDirectories(destination.getParent());
             Files.write(destination, artifact.bytes());
         }
-        typescript = artifact(generated, Scrum50GoldenFixture.ANGULAR_TYPESCRIPT_PATH);
-        html = artifact(generated, Scrum50GoldenFixture.ANGULAR_HTML_PATH);
+        typescript = artifact(generated, TemplateOnlyGoldenFixture.ANGULAR_TYPESCRIPT_PATH);
+        html = artifact(generated, TemplateOnlyGoldenFixture.ANGULAR_HTML_PATH);
         installPinnedDependencies();
     }
 
@@ -70,12 +70,12 @@ class GeneratedAngularComponentGoldenTest {
     }
 
     private List<JsonNode> violations(String ts, String template) throws Exception {
-        Path source = harness.resolve(Scrum50GoldenFixture.ANGULAR_TYPESCRIPT_PATH);
-        Path htmlFile = harness.resolve(Scrum50GoldenFixture.ANGULAR_HTML_PATH);
+        Path source = harness.resolve(TemplateOnlyGoldenFixture.ANGULAR_TYPESCRIPT_PATH);
+        Path htmlFile = harness.resolve(TemplateOnlyGoldenFixture.ANGULAR_HTML_PATH);
         Files.createDirectories(source.getParent());
         Files.writeString(source, ts);
         Files.writeString(htmlFile, template);
-        ProcessResult result = run(node(), "scrum-50-golden.mjs",
+        ProcessResult result = run(node(), "angular-component-golden.mjs",
                 source.toAbsolutePath().toString(), htmlFile.toAbsolutePath().toString());
         assertEquals(0, result.exitCode(), result.output());
         return JSON.readValue(result.output(),

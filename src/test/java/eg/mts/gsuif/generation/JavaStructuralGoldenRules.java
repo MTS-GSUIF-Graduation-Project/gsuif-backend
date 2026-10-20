@@ -9,15 +9,15 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
-final class Scrum50JavaGoldenRules {
+final class JavaStructuralGoldenRules {
     record Violation(String rule, String standard, String artifact) { }
 
-    private Scrum50JavaGoldenRules() { }
+    private JavaStructuralGoldenRules() { }
 
     static List<Violation> validateController(String source) {
         var unit = StaticJavaParser.parse(source);
         List<Violation> violations = new ArrayList<>();
-        String artifact = Scrum50GoldenFixture.CONTROLLER_PATH;
+        String artifact = TemplateOnlyGoldenFixture.CONTROLLER_PATH;
         if (!unit.getPackageDeclaration().map(item ->
                 item.getNameAsString().equals("com.example.fixture.controller")).orElse(false))
             violations.add(standard("JAVA_PACKAGE", "STD-06", artifact));

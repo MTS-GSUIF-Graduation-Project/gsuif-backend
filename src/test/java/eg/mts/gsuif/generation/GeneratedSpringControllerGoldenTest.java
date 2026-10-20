@@ -14,11 +14,11 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GeneratedSpringControllerGoldenTest {
-    private final Scrum50GoldenFixture fixture = new Scrum50GoldenFixture();
+    private final TemplateOnlyGoldenFixture fixture = new TemplateOnlyGoldenFixture();
 
     @Test
     void generatedAssetTicketControllerConformsToApplicableStructure() throws Exception {
-        assertTrue(Scrum50JavaGoldenRules.validateController(controller()).isEmpty());
+        assertTrue(JavaStructuralGoldenRules.validateController(controller()).isEmpty());
     }
 
     @ParameterizedTest(name = "{0} reports {1}")
@@ -26,17 +26,17 @@ class GeneratedSpringControllerGoldenTest {
     void deliberateViolationReportsItsNamedContractOrApplicableStandard(
             String name, String expectedRule, String expectedStandard,
             UnaryOperator<String> mutation) throws Exception {
-        List<Scrum50JavaGoldenRules.Violation> violations =
-                Scrum50JavaGoldenRules.validateController(mutation.apply(controller()));
+        List<JavaStructuralGoldenRules.Violation> violations =
+                JavaStructuralGoldenRules.validateController(mutation.apply(controller()));
         assertEquals(1, violations.size(), name + ": " + violations);
         assertEquals(expectedRule, violations.getFirst().rule());
         assertEquals(expectedStandard, violations.getFirst().standard());
-        assertEquals(Scrum50GoldenFixture.CONTROLLER_PATH, violations.getFirst().artifact());
+        assertEquals(TemplateOnlyGoldenFixture.CONTROLLER_PATH, violations.getFirst().artifact());
     }
 
     private String controller() throws Exception {
         return fixture.generate(Set.of(Target.CONTROLLER)).artifacts().stream()
-                .filter(item -> item.relativePath().equals(Scrum50GoldenFixture.CONTROLLER_PATH))
+                .filter(item -> item.relativePath().equals(TemplateOnlyGoldenFixture.CONTROLLER_PATH))
                 .map(item -> new String(item.bytes(), java.nio.charset.StandardCharsets.UTF_8))
                 .findFirst().orElseThrow();
     }
