@@ -139,7 +139,11 @@ class FinalOutputGoldenTest {
             if (!"DETERMINISTIC".equals(item.path("owner").asText())) continue;
             byte[] current = regenerated.get(path);
             if (current == null) drift.add(path + " (no longer generated)");
-            else if (!item.path("sha256").asText().equals(FinalGeneratedOutput.sha256(current))) drift.add(path);
+            else if (path.startsWith("contracts/")) {
+                // The contract is copied byte-for-byte from the checked-out resource. The historical run used a
+                // Windows checkout (core.autocrlf=true -> CRLF); CI checks out LF. Compare it line-ending-neutrally.
+                if (!lineNeutral(output.bytes(path)).equals(lineNeutral(current))) drift.add(path);
+            } else if (!item.path("sha256").asText().equals(FinalGeneratedOutput.sha256(current))) drift.add(path);
         }
         for (String path : regenerated.keySet())
             if (!path.equals("generation-manifest.json") && !output.files().containsKey(path))
@@ -156,6 +160,10 @@ class FinalOutputGoldenTest {
                 "Generator output differs from the historical run outside the request-validation change");
         assertEquals(List.of(), JavaStructuralGoldenRules.validateController(
                 new String(regenerated.get(FinalGeneratedOutput.CONTROLLER_PATH), StandardCharsets.UTF_8), shape));
+    }
+
+    private static String lineNeutral(byte[] bytes) {
+        return new String(bytes, StandardCharsets.UTF_8).replace("\r\n", "\n");
     }
 
     /** Re-assembles the package with today's generator; the model-owned file is the real model output. */
