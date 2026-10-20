@@ -245,16 +245,19 @@ class CompleteOutputDescriptorContractTest {
                 .keySet().stream().anyMatch(path -> path.endsWith("StockUnitApi.java")));
     }
 
-    @Test void unsupportedRequestConstraintsFailBeforeRendering() throws Exception {
+    @Test void supportedRequestConstraintsAreEmittedPerOperation() throws Exception {
+        // minLength and pattern were previously rejected; they are now enforced as declared, per operation.
         var registry = new PackagedContractRegistry("/generation/stock-unit-constrained-contracts.yaml");
         var preflight = new GenerationCapabilityPreflight(
                 new GenerationContextBuilder(fixture.mapper, new MetadataSchemaValidator(), registry), registry);
-        var failure = assertThrows(GenerationValidationException.class,
-                () -> preflight.describe(fixture.version(fixture.snapshot("condition")), fixture.specification(), OutputMode.BACKEND));
-        assertTrue(failure.diagnostics().stream().anyMatch(message ->
-                message.contains("contract.create.label: unsupported request-field schema")));
-        assertTrue(failure.diagnostics().stream().anyMatch(message ->
-                message.contains("contract.update.label: unsupported request-field schema")));
+        var descriptor = preflight.describe(fixture.version(fixture.snapshot("condition")), fixture.specification(), OutputMode.BACKEND);
+        var files = new CompleteBackendDefinitionRenderer().render(descriptor, GenerationFilePlan.forDescriptor(descriptor)).files();
+        String create = new String(files.get("backend/src/main/java/com/example/inventory/dto/CreateStockUnitRequest.java"), StandardCharsets.UTF_8);
+        String update = new String(files.get("backend/src/main/java/com/example/inventory/dto/UpdateStockUnitRequest.java"), StandardCharsets.UTF_8);
+        assertTrue(create.contains("@jakarta.validation.constraints.Size(min = 2, max = 100)"), create);
+        assertFalse(create.contains("Pattern"), create);
+        assertTrue(update.contains("@jakarta.validation.constraints.Pattern(regexp = \"(?s).*(?:^[A-Z]+$).*\")"), update);
+        assertTrue(update.contains("@jakarta.validation.constraints.Size(max = 100)"), update);
     }
 
     @Test void modesAndPathAliasesHaveExclusiveOwnership() throws Exception {

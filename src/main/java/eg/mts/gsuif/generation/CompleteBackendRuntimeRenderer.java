@@ -9,8 +9,11 @@ import java.io.InputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -54,10 +57,25 @@ final class CompleteBackendRuntimeRenderer {
                 "backend/src/main/resources/application.yml", applicationPath);
         String artifactId = descriptor.entityName().replaceAll("([a-z0-9])([A-Z])", "$1-$2")
                 .toLowerCase(java.util.Locale.ROOT) + "-generated-backend";
+        List<Map<String, Object>> requestRules = new ArrayList<>();
+        List<String> contractGaps = new ArrayList<>();
+        Map<String, GenerationSpecification.FieldSpec> entityFields = new HashMap<>();
+        descriptor.fields().forEach(field -> entityFields.put(field.name(), field));
+        for (var request : List.of(Map.entry(descriptor.createRequestName(), descriptor.createFields()),
+                Map.entry(descriptor.updateRequestName(), descriptor.editableFields())))
+            for (var field : new TreeMap<>(request.getValue()).entrySet()) {
+                var evaluation = RequestValidationRules.evaluate(request.getKey() + "." + field.getKey(),
+                        entityFields.get(field.getKey()), field.getValue());
+                List<String> rules = evaluation.rules().stream()
+                        .map(rule -> rule.description() + " [" + rule.source() + "]").toList();
+                requestRules.add(Map.of("dto", request.getKey(), "field", field.getKey(), "rules", rules));
+                contractGaps.addAll(evaluation.gaps());
+            }
         Map<String, Object> model = Map.of("basePackage", descriptor.basePackage(),
                 "artifactId", artifactId, "contractId", descriptor.contractId(),
                 "contractVersion", descriptor.contractVersion(), "contractHash", descriptor.contractResourceSha256(),
-                "enversAudited", descriptor.enversAudited());
+                "enversAudited", descriptor.enversAudited(), "requestRules", requestRules,
+                "contractGaps", contractGaps);
         Map<String, byte[]> emitted = new TreeMap<>();
         emitted.put("backend/pom.xml", template("runtime-pom.xml.ftl", model));
         emitted.put("backend/src/main/resources/application.yml", template("runtime-application.yml.ftl", model));

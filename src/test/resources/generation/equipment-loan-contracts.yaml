@@ -1,0 +1,11 @@
+contracts:
+  equipment-loan-api:
+    1.0.0:
+      resource: /openapi/equipment-loan-api.yaml
+      updateMode: FULL
+      operations:
+        LIST: listEquipmentLoans
+        CREATE: openEquipmentLoan
+        READ: getEquipmentLoan
+        UPDATE: reviseEquipmentLoan
+        DELETE: closeEquipmentLoan

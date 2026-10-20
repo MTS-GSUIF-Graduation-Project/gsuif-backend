@@ -1,0 +1,193 @@
+# SCRUM-50 generality fixture: a contract unrelated to StockUnit, with declared value constraints.
+openapi: 3.0.3
+info:
+  title: EquipmentLoan fixture API
+  version: 1.0.0
+paths:
+  /api/v1/equipment-loans:
+    get:
+      tags: [EquipmentLoan]
+      operationId: listEquipmentLoans
+      x-gsuif-payload-java-type: com.example.lending.dto.EquipmentLoanPage
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/LoanStatus' }
+      responses:
+        '200':
+          description: Loans listed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanPageResponse' }
+    post:
+      tags: [EquipmentLoan]
+      operationId: openEquipmentLoan
+      x-gsuif-payload-java-type: com.example.lending.dto.EquipmentLoanDto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenEquipmentLoanRequest' }
+      responses:
+        '201':
+          description: Loan opened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanDtoResponse' }
+  /api/v1/equipment-loans/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [EquipmentLoan]
+      operationId: getEquipmentLoan
+      x-gsuif-payload-java-type: com.example.lending.dto.EquipmentLoanDto
+      responses:
+        '200':
+          description: Loan retrieved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanDtoResponse' }
+        '404':
+          description: Loan not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanErrorResponse' }
+    put:
+      tags: [EquipmentLoan]
+      operationId: reviseEquipmentLoan
+      x-gsuif-payload-java-type: com.example.lending.dto.EquipmentLoanDto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviseEquipmentLoanRequest' }
+      responses:
+        '200':
+          description: Loan revised
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanDtoResponse' }
+        '400':
+          description: Invalid loan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanErrorResponse' }
+        '404':
+          description: Loan not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanErrorResponse' }
+    delete:
+      tags: [EquipmentLoan]
+      operationId: closeEquipmentLoan
+      x-gsuif-payload-java-type: java.lang.Void
+      responses:
+        '200':
+          description: Loan closed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanVoidResponse' }
+        '404':
+          description: Loan not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentLoanErrorResponse' }
+components:
+  schemas:
+    LoanStatus:
+      type: string
+      enum: [ACTIVE, RETURNED, OVERDUE]
+    EquipmentLoanDto:
+      type: object
+      required: [id, assetTag, quantity, status, dueOn, notes, urgent]
+      properties:
+        id: { type: string, format: uuid }
+        assetTag: { type: string }
+        quantity: { type: integer, format: int32 }
+        status: { $ref: '#/components/schemas/LoanStatus' }
+        dueOn: { type: string, format: date, nullable: true }
+        notes: { type: string, nullable: true }
+        urgent: { type: boolean }
+    OpenEquipmentLoanRequest:
+      type: object
+      required: [assetTag, quantity, status, dueOn, notes, urgent]
+      properties:
+        assetTag: { type: string, minLength: 4, maxLength: 12, pattern: '^[A-Z]{2}-[0-9]+$', example: LT-1042 }
+        quantity: { type: integer, format: int32, minimum: 1, maximum: 25 }
+        status: { $ref: '#/components/schemas/LoanStatus' }
+        dueOn: { type: string, format: date, nullable: true }
+        notes: { type: string, nullable: true }
+        urgent: { type: boolean }
+    ReviseEquipmentLoanRequest:
+      type: object
+      required: [assetTag, quantity, status, dueOn, notes, urgent]
+      properties:
+        assetTag: { type: string, minLength: 4, maxLength: 12, pattern: '^[A-Z]{2}-[0-9]+$', example: LT-1042 }
+        quantity: { type: integer, format: int32, minimum: 0, maximum: 40 }
+        status: { $ref: '#/components/schemas/LoanStatus' }
+        dueOn: { type: string, format: date, nullable: true }
+        notes: { type: string, maxLength: 300, nullable: true }
+        urgent: { type: boolean }
+    EquipmentLoanPage:
+      type: object
+      required: [data, totalPages, totalElements, size, number]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/EquipmentLoanDto' }
+        totalPages: { type: integer, format: int32 }
+        totalElements: { type: integer, format: int64 }
+        size: { type: integer, format: int32 }
+        number: { type: integer, format: int32 }
+    EquipmentLoanDtoResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { $ref: '#/components/schemas/EquipmentLoanDto' }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    EquipmentLoanPageResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { $ref: '#/components/schemas/EquipmentLoanPage' }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    EquipmentLoanVoidResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: OK }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32 }
+        body: { type: object, nullable: true }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    EquipmentLoanErrorResponse:
+      type: object
+      required: [status, clientMessage, statusCode, body, errors]
+      properties:
+        status: { type: string, example: NOT_FOUND }
+        clientMessage: { type: string }
+        statusCode: { type: integer, format: int32, example: 404 }
+        body: { type: object, nullable: true }
+        errors:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }

@@ -37,6 +37,9 @@ class CompleteBackendStandaloneBuildTest {
 
     private record Selected(BackendModelInput input, CompleteBackendPackageAssembler assembler, String source) { }
 
+    /** A maintainer's change to one generated file after the package was produced and verified. */
+    record HandEdit(String file, java.util.function.UnaryOperator<String> change, String compiledClass, String marker) { }
+
     @Test void unauditedStockUnitBuildsAsStandaloneExecutableJar() throws Exception {
         requireOptIn();
         var descriptor = fixture.preflight().describe(fixture.version(fixture.snapshot("condition")),
@@ -70,10 +73,28 @@ class CompleteBackendStandaloneBuildTest {
                   public com.example.inventory.dto.StockUnitPage list(com.example.inventory.dto.StockUnitCondition condition, String label) { return null; }
                   public com.example.inventory.dto.StockUnitDto update(java.util.UUID id, com.example.inventory.dto.UpdateStockUnitRequest request) { return null; }
                   public void delete(java.util.UUID id) { }
-                  public String maintainerNote() { return "hand-edited after generation"; }
                 }
                 """);
-        buildAndInspect("stock-unit-hand-edited", selected, false, "maintainerNote", false);
+        // Open the generated (deterministic) controller and change one method by hand after generation.
+        String controller = "backend/src/main/java/com/example/inventory/controller/StockUnitController.java";
+        HandEdit edit = new HandEdit(controller, source -> editOneMethod(source, "inspectStockUnit",
+                "\"Success\"", "\"Inspected after hand edit\""),
+                "controller/StockUnitController.class", "Inspected after hand edit");
+        buildAndInspect("stock-unit-hand-edited", selected, false, edit, false);
+    }
+
+    /** Replaces text inside exactly one method body and proves no line was added or removed. */
+    static String editOneMethod(String source, String method, String before, String after) {
+        int start = source.indexOf(" " + method + "(");
+        assertTrue(start > 0, "Generated method missing: " + method);
+        int end = source.indexOf("\n    }\n", start);
+        assertTrue(end > start, "Generated method end missing: " + method);
+        String body = source.substring(start, end);
+        assertEquals(1, body.split(java.util.regex.Pattern.quote(before), -1).length - 1,
+                method + " must contain exactly one " + before);
+        String edited = source.substring(0, start) + body.replace(before, after) + source.substring(end);
+        assertEquals(source.lines().count(), edited.lines().count(), "Hand edit must not add or remove lines");
+        return edited;
     }
 
     @Test void auditedRenamedGadgetBuildsAsStandaloneExecutableJar() throws Exception {
@@ -131,16 +152,11 @@ class CompleteBackendStandaloneBuildTest {
     }
 
     private void buildAndInspect(String label, Selected selected, boolean audited) throws Exception {
-        buildAndInspect(label, selected, audited, null);
+        buildAndInspect(label, selected, audited, null, true);
     }
 
     private void buildAndInspect(String label, Selected selected, boolean audited,
-                                 String editedMethod) throws Exception {
-        buildAndInspect(label, selected, audited, editedMethod, true);
-    }
-
-    private void buildAndInspect(String label, Selected selected, boolean audited,
-                                 String editedMethod, boolean offline) throws Exception {
+                                 HandEdit edit, boolean offline) throws Exception {
         var input = selected.input();
         ObjectNode response = json.createObjectNode();
         response.putArray("files").addObject().put("path", input.writablePath())
@@ -157,9 +173,42 @@ class CompleteBackendStandaloneBuildTest {
             Files.write(destination, entry.getValue());
         }
         verifyExtracted(input, extracted, packageFiles.keySet());
+        if (edit != null) {
+            Path file = extracted.resolve(edit.file());
+            String original = Files.readString(file);
+            String changed = edit.change().apply(original);
+            assertNotEquals(original, changed, "Hand edit must change the generated file");
+            Files.writeString(file, changed);
+        }
         Path backend = extracted.resolve("backend");
         assertGeneratorRuntimeAbsent(backend);
-        Path log = scratch.resolve(label + "-maven-build.log");
+        Path built = packageExecutableJar(backend, scratch.resolve(label + "-maven-build.log"), label, offline);
+        try (JarFile jar = new JarFile(built.toFile())) {
+            String classes = "BOOT-INF/classes/" + input.descriptor().basePackage().replace('.', '/') + "/";
+            assertNotNull(jar.getEntry(classes + "Application.class"));
+            assertNotNull(jar.getEntry(classes + "service/" + input.descriptor().entityName() + "ServiceImpl.class"));
+            assertNotNull(jar.getEntry("BOOT-INF/classes/db/migration/V1__initial_schema.sql"));
+            assertNotNull(jar.getEntry("org/springframework/boot/loader/launch/JarLauncher.class"));
+            assertTrue(jar.stream().anyMatch(entry -> entry.getName().startsWith("BOOT-INF/lib/spring-boot-")));
+            assertTrue(jar.stream().anyMatch(entry -> entry.getName().startsWith("BOOT-INF/lib/postgresql-")));
+            assertEquals(audited, jar.stream().anyMatch(entry ->
+                    entry.getName().startsWith("BOOT-INF/lib/hibernate-envers-")));
+            assertEquals(audited, jar.getEntry(classes + "audit/AppRevision.class") != null);
+            assertNull(jar.getEntry("BOOT-INF/classes/eg/mts/gsuif/generation/GenerationResult.class"));
+            if (edit != null) {
+                byte[] compiled = jar.getInputStream(jar.getEntry(classes + edit.compiledClass())).readAllBytes();
+                assertTrue(new String(compiled, StandardCharsets.ISO_8859_1).contains(edit.marker()),
+                        "The hand-edited method must be present in compiled bytecode");
+            }
+            assertEquals("org.springframework.boot.loader.launch.JarLauncher",
+                    jar.getManifest().getMainAttributes().getValue("Main-Class"));
+            assertEquals(input.descriptor().basePackage() + ".Application",
+                    jar.getManifest().getMainAttributes().getValue("Start-Class"));
+        }
+    }
+
+    /** Runs {@code mvn package} on an extracted generated backend and returns its executable JAR. */
+    static Path packageExecutableJar(Path backend, Path log, String label, boolean offline) throws Exception {
         var command = new java.util.ArrayList<>(List.of(
                 Path.of(System.getProperty("gsuif.test.maven-command")).toAbsolutePath().toString(),
                 "-B", "-ntp"));
@@ -191,32 +240,10 @@ class CompleteBackendStandaloneBuildTest {
                     && !path.getFileName().toString().endsWith(".jar.original")).toList();
         }
         assertEquals(1, jars.size(), label + " must produce one executable JAR");
-        try (JarFile jar = new JarFile(jars.getFirst().toFile())) {
-            String classes = "BOOT-INF/classes/" + input.descriptor().basePackage().replace('.', '/') + "/";
-            assertNotNull(jar.getEntry(classes + "Application.class"));
-            assertNotNull(jar.getEntry(classes + "service/" + input.descriptor().entityName() + "ServiceImpl.class"));
-            assertNotNull(jar.getEntry("BOOT-INF/classes/db/migration/V1__initial_schema.sql"));
-            assertNotNull(jar.getEntry("org/springframework/boot/loader/launch/JarLauncher.class"));
-            assertTrue(jar.stream().anyMatch(entry -> entry.getName().startsWith("BOOT-INF/lib/spring-boot-")));
-            assertTrue(jar.stream().anyMatch(entry -> entry.getName().startsWith("BOOT-INF/lib/postgresql-")));
-            assertEquals(audited, jar.stream().anyMatch(entry ->
-                    entry.getName().startsWith("BOOT-INF/lib/hibernate-envers-")));
-            assertEquals(audited, jar.getEntry(classes + "audit/AppRevision.class") != null);
-            assertNull(jar.getEntry("BOOT-INF/classes/eg/mts/gsuif/generation/GenerationResult.class"));
-            if (editedMethod != null) {
-                byte[] implementation = jar.getInputStream(jar.getEntry(classes + "service/"
-                        + input.descriptor().entityName() + "ServiceImpl.class")).readAllBytes();
-                assertTrue(new String(implementation, StandardCharsets.ISO_8859_1).contains(editedMethod),
-                        "The hand-edited method must be present in compiled bytecode");
-            }
-            assertEquals("org.springframework.boot.loader.launch.JarLauncher",
-                    jar.getManifest().getMainAttributes().getValue("Main-Class"));
-            assertEquals(input.descriptor().basePackage() + ".Application",
-                    jar.getManifest().getMainAttributes().getValue("Start-Class"));
-        }
+        return jars.getFirst();
     }
 
-    private static void assertGeneratorRuntimeAbsent(Path backend) throws Exception {
+    static void assertGeneratorRuntimeAbsent(Path backend) throws Exception {
         String pom = Files.readString(backend.resolve("pom.xml"));
         for (String forbidden : List.of("eg.mts.gsuif", "freemarker", "io.jmix", "javaparser",
                 "openapi-generator", "openrouter"))
@@ -267,7 +294,7 @@ class CompleteBackendStandaloneBuildTest {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     }
 
-    private static void requireOptIn() {
+    static void requireOptIn() {
         String maven = System.getProperty("gsuif.test.maven-command");
         String repository = System.getProperty("maven.repo.local");
         Assumptions.assumeTrue(maven != null && repository != null,
@@ -277,7 +304,7 @@ class CompleteBackendStandaloneBuildTest {
         assertTrue(Files.isDirectory(Path.of(repository)));
     }
 
-    private static String safeLog(Path log) throws IOException {
+    static String safeLog(Path log) throws IOException {
         List<String> lines = Files.readAllLines(log, StandardCharsets.UTF_8);
         return lines.stream().filter(line -> line.contains("[ERROR]")).limit(12)
                 .map(line -> line.replaceAll("(?i)(password|token|authorization|openrouter_api_key)[=: ]+\\S+", "$1=[redacted]"))

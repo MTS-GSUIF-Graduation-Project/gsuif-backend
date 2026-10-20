@@ -42,7 +42,8 @@ class CompleteBackendErrorTest {
                 .findFirst().orElseThrow().owner());
         var renderer = new CompleteBackendErrorRenderer();
         var files = renderer.render(descriptor, plan);
-        assertEquals(Set.of(handlerPath, missingPath), files.keySet());
+        var strictJsonPath = "backend/src/main/java/com/example/inventory/config/RequestJsonStrictnessConfig.java";
+        assertEquals(Set.of(handlerPath, missingPath, strictJsonPath), files.keySet());
         String handler = new String(files.get(handlerPath), StandardCharsets.UTF_8);
         assertTrue(handler.contains("package com.example.inventory.exception;"));
         assertTrue(handler.contains("import com.example.inventory.api.ApiResponse;"));
@@ -206,7 +207,8 @@ class CompleteBackendErrorTest {
                             .put("/api/v1/stock-units/00000000-0000-0000-0000-000000000001")
                             .contentType("application/json").content("{\"label\":\"A\",\"condition\":\"OPEN\"}"))
                             .andExpect(status().isBadRequest()).andReturn().getResponse();
-                    assertGeneratedError(json, omitted, 400, "BAD_REQUEST", "Invalid request", "_global", "Invalid request body");
+                    // A missing required member is reported against that contract field, not as _global.
+                    assertGeneratedError(json, omitted, 400, "BAD_REQUEST", "Invalid request", "retiredOn", "Invalid value");
                     var missingQuery = mvc.perform(get("/api/v1/stock-units"))
                             .andExpect(status().isBadRequest()).andReturn().getResponse();
                     assertGeneratedError(json, missingQuery, 400, "BAD_REQUEST", "Invalid request",

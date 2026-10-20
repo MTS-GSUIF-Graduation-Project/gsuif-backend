@@ -17,6 +17,22 @@ Request logs contain a bounded correlation ID (`X-Correlation-Id`), HTTP method,
 
 Runtime `/v3/api-docs` and Swagger UI are enabled only in explicit `dev` and `test`, and disabled in `prod` (the default). Test-mode documentation is readable without a bearer token; all other protected endpoints still require one. Dev mode has no login endpoint and bypasses authentication. Runtime documentation adds the actual safe 400/401/403/404/405/415/500 responses to selected-contract operations where applicable. These runtime annotations do not change the copied contract bytes. In particular, the selected contract's POST 400 declaration gap remains a contract-policy issue requiring a separately approved versioned correction; runtime documentation does not silently amend that contract.
 
+## Request validation
+
+Request bodies are validated against the selected contract before any service code runs; every violation is answered with HTTP 400 in the five-field envelope, keyed by the offending field. JSON types are strict: a number is not accepted for a string, a string or boolean is not accepted for a number, an enum is accepted only by its declared name (never by ordinal), dates must be ISO strings, and an object member may appear only once. Effective rules per request field, with their source:
+
+<#list requestRules as item>
+- `${item.dto}.${item.field}`: <#list item.rules as rule>${rule}<#if rule_has_next>; </#if></#list>
+</#list>
+
+<#if contractGaps?has_content>Contract gaps found during generation (the generator enforced the stricter persistence limit; the contract should declare these explicitly in a future version):
+
+<#list contractGaps as gap>
+- ${gap}
+</#list>
+<#else>The selected contract declares every enforced length limit explicitly.
+</#if>
+
 ## Dependency choices
 
 Spring Boot Web MVC serves the declared REST contract; Data JPA supports the app-owned entity/repository; Validation supports request constraints; Security supports the declared method roles; Spring Security JOSE provides the pinned Nimbus HS256 token codec. The AspectJ starter activates app-owned controller timing advice. Flyway and its PostgreSQL adapter own future versioned migrations; the PostgreSQL driver connects only to the generated app's database. The pinned Springdoc Web MVC UI starter supplies OpenAPI JSON and Swagger UI for non-production profiles. <#if enversAudited>Hibernate Envers is included because the selected entity is audited.<#else>Hibernate Envers is omitted because the selected entity is not Envers-audited.</#if> Spring Boot `4.0.8` pins its managed dependency set; direct dependencies and build plugins have fixed versions. No version ranges, snapshots or dynamic latest selectors are used.

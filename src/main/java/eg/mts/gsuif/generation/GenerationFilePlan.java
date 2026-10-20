@@ -73,6 +73,8 @@ record GenerationFilePlan(List<Entry> entries) {
                 add(entries, root + relative, Owner.DETERMINISTIC, "generated-app observability");
             for (String relative : List.of("api/ErrorApiResponse.java", "config/OpenApiConfig.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "generated-app runtime OpenAPI documentation");
+            add(entries, root + "config/RequestJsonStrictnessConfig.java", Owner.DETERMINISTIC,
+                    "generated-app strict request JSON (contract types, no duplicate members)");
             for (String relative : List.of("audit/AuditActorConfig.java", "audit/GeneratedAppAuditorAware.java"))
                 add(entries, root + relative, Owner.DETERMINISTIC, "generated-app audit actor");
             if (descriptor.enversAudited())
