@@ -49,8 +49,36 @@ public final class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> unreadableBody(HttpMessageNotReadableException exception) {
         ${packageName}.logging.SafeFailureLogger.logHandled(GlobalExceptionHandler.class, exception);
+        String key = bodyFieldKey(exception);
         return ResponseEntity.status(400).body(ApiResponse.error(400, "Invalid request",
-                Map.of("_global", "Invalid request body")));
+                Map.of(key, key.equals("_global") ? "Invalid request body" : "Invalid value")));
+    }
+
+    /**
+     * Names the contract field a body failure belongs to (wrong JSON type, value outside an enum,
+     * duplicate member or missing required member) without echoing the rejected value. Only declared
+     * field names are returned; anything else stays {@code _global}.
+     */
+    private static String bodyFieldKey(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (!(cause instanceof tools.jackson.core.JacksonException jackson)) continue;
+            for (var reference : jackson.getPath()) {
+                String name = reference.getPropertyName();
+                if (name != null && FIELD_KEYS.contains(name)) return name;
+            }
+            String message = jackson.getOriginalMessage();
+            if (message != null && message.startsWith("Missing required creator property '")) {
+                int end = message.indexOf('\'', "Missing required creator property '".length());
+                String name = end < 0 ? null : message.substring("Missing required creator property '".length(), end);
+                if (name != null && FIELD_KEYS.contains(name)) return name;
+            }
+            if (cause instanceof tools.jackson.core.exc.StreamReadException
+                    && jackson.processor() instanceof tools.jackson.core.JsonParser parser) {
+                String name = parser.currentName();
+                if (name != null && FIELD_KEYS.contains(name)) return name;
+            }
+        }
+        return "_global";
     }
 
     @ExceptionHandler(RequestedRecordNotFoundException.class)

@@ -29,7 +29,9 @@ final class CompleteBackendErrorRenderer {
         String root = "backend/src/main/java/" + descriptor.basePackage().replace('.', '/') + "/exception/";
         String handler = root + "GlobalExceptionHandler.java";
         String missing = ModelHandoffSpec.requestedRecordNotFoundPath(descriptor);
-        Set<String> required = Set.of(handler, missing);
+        String strictJson = "backend/src/main/java/" + descriptor.basePackage().replace('.', '/')
+                + "/config/RequestJsonStrictnessConfig.java";
+        Set<String> required = Set.of(handler, missing, strictJson);
         Map<String, Owner> owners = new TreeMap<>();
         plan.entries().forEach(entry -> owners.put(entry.path(), entry.owner()));
         for (String path : required) {
@@ -44,6 +46,8 @@ final class CompleteBackendErrorRenderer {
         emitted.put(handler, template("global-exception-handler.java.ftl",
                 Map.of("packageName", descriptor.basePackage(), "fieldKeys", keys)));
         emitted.put(missing, requestedRecordNotFound(descriptor, plan));
+        emitted.put(strictJson, template("request-json-strictness-config.java.ftl",
+                Map.of("packageName", descriptor.basePackage())));
         if (!required.equals(emitted.keySet()))
             throw new IllegalArgumentException("Error-contract output differs from required subset");
         Map<String, byte[]> frozen = new TreeMap<>();

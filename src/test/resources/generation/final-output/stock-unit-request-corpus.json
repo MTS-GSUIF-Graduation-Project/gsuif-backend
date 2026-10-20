@@ -1,0 +1,26 @@
+{
+  "description": "SCRUM-50 behavioral corpus for the real StockUnit request validation (generated DTOs + GlobalExceptionHandler). A family is detected only when every REJECT case returns HTTP 400 with the STD-01 envelope.",
+  "families": ["REQUIRED_FIELD", "WRONG_TYPE", "INVALID_ENUM", "DUPLICATE_VALUE", "BOUNDARY_VIOLATION"],
+  "expectedShippedScore": {
+    "REQUIRED_FIELD": {"rejected": 3, "correctPath": 1},
+    "WRONG_TYPE": {"rejected": 1, "correctPath": 0},
+    "INVALID_ENUM": {"rejected": 2, "correctPath": 0},
+    "DUPLICATE_VALUE": {"rejected": 0, "correctPath": 0},
+    "BOUNDARY_VIOLATION": {"rejected": 0, "correctPath": 0}
+  },
+  "cases": [
+    {"name": "valid create", "family": "VALID", "method": "POST", "body": "{\"condition\":\"OPEN\",\"label\":\"Laptop\",\"retiredOn\":null}", "expect": "ACCEPT"},
+    {"name": "valid create at label column length 100", "family": "VALID", "method": "POST", "body": "{\"condition\":\"OPEN\",\"label\":\"${L*100}\",\"retiredOn\":\"2026-01-31\"}", "expect": "ACCEPT"},
+    {"name": "valid full update", "family": "VALID", "method": "PUT", "body": "{\"condition\":\"CLOSED\",\"label\":\"Laptop\",\"retiredOn\":\"2026-01-31\"}", "expect": "ACCEPT"},
+    {"name": "create missing label", "family": "REQUIRED_FIELD", "method": "POST", "body": "{\"condition\":\"OPEN\",\"retiredOn\":null}", "expect": "REJECT", "errorKey": "label"},
+    {"name": "create null label", "family": "REQUIRED_FIELD", "method": "POST", "body": "{\"condition\":\"OPEN\",\"label\":null,\"retiredOn\":null}", "expect": "REJECT", "errorKey": "label"},
+    {"name": "update missing condition", "family": "REQUIRED_FIELD", "method": "PUT", "body": "{\"label\":\"Laptop\",\"retiredOn\":null}", "expect": "REJECT", "errorKey": "condition"},
+    {"name": "create label as number", "family": "WRONG_TYPE", "method": "POST", "body": "{\"condition\":\"OPEN\",\"label\":42,\"retiredOn\":null}", "expect": "REJECT", "errorKey": "label"},
+    {"name": "create condition as number", "family": "WRONG_TYPE", "method": "POST", "body": "{\"condition\":1,\"label\":\"Laptop\",\"retiredOn\":null}", "expect": "REJECT", "errorKey": "condition"},
+    {"name": "create retiredOn not a date", "family": "WRONG_TYPE", "method": "POST", "body": "{\"condition\":\"OPEN\",\"label\":\"Laptop\",\"retiredOn\":\"yesterday\"}", "expect": "REJECT", "errorKey": "retiredOn"},
+    {"name": "create condition outside enum", "family": "INVALID_ENUM", "method": "POST", "body": "{\"condition\":\"BROKEN\",\"label\":\"Laptop\",\"retiredOn\":null}", "expect": "REJECT", "errorKey": "condition"},
+    {"name": "update condition wrong case", "family": "INVALID_ENUM", "method": "PUT", "body": "{\"condition\":\"open\",\"label\":\"Laptop\",\"retiredOn\":null}", "expect": "REJECT", "errorKey": "condition"},
+    {"name": "create duplicate label member", "family": "DUPLICATE_VALUE", "method": "POST", "body": "{\"condition\":\"OPEN\",\"label\":\"first\",\"label\":\"second\",\"retiredOn\":null}", "expect": "REJECT", "errorKey": "label"},
+    {"name": "create label above column length 100", "family": "BOUNDARY_VIOLATION", "method": "POST", "body": "{\"condition\":\"OPEN\",\"label\":\"${L*101}\",\"retiredOn\":null}", "expect": "REJECT", "errorKey": "label"}
+  ]
+}

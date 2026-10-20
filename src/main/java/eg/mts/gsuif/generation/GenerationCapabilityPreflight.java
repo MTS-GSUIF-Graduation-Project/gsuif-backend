@@ -87,6 +87,14 @@ final class GenerationCapabilityPreflight {
                     compatible(field, contract.createSchemas().get(create.getKey()),
                             "contract.create." + create.getKey(), errors);
             }
+            if (mode != OutputMode.FRONTEND) {
+                // Contract constraints reconciled with persistence: conflicts stop generation here.
+                for (var request : List.of(Map.entry("create", contract.createSchemas()),
+                        Map.entry("update", contract.updateSchemas())))
+                    for (var schema : new TreeMap<>(request.getValue()).entrySet())
+                        errors.addAll(RequestValidationRules.evaluate("contract." + request.getKey() + "." + schema.getKey(),
+                                fields.get(schema.getKey()), schema.getValue()).errors());
+            }
         }
         if (!errors.isEmpty()) throw new GenerationValidationException(errors);
         return context;

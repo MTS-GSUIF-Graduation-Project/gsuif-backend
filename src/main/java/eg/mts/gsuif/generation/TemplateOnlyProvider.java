@@ -79,8 +79,12 @@ public final class TemplateOnlyProvider implements AICodeGenerationProvider {
             if (context.targets().contains(Target.CONTROLLER)) {
                 pending.add(artifact(root + "controller/" + spec.entity().className() + "Controller.java", render(catalog.controller().path(), model), catalog.controller().version(), catalog.version()));
             }
-            if (context.targets().contains(Target.ENTITY) || context.targets().contains(Target.CONTROLLER))
+            if (context.targets().contains(Target.ENTITY) || context.targets().contains(Target.CONTROLLER)) {
+                pending.add(artifact(root + "util/" + spec.entity().className() + "GeneratedValidator.java",
+                        render("templates/freemarker/generated-validator.java.ftl", model),
+                        catalog.providerVersion(), catalog.version()));
                 for (String source : SUPPORT) pending.add(artifact("src/main/java/" + source, resource("/consumer-support/" + source), catalog.providerVersion(), catalog.version()));
+            }
             if (context.targets().contains(Target.ANGULAR)) renderAngular(context, pending, catalog);
         } catch (GenerationValidationException ex) { throw ex; }
         catch (Exception ex) { throw new GenerationValidationException(List.of("render: " + ex.getMessage())); }

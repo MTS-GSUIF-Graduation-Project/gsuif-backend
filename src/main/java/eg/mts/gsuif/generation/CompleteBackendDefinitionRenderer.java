@@ -129,16 +129,21 @@ final class CompleteBackendDefinitionRenderer {
                                     Map<String, PackagedContractLoader.UpdateField> rules) {
         if (schemas.isEmpty() || !schemas.keySet().equals(rules.keySet()))
             throw new IllegalArgumentException("Request definition fields disagree with selected contract");
+        Map<String, FieldSpec> entityFields = new HashMap<>();
+        d.fields().forEach(field -> entityFields.put(field.name(), field));
         List<Map<String, Object>> members = new ArrayList<>();
         for (String field : new TreeSet<>(schemas.keySet())) {
             var schema = schemas.get(field);
             var rule = rules.get(field);
             if (rule.nullable() != schema.nullable())
                 throw new IllegalArgumentException("Request definition nullability differs from selected contract");
+            var validation = RequestValidationRules.evaluate(name + "." + field, entityFields.get(field), schema);
+            if (!validation.errors().isEmpty())
+                throw new IllegalArgumentException("Request validation conflicts: " + validation.errors());
             List<String> annotations = new ArrayList<>();
             annotations.add("@com.fasterxml.jackson.annotation.JsonProperty(value = \"" + field
                     + "\", required = " + rule.required() + ")");
-            if (!schema.nullable()) annotations.add("@jakarta.validation.constraints.NotNull");
+            annotations.addAll(validation.annotations());
             members.add(member(javaType(schema), field, annotations));
         }
         return recordSource(d, name, members);

@@ -105,3 +105,11 @@ jobs:
 
       - name: Verify OpenAPI spike return-type fallback
         run: ./mvnw -B clean -Popenapi-spike -DopenapiSpikeRequired=true -Dtest=OpenApiSpikeFallbackTest test
+
+      - name: Verify hand-edited generated backends remain standalone
+        run: |
+          ./mvnw -B \
+            -Dtest='CompleteBackendStandaloneBuildTest#handEditedGeneratedServiceBuildsWithoutGeneratorRuntime,FinalOutputEditableBuildTest' \
+            -Dgsuif.test.maven-command="$PWD/mvnw" \
+            -Dmaven.repo.local="$HOME/.m2/repository" \
+            test

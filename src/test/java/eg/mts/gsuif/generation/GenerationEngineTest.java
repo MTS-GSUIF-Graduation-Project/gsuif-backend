@@ -59,7 +59,7 @@ class GenerationEngineTest {
         assertEquals("1.0.0", context.catalog().entity().version());
         assertTrue(context.catalog().standardRefs().contains("STD-33"));
         assertNotNull(result.consumerBuild(), "Entity-only output still requires audit support and dependencies");
-        assertEquals(6, result.artifacts().size());
+        assertEquals(7, result.artifacts().size());
         var artifact = result.artifacts().getFirst();
         assertEquals("src/main/java/com/example/fixture/entity/AssetTicket.java", artifact.relativePath());
         assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(artifact.bytes())), artifact.sha256());
@@ -136,7 +136,7 @@ class GenerationEngineTest {
             }
             var spec = spec(entity, contract, selected, roles);
             var result = GenerationEngine.templateOnly(builder).generate(version("1.0.0", snapshot), spec, Set.of(Target.CONTROLLER), "spring-angular");
-            assertEquals(6, result.artifacts().size());
+            assertEquals(7, result.artifacts().size());
             String controller = new String(result.artifacts().getFirst().bytes(), StandardCharsets.UTF_8);
             assertTrue(controller.contains("implements " + entity + "Api"));
             assertTrue(controller.contains("hasAnyAuthority('ROLE_ADMIN','ROLE_USER')"));

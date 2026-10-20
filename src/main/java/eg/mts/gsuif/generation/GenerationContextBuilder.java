@@ -113,7 +113,13 @@ public final class GenerationContextBuilder {
         else if (contractRegistry.find(openApi.contractId(), openApi.contractVersion()) == null)
             errors.add("specification.openApi.contractVersion: unsupported packaged version");
         PackagedContractLoader.Contract contract = contractLoader.load(openApi, errors);
-        Map<String, Object> api = contract == null ? Map.of() : contract.api();
+        Map<String, Object> api = contract == null ? new LinkedHashMap<>() : new LinkedHashMap<>(contract.api());
+        if (contract != null && entity != null && entity.fields() != null) {
+            // STD-06 designates util (there is no "validation" layer) for standalone helpers.
+            api.put("validatorPackage", s.basePackage() + ".util");
+            api.put("validatorClass", entity.className() + "GeneratedValidator");
+            api.put("validatorSchemas", validatorSchemas(contract, entity, api));
+        }
         Map<String, PackagedContractLoader.Operation> operations = contract == null ? Map.of() : contract.operations();
         if (contract != null && entity != null && entity.fields() != null) {
             for (int i = 0; i < entity.fields().size(); i++) {
@@ -177,7 +183,41 @@ public final class GenerationContextBuilder {
             if (s.angular().tableColumns() == null) errors.add("specification.angular.tableColumns: required");
             if (snapshot != null && targets != null && targets.contains(Target.ANGULAR)) validateAngular(s, snapshot, contract, schemaVersion, errors);
         }
-        return api;
+        return Map.copyOf(api);
+    }
+
+    private static List<Map<String, Object>> validatorSchemas(PackagedContractLoader.Contract contract,
+                                                               EntitySpec entity,
+                                                               Map<String, Object> api) {
+        return List.of(
+                validatorSchema(String.valueOf(api.get("createRequestClass")), contract.createFields(),
+                        contract.createSchemas(), entity),
+                validatorSchema(String.valueOf(api.get("updateRequestClass")), contract.updateFields(),
+                        contract.updateSchemas(), entity));
+    }
+
+    private static Map<String, Object> validatorSchema(String name,
+                                                        Map<String, PackagedContractLoader.UpdateField> rules,
+                                                        Map<String, PackagedContractLoader.FieldSchema> schemas,
+                                                        EntitySpec entity) {
+        Map<String, FieldSpec> entityFields = new HashMap<>();
+        for (FieldSpec field : entity.fields()) entityFields.put(field.name(), field);
+        List<Map<String, Object>> fields = new ArrayList<>();
+        for (String nameKey : new TreeSet<>(schemas.keySet())) {
+            PackagedContractLoader.FieldSchema schema = schemas.get(nameKey);
+            PackagedContractLoader.UpdateField rule = rules.get(nameKey);
+            FieldSpec entityField = entityFields.get(nameKey);
+            Map<String, Object> field = new LinkedHashMap<>();
+            field.put("name", nameKey);
+            field.put("required", rule != null && rule.required());
+            field.put("nullable", rule != null && rule.nullable());
+            field.put("jsonType", schema.type());
+            field.put("enumValues", schema.values());
+            field.put("maxLength", entityField != null && entityField.columnLength() != null
+                    ? entityField.columnLength() : 0);
+            fields.add(Map.copyOf(field));
+        }
+        return Map.of("name", name, "fields", List.copyOf(fields));
     }
 
     private void validateAngular(GenerationSpecification s, JsonNode snapshot, PackagedContractLoader.Contract contract, String schemaVersion, List<String> errors) {

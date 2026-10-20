@@ -20,9 +20,27 @@ final class PackagedContractLoader {
                           Integer minimum, Integer maximum) { }
     record Ordering(String field, String direction) { }
     record UpdateField(boolean required, boolean nullable) { }
-    record FieldSchema(String type, String format, String enumName, List<String> values, boolean nullable) {
-        FieldSchema { values = List.copyOf(values); }
+    record FieldSchema(String type, String format, String enumName, List<String> values, boolean nullable,
+                       Constraints constraints) {
+        FieldSchema {
+            values = List.copyOf(values);
+            constraints = constraints == null ? Constraints.NONE : constraints;
+        }
+
+        FieldSchema(String type, String format, String enumName, List<String> values, boolean nullable) {
+            this(type, format, enumName, values, nullable, Constraints.NONE);
+        }
     }
+
+    /** Request-field value constraints declared by the contract; null means "not declared". */
+    record Constraints(Integer minLength, Integer maxLength, String pattern,
+                       java.math.BigInteger minimum, java.math.BigInteger maximum) {
+        static final Constraints NONE = new Constraints(null, null, null, null, null);
+    }
+
+    /** OpenAPI keywords a request field may carry; anything else is reported by name. */
+    static final Set<String> REQUEST_FIELD_KEYWORDS = Set.of("type", "format", "nullable", "enum", "description",
+            "example", "minLength", "maxLength", "pattern", "minimum", "maximum");
     record Contract(Map<String, Object> api, Map<String, Operation> operations,
                     Map<String, Object> dtoProperties, Map<String, List<String>> enums,
                     PackagedContractRegistry.Entry descriptor, Map<String, UpdateField> updateFields,
@@ -183,8 +201,9 @@ final class PackagedContractLoader {
             Map<String, FieldSchema> updateSchemas = new LinkedHashMap<>();
             for (var field : updateProperties.entrySet()) {
                 Map<String, Object> property = nested(updateProperties, field.getKey());
-                if (descriptor.fullUpdate() && !supportedRequestFieldSchema(property, schemas))
-                    errors.add("contract.update." + field.getKey() + ": unsupported request-field schema");
+                if (descriptor.fullUpdate())
+                    for (String problem : requestFieldSchemaProblems(property, schemas))
+                        errors.add("contract.update." + field.getKey() + ": " + problem);
                 updateFields.put(field.getKey(), new UpdateField(updateRequired.contains(field.getKey()),
                         Boolean.TRUE.equals(property.get("nullable"))));
                 updateSchemas.put(field.getKey(), fieldSchema(property, schemas));
@@ -199,8 +218,9 @@ final class PackagedContractLoader {
             Map<String, FieldSchema> createSchemas = new LinkedHashMap<>();
             for (var field : createProperties.entrySet()) {
                 Map<String, Object> property = nested(createProperties, field.getKey());
-                if (descriptor.fullUpdate() && !supportedRequestFieldSchema(property, schemas))
-                    errors.add("contract.create." + field.getKey() + ": unsupported request-field schema");
+                if (descriptor.fullUpdate())
+                    for (String problem : requestFieldSchemaProblems(property, schemas))
+                        errors.add("contract.create." + field.getKey() + ": " + problem);
                 createFields.put(field.getKey(), new UpdateField(createRequired.contains(field.getKey()),
                         Boolean.TRUE.equals(property.get("nullable"))));
                 createSchemas.put(field.getKey(), fieldSchema(property, schemas));
@@ -244,17 +264,34 @@ final class PackagedContractLoader {
         return type.equals(field.get("type")) && format.equals(field.get("format")) && field.size() == 2;
     }
 
-    /** Initial complete-output DTOs emit only scalar type, format and null rules. */
-    private static boolean supportedRequestFieldSchema(Map<String, Object> property, Map<String, Object> schemas) {
-        if (property.isEmpty()) return false;
+    /**
+     * Request-field schema features the complete output can enforce: scalar type/format, nullability,
+     * named string enums, string {@code minLength}/{@code maxLength}/{@code pattern} and integer
+     * {@code minimum}/{@code maximum}. Every other feature is returned as a named problem rather than
+     * being silently ignored, so a contract is never generated with an unenforced constraint.
+     */
+    static List<String> requestFieldSchemaProblems(Map<String, Object> property, Map<String, Object> schemas) {
+        List<String> problems = new ArrayList<>();
+        if (property.isEmpty()) return List.of("empty request-field schema");
         boolean reference = property.containsKey("$ref");
-        if (reference && (property.size() != 1 || !(property.get("$ref") instanceof String ref)
-                || !ref.startsWith("#/components/schemas/"))) return false;
+        if (reference) {
+            if (!(property.get("$ref") instanceof String ref) || !ref.startsWith("#/components/schemas/"))
+                return List.of("unsupported $ref target (local #/components/schemas reference required)");
+            Set<String> siblings = new TreeSet<>(property.keySet());
+            siblings.remove("$ref");
+            if (!siblings.isEmpty())
+                problems.add("unsupported keywords next to $ref " + siblings
+                        + " (OpenAPI 3.0 ignores $ref siblings; declare them on the referenced schema)");
+        }
         Map<String, Object> resolved = reference ? nested(schemas, refName(property.get("$ref"))) : property;
-        if (resolved.isEmpty() || resolved.keySet().stream().anyMatch(key ->
-                !Set.of("type", "format", "nullable", "enum", "description", "example").contains(key))) return false;
-        if (!reference && resolved.containsKey("enum")) return false; // no deterministic enum name
-        if (resolved.containsKey("nullable") && !(resolved.get("nullable") instanceof Boolean)) return false;
+        if (resolved.isEmpty()) return List.of("referenced schema is missing or empty");
+        Set<String> unsupported = new TreeSet<>(resolved.keySet());
+        unsupported.removeAll(REQUEST_FIELD_KEYWORDS);
+        if (!unsupported.isEmpty()) problems.add("unsupported schema keywords " + unsupported);
+        if (!reference && resolved.containsKey("enum"))
+            problems.add("inline enum unsupported (use a named #/components/schemas enum for a deterministic Java type)");
+        if (resolved.containsKey("nullable") && !(resolved.get("nullable") instanceof Boolean))
+            problems.add("nullable must be a boolean");
         String type = String.valueOf(resolved.getOrDefault("type", ""));
         String format = String.valueOf(resolved.getOrDefault("format", ""));
         if (resolved.containsKey("enum")) {
@@ -262,14 +299,52 @@ final class PackagedContractLoader {
                     || !(resolved.get("enum") instanceof List<?> values) || values.isEmpty()
                     || values.stream().anyMatch(value -> !(value instanceof String text)
                             || !text.matches("[A-Z][A-Z0-9_]*"))
-                    || values.stream().distinct().count() != values.size()) return false;
+                    || values.stream().distinct().count() != values.size())
+                problems.add("enum must be a non-empty list of distinct UPPER_SNAKE_CASE strings");
         }
-        return switch (type) {
+        boolean supportedType = switch (type) {
             case "string" -> Set.of("", "uuid", "date", "date-time").contains(format);
             case "integer" -> Set.of("int32", "int64").contains(format);
             case "number", "boolean" -> format.isEmpty();
             default -> false;
         };
+        if (!supportedType) problems.add("unsupported type/format '" + type + (format.isEmpty() ? "" : ":" + format) + "'");
+        boolean plainString = "string".equals(type) && format.isEmpty() && !resolved.containsKey("enum");
+        for (String keyword : List.of("minLength", "maxLength", "pattern"))
+            if (resolved.containsKey(keyword) && !plainString)
+                problems.add("'" + keyword + "' is only supported on plain string fields (not "
+                        + type + (format.isEmpty() ? "" : ":" + format) + (resolved.containsKey("enum") ? " enum" : "") + ")");
+        for (String keyword : List.of("minimum", "maximum"))
+            if (resolved.containsKey(keyword) && !"integer".equals(type))
+                problems.add("'" + keyword + "' is only supported on integer fields (decimal and " + type + " bounds are not)");
+        for (String keyword : List.of("minLength", "maxLength"))
+            if (resolved.containsKey(keyword) && !(resolved.get(keyword) instanceof Integer length && length >= 0))
+                problems.add("'" + keyword + "' must be a non-negative integer");
+        if (resolved.get("minLength") instanceof Integer min && resolved.get("maxLength") instanceof Integer max && min > max)
+            problems.add("minLength " + min + " exceeds maxLength " + max + " (no value can satisfy the contract)");
+        if (resolved.containsKey("pattern")) {
+            if (!(resolved.get("pattern") instanceof String pattern) || pattern.isEmpty())
+                problems.add("'pattern' must be a non-empty string");
+            else try {
+                java.util.regex.Pattern.compile(pattern);
+            } catch (java.util.regex.PatternSyntaxException invalid) {
+                problems.add("'pattern' is not a supported regular expression (Java syntax): " + invalid.getDescription());
+            }
+        }
+        for (String keyword : List.of("minimum", "maximum"))
+            if (resolved.containsKey(keyword) && "integer".equals(type) && bigInteger(resolved.get(keyword)) == null)
+                problems.add("'" + keyword + "' must be an integer value");
+        var minimum = bigInteger(resolved.get("minimum"));
+        var maximum = bigInteger(resolved.get("maximum"));
+        if (minimum != null && maximum != null && minimum.compareTo(maximum) > 0)
+            problems.add("minimum " + minimum + " exceeds maximum " + maximum + " (no value can satisfy the contract)");
+        return List.copyOf(problems);
+    }
+
+    private static java.math.BigInteger bigInteger(Object value) {
+        if (value instanceof Integer || value instanceof Long) return java.math.BigInteger.valueOf(((Number) value).longValue());
+        if (value instanceof java.math.BigInteger big) return big;
+        return null;
     }
 
     /** Only scalar query parameters on LIST are currently represented in a complete-output descriptor. */
@@ -420,9 +495,15 @@ final class PackagedContractLoader {
         Object rawValues = resolved.get("enum");
         List<String> values = rawValues instanceof List<?> list ? list.stream().map(String::valueOf).toList() : List.of();
         String enumName = values.isEmpty() ? "" : referencedName;
+        Constraints constraints = new Constraints(
+                resolved.get("minLength") instanceof Integer min ? min : null,
+                resolved.get("maxLength") instanceof Integer max ? max : null,
+                resolved.get("pattern") instanceof String pattern && !pattern.isEmpty() ? pattern : null,
+                bigInteger(resolved.get("minimum")), bigInteger(resolved.get("maximum")));
         return new FieldSchema(String.valueOf(resolved.getOrDefault("type", "")),
                 String.valueOf(resolved.getOrDefault("format", "")), enumName, values,
-                Boolean.TRUE.equals(property.get("nullable")) || Boolean.TRUE.equals(resolved.get("nullable")));
+                Boolean.TRUE.equals(property.get("nullable")) || Boolean.TRUE.equals(resolved.get("nullable")),
+                constraints);
     }
 
     private static boolean validErrorEnvelope(Map<String, Object> schema) {
